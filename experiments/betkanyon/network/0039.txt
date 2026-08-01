@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/bk/bonus-api/betkanyon.js?v=218431594243507
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

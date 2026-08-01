@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/bk//bonus-api/vip-agent-widget.js?v=10.9052041505622799
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

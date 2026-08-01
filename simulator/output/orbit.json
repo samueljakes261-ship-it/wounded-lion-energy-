@@ -1,0 +1,116 @@
+{
+    "marketCatalogues": [
+        {
+            "marketId": "1.259900000",
+            "marketName": "Match Odds",
+            "marketStartTime": 1784560842007,
+            "competition": {
+                "name": "Premier League"
+            },
+            "event": {
+                "id": "M001",
+                "name": "Liverpool v Chelsea",
+                "homeTeam": "Liverpool",
+                "awayTeam": "Chelsea"
+            },
+            "runners": [
+                {
+                    "runnerName": "Liverpool",
+                    "price": 2.35
+                },
+                {
+                    "runnerName": "Chelsea",
+                    "price": 3.13
+                },
+                {
+                    "runnerName": "The Draw",
+                    "price": 3.68
+                }
+            ]
+        },
+        {
+            "marketId": "1.259900001",
+            "marketName": "Match Odds",
+            "marketStartTime": 1784560842007,
+            "competition": {
+                "name": "Premier League"
+            },
+            "event": {
+                "id": "M002",
+                "name": "Arsenal v Tottenham",
+                "homeTeam": "Arsenal",
+                "awayTeam": "Tottenham"
+            },
+            "runners": [
+                {
+                    "runnerName": "Arsenal",
+                    "price": 2.2
+                },
+                {
+                    "runnerName": "Tottenham",
+                    "price": 3.37
+                },
+                {
+                    "runnerName": "The Draw",
+                    "price": 3.93
+                }
+            ]
+        },
+        {
+            "marketId": "1.259900002",
+            "marketName": "Match Odds",
+            "marketStartTime": 1784560842007,
+            "competition": {
+                "name": "La Liga"
+            },
+            "event": {
+                "id": "M003",
+                "name": "Barcelona v Real Madrid",
+                "homeTeam": "Barcelona",
+                "awayTeam": "Real Madrid"
+            },
+            "runners": [
+                {
+                    "runnerName": "Barcelona",
+                    "price": 2.63
+                },
+                {
+                    "runnerName": "Real Madrid",
+                    "price": 2.9
+                },
+                {
+                    "runnerName": "The Draw",
+                    "price": 3.5
+                }
+            ]
+        },
+        {
+            "marketId": "1.259900003",
+            "marketName": "Match Odds",
+            "marketStartTime": 1784560842007,
+            "competition": {
+                "name": "Turkish Super Lig"
+            },
+            "event": {
+                "id": "M004",
+                "name": "Galatasaray v Fenerbahce",
+                "homeTeam": "Galatasaray",
+                "awayTeam": "Fenerbahce"
+            },
+            "runners": [
+                {
+                    "runnerName": "Galatasaray",
+                    "price": 2.41
+                },
+                {
+                    "runnerName": "Fenerbahce",
+                    "price": 2.97
+                },
+                {
+                    "runnerName": "The Draw",
+                    "price": 3.86
+                }
+            ]
+        }
+    ]
+}

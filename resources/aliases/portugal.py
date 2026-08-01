@@ -1,0 +1,5 @@
+PORTUGAL = {
+
+    "sporting": "sporting cp",
+
+}

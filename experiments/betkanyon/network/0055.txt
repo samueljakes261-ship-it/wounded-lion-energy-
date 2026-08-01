@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/bk/bonus-api/auth-mirror.js?v=15286131276016968
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

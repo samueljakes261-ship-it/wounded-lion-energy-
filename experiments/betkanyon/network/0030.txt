@@ -1,0 +1,11 @@
+URL:
+https://cdn.betkanyon1617.com/plat/prd/Img/partners/1026/seria-a.webp
+
+STATUS:
+200
+
+CONTENT-TYPE:
+image/webp
+
+BODY:
+<BINARY>

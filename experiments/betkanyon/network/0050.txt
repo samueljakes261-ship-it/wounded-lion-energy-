@@ -1,0 +1,11 @@
+URL:
+https://www.wbcmspanel.com/api/popups?site=1&lang=tr&device=desktop&currentUrl=sport/prematchevents/29324&countryIso=tr&userType=0
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/json; charset=utf-8
+
+BODY:
+<BINARY>

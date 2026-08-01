@@ -1,0 +1,11 @@
+URL:
+https://secure.livechatinc.com/customer/action/open_chat?license_id=15563706&group=2&embedded=1&widget_version=3&unique_groups=0&organization_id=30e83c72-3bef-4aa3-b8a5-08f5ddbd3310&use_parent_storage=1&x-region=us-south1
+
+STATUS:
+200
+
+CONTENT-TYPE:
+text/html; charset=utf-8
+
+BODY:
+<BINARY>

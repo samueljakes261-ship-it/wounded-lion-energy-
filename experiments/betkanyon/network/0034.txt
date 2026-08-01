@@ -1,0 +1,11 @@
+URL:
+https://www.googletagmanager.com/gtm.js?id=GTM-5RZ4Z9W6
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=UTF-8
+
+BODY:
+<BINARY>

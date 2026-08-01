@@ -1,0 +1,11 @@
+URL:
+https://api.livechatinc.com/v3.6/customer/action/get_configuration?organization_id=30e83c72-3bef-4aa3-b8a5-08f5ddbd3310&version=1671.0.103.210.377.1097.103.109.103.101.103.119.2&x-region=us-south1&group_id=2&jsonp=__lc_static_config
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=UTF-8
+
+BODY:
+<BINARY>

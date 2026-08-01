@@ -1,0 +1,113 @@
+$.ui.dialog.prototype.options.clickOut = true;
+$.ui.dialog.prototype.options.responsive = true;
+$.ui.dialog.prototype.options.scaleH = 1;
+$.ui.dialog.prototype.options.scaleW = 1;
+$.ui.dialog.prototype.options.showTitleBar = true;
+$.ui.dialog.prototype.options.showCloseButton = true;
+
+var _init = $.ui.dialog.prototype._init;
+$.ui.dialog.prototype._init = function () {
+    var self = this;
+    _init.apply(this, arguments);
+
+    // Patch for older overlay event bugs (Legacy support)
+    if ($.ui && $.ui.dialog && $.ui.dialog.overlay) {
+        $.ui.dialog.overlay.events = $.map('focus,keydown,keypress'.split(','), function (event) {
+            return event + '.dialog-overlay';
+        }).join(' ');
+    }
+};
+
+var _open = $.ui.dialog.prototype.open;
+$.ui.dialog.prototype.open = function () {
+    var self = this;
+    _open.apply(this, arguments);
+
+    var $parent = self.element.parent(),
+        oHeight = $parent.outerHeight(),
+        oWidth = $parent.outerWidth(),
+        isTouch = $("html").hasClass("touch");
+
+    var resize = function () {
+        if (self.options.responsive === true || (self.options.responsive === "touch" && isTouch)) {
+            var elem = self.element,
+                wHeight = $(window).height(),
+                wWidth = $(window).width(),
+                setHeight = Math.min(wHeight * self.options.scaleH, oHeight),
+                setWidth = Math.min(wWidth * self.options.scaleW, oWidth);
+
+            // Check & set height
+            if ((oHeight + 100) > wHeight || elem.hasClass("resizedH")) {
+                elem.dialog("option", "height", setHeight).parent().css("max-height", setHeight);
+                elem.addClass("resizedH");
+            }
+
+            // Check & set width
+            if ((oWidth + 100) > wWidth || elem.hasClass("resizedW")) {
+                elem.dialog("option", "width", setWidth).parent().css("max-width", setWidth);
+                elem.addClass("resizedW");
+            }
+
+            // Recenter using modern jQuery UI 1.13 syntax
+            if (elem.hasClass("resizedH") || elem.hasClass("resizedW")) {
+                elem.dialog("option", "position", { my: "center", at: "center", of: window });
+                elem.css("overflow", "auto");
+            }
+        }
+
+        if (isTouch) {
+            self.element.css("-webkit-overflow-scrolling", "touch");
+        }
+    };
+
+    resize();
+
+    // Event listeners
+    $(window).on("resize.dialogOptions", resize);
+
+    if (window.addEventListener) {
+        window.addEventListener("orientationchange", resize);
+    }
+
+    // UI Adjustments
+    if (!self.options.showTitleBar) {
+        self.uiDialogTitlebar.hide();
+    }
+
+    if (!self.options.showCloseButton) {
+        self.uiDialogTitlebar.find(".ui-dialog-titlebar-close").hide();
+    }
+
+    // Click outside to close logic
+    if (self.options.clickOut && !self.options.modal) {
+        if ($('#dialog-overlay').length === 0) {
+            $('<div id="dialog-overlay"></div>').insertBefore($parent).css({
+                "position": "fixed",
+                "top": 0, "right": 0, "bottom": 0, "left": 0,
+                "background-color": "transparent",
+                "z-index": $parent.css("z-index") - 1
+            }).on('click', function (e) {
+                self.close();
+            });
+        }
+    } else if (self.options.clickOut && self.options.modal) {
+        // Modern approach: target the widget overlay provided by jQuery UI
+        $(document).on('click.dialogOptions', '.ui-widget-overlay', function () {
+            self.close();
+        });
+    }
+};
+
+var _close = $.ui.dialog.prototype.close;
+$.ui.dialog.prototype.close = function () {
+    var self = this;
+    _close.apply(this, arguments);
+
+    // Cleanup listeners and overlays
+    $(window).off("resize.dialogOptions");
+    $(document).off('click.dialogOptions');
+
+    if ($("#dialog-overlay").length) {
+        $("#dialog-overlay").remove();
+    }
+};

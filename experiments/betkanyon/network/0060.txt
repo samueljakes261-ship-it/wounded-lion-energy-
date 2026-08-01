@@ -1,0 +1,11 @@
+URL:
+https://cdn.betkanyon1617.com/plat/prd///PlayerEngagementDisplaysImages/DefaultImages/area-settings-default-icon.webp
+
+STATUS:
+200
+
+CONTENT-TYPE:
+image/webp
+
+BODY:
+<BINARY>

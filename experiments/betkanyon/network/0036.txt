@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/bk/retargeting/popup.js?v=7677120301893994
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/main/js/fingerprint-demo.js?v=9720887721187697
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

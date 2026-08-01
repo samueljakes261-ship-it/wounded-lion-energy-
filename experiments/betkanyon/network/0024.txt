@@ -1,0 +1,143 @@
+URL:
+https://cdn.betkanyon1617.com/plat/prd/CW/CW1/Scripts/Sport/CommonHelperFunctions.js?v=1.2807.2026.1002
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript
+
+BODY:
+let _isMobVersionCHF = document.documentElement.dataset.type.toLowerCase() == 'mobile';
+function handleSportBalanceChange(data) {
+    let sbp = document.getElementById('SportBonusPanel');
+    var sba = document.getElementById('SportBonusAmount');
+    if (!hasLoginButton(document)) {
+        if (parseFloat(data.BonusBalance) >= 0) {
+            sba.innerHTML = data.BonusBalance;
+            sbp.classList.remove('dis_none');
+        } else {
+            sba.innerHTML = '';
+            sbp.classList.add('dis_none');
+        }
+        if (window.TournamentBalancePanel) {
+            if (parseFloat(data.TournamentBalance) >= 0) {
+                window.TournamentBalanceAmount.innerHTML = data.TournamentBalance;
+                window.TournamentBalancePanel.classList.remove('dis_none');
+            } else {
+                window.TournamentBalanceAmount.innerHTML = '';
+                window.TournamentBalancePanel.classList.add('dis_none');
+            }
+        }
+        if (window.CashbackBalancePanel) {
+            if (parseFloat(data.CashBackBalance) >= 0) {
+                window.CashbackBalanceAmount.innerHTML = data.CashBackBalance;
+                window.CashbackBalancePanel.classList.remove('dis_none');
+            } else {
+                window.CashbackBalanceAmount.innerHTML = '';
+                window.CashbackBalancePanel.classList.add('dis_none');
+            }
+        }
+        handleBalancesVisibility();
+    }
+};
+
+function handleDepositNotifyPopup(data) {
+    if (data?.message?.data && data?.message?.data != '' && typeof window.CashierScripts == 'object') {
+        openCashierPopup(1, data.message.data);
+    }
+}
+
+function setPath(path) {
+    if (path.includes(document.documentElement.lang)) {
+        path.shift();
+    }
+    path = path[2] == undefined ? '/' : '/' + path[2];
+    if (path.includes('betslip-id')) {
+        path = '';
+    }
+    return path;
+};
+function cratePreMatchRouting(input) {
+    let qs = '';
+    const numbers = input.match(/\d+/g);
+    if (numbers) {
+        for (var i = 0; i < numbers.length; i++) {
+            if (i == 0) {
+                qs += 'sport=' + numbers[0];
+                continue;
+            } else if (i == 1) {
+                qs += '&country=' + numbers[1];
+                continue;
+            } else if (i == 2) {
+                qs += '&champ=' + numbers[2];
+                continue;
+            }
+            else {
+                qs += ',' + numbers[i];
+            }
+        }
+    }
+    return qs;
+};
+$(document).on('click', '.js_sport_links', function (e) {
+    let docLang = document.documentElement.lang;
+    if (typeof changeSportRoute == 'function') {
+        let url = this.getAttribute('href');
+        if (url.includes('https://')) {
+            let itemUrl = new URL(url);
+            url = itemUrl.pathname + itemUrl.search;
+        }
+        if (!url.startsWith('/' + docLang + '/')) {
+            url = '/' + docLang + url;
+        }
+        let docPathname = document.location.pathname.toLowerCase();
+
+        if (!docPathname.startsWith('/' + docLang + '/')) {
+            docPathname = '/' + docLang + docPathname;
+        }
+
+        if ((url.toLowerCase().startsWith('/' + docLang + '/sport') && docPathname.startsWith('/' + docLang + '/sport')) ||
+            (url.toLowerCase().startsWith('/' + docLang + '/esport') && docPathname.startsWith('/' + docLang + '/esport'))) {
+            e.preventDefault();
+            if (_isMobVersionCHF) {
+                closeLeftSideBar();
+                closeRightSidebar();
+            }
+
+            if (url != document.location.pathname + document.location.search) {
+                changePageUrlWithoutRefreshing(url, url);
+                changeSportRoute();
+                if (_isMobVersionCHF) {
+                    setActiveClassToPrMenuItems('js_left_mn_items');
+                    setActiveClassToPrMenuItems('js_bm_nav_items');
+                    if (url.includes('event-details')) {
+                        document.getElementById('js_rg_cont_from_header')?.classList.add('hidden');
+                    } else {
+                        document.getElementById('js_rg_cont_from_header')?.classList.remove('hidden');
+                    }
+                } else {
+                    setActiveClassToPrMenuItems('js_menu_links');
+                }
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+});
+window.onpopstate = function () {
+    changeSportRoute();
+    if (_isMobVersionCHF) {
+        closeLeftSideBar();
+        closeRightSidebar();
+        setActiveClassToPrMenuItems('js_left_mn_items');
+        setActiveClassToPrMenuItems('js_bm_nav_items');
+        const fullUrl = window.location.href;
+        if (fullUrl.includes('event-details')) {
+            document.getElementById('js_rg_cont_from_header')?.classList.add('hidden');
+        } else {
+            document.getElementById('js_rg_cont_from_header')?.classList.remove('hidden');
+        }
+    } else {
+        setActiveClassToPrMenuItems('js_menu_links');
+    }
+};

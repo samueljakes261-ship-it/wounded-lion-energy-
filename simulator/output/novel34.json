@@ -1,0 +1,60 @@
+{
+    "events": [
+        {
+            "fixture": {
+                "id": "M001",
+                "home": "Liverpool FC",
+                "away": "Chelsea FC",
+                "kickoff": 1784560842166
+            },
+            "league": "English Premier League",
+            "prices": {
+                "home": 2.33,
+                "draw": 3.55,
+                "away": 3.24
+            }
+        },
+        {
+            "fixture": {
+                "id": "M002",
+                "home": "Arsenal FC",
+                "away": "Tottenham FC",
+                "kickoff": 1784560842166
+            },
+            "league": "English Premier League",
+            "prices": {
+                "home": 2.17,
+                "draw": 3.97,
+                "away": 3.33
+            }
+        },
+        {
+            "fixture": {
+                "id": "M003",
+                "home": "Barcelona FC",
+                "away": "Real Madrid FC",
+                "kickoff": 1784560842166
+            },
+            "league": "Spanish Primera Division",
+            "prices": {
+                "home": 2.55,
+                "draw": 3.42,
+                "away": 2.84
+            }
+        },
+        {
+            "fixture": {
+                "id": "M004",
+                "home": "Galatasaray FC",
+                "away": "Fenerbahce FC",
+                "kickoff": 1784560842166
+            },
+            "league": "Turkey Super League",
+            "prices": {
+                "home": 2.4,
+                "draw": 3.69,
+                "away": 2.98
+            }
+        }
+    ]
+}

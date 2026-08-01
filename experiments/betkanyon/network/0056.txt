@@ -1,0 +1,11 @@
+URL:
+https://connect.facebook.net/en_US/fbevents.js
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/x-javascript; charset=utf-8
+
+BODY:
+<BINARY>

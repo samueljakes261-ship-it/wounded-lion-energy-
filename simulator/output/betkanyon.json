@@ -1,0 +1,60 @@
+{
+    "fixtures": [
+        {
+            "match": {
+                "matchId": "M001",
+                "host": "Liverpool AFC",
+                "guest": "Chelsea FC",
+                "start": 1784560842214
+            },
+            "tournament": "England EPL",
+            "odds": {
+                "1": 2.31,
+                "X": 3.75,
+                "2": 3.1
+            }
+        },
+        {
+            "match": {
+                "matchId": "M002",
+                "host": "Arsenal London",
+                "guest": "Spurs",
+                "start": 1784560842214
+            },
+            "tournament": "England EPL",
+            "odds": {
+                "1": 2.14,
+                "X": 4.0,
+                "2": 3.3
+            }
+        },
+        {
+            "match": {
+                "matchId": "M003",
+                "host": "Barça",
+                "guest": "Real Madrid CF",
+                "start": 1784560842214
+            },
+            "tournament": "Spain LaLiga",
+            "odds": {
+                "1": 2.56,
+                "X": 3.58,
+                "2": 2.94
+            }
+        },
+        {
+            "match": {
+                "matchId": "M004",
+                "host": "Galatasaray SK",
+                "guest": "Fenerbahçe SK",
+                "start": 1784560842214
+            },
+            "tournament": "Turkey Süper Lig",
+            "odds": {
+                "1": 2.35,
+                "X": 3.85,
+                "2": 3.01
+            }
+        }
+    ]
+}

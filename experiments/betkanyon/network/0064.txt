@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/main/js/fingerprint-client.js?v=8wgp557s6u481d1xyung0y
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

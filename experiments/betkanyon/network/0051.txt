@@ -1,0 +1,11 @@
+URL:
+https://cdnwbk.com/bk/bonus-api/finger-print-init.js?v=10.3777117511940993
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

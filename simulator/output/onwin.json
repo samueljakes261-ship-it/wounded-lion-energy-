@@ -1,0 +1,52 @@
+{
+    "games": [
+        {
+            "eventId": "M001",
+            "leagueName": "EPL England",
+            "homeName": "LFC",
+            "awayName": "CFC",
+            "kickoffTime": 1784560842216,
+            "markets": {
+                "homeWin": 2.36,
+                "draw": 3.56,
+                "awayWin": 3.18
+            }
+        },
+        {
+            "eventId": "M002",
+            "leagueName": "EPL England",
+            "homeName": "Arsenal FC",
+            "awayName": "Tottenham Hotspur",
+            "kickoffTime": 1784560842216,
+            "markets": {
+                "homeWin": 2.16,
+                "draw": 3.85,
+                "awayWin": 3.37
+            }
+        },
+        {
+            "eventId": "M003",
+            "leagueName": "LaLiga EA",
+            "homeName": "FCB",
+            "awayName": "R. Madrid",
+            "kickoffTime": 1784560842216,
+            "markets": {
+                "homeWin": 2.6,
+                "draw": 3.55,
+                "awayWin": 2.92
+            }
+        },
+        {
+            "eventId": "M004",
+            "leagueName": "Süper Lig TR",
+            "homeName": "Gala",
+            "awayName": "Fener",
+            "kickoffTime": 1784560842216,
+            "markets": {
+                "homeWin": 2.4,
+                "draw": 3.82,
+                "awayWin": 2.93
+            }
+        }
+    ]
+}

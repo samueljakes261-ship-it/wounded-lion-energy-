@@ -1,0 +1,11 @@
+URL:
+https://api.livechatinc.com/v3.6/customer/action/get_localization?organization_id=30e83c72-3bef-4aa3-b8a5-08f5ddbd3310&version=e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0_2d7fe0080323128aa0768e3a56eeae24&language=tr&x-region=us-south1&group_id=2&jsonp=__lc_localization
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=UTF-8
+
+BODY:
+<BINARY>

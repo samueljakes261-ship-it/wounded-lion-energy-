@@ -1,0 +1,316 @@
+URL:
+https://cdn.betkanyon1617.com/plat/prd/CW/CW1/Scripts/Sport/BootstrapperHelper.js?v=1.2807.2026.1002
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript
+
+BODY:
+let _isMobVersion = document.documentElement.dataset.type.toLowerCase() == 'mobile';
+let routePrefix = document.location.pathname.toLowerCase().startsWith('/esport') || document.location.pathname.toLowerCase().startsWith('/' + document.documentElement.lang + '/esport') ? '/' + document.documentElement.lang + '/esport' : '/' + document.documentElement.lang + '/sport';
+function changeSportRoute() {
+    
+    let documentPath = document.location.pathname.toLowerCase().split('/');
+    let qsparam = setSportRouting();
+    let path = setPath(documentPath);
+    qsparam = qsparam == undefined || qsparam == "" ? {} : qsparam;
+
+    let dispatchPrematchEvnt = {
+        type: 3,
+        message: {
+            path: path,
+            qs: qsparam
+        }
+    };
+    let dispatchEventDetailsEvnt = {
+        type: 3,
+        message: {
+            path: path,
+            hashData: qsparam
+        }
+    };
+
+    sp_inst.dispatch('sportAppEventListener', path.includes('event-details') || path.includes('team-details') || path.includes('search') ? dispatchPrematchEvnt : dispatchEventDetailsEvnt);
+};
+
+function changeSportCurrency(currencyId, showInUsd) {
+    if (currencyId != undefined) {
+        let dispatchEventObject = {
+            type: 7,
+            message: {
+                currencyShortName: currencyId,
+                fiatCurrencyShortName: showInUsd ? 'USD' : ''
+            }
+        };
+        sp_inst.dispatch('sportAppEventListener', dispatchEventObject);
+    }
+};
+
+function setSportRouting() {
+
+    let urlParams = window.location.search;
+    let url = window.location.href;
+    let qs = '';
+    let counter = 0;
+    const searchParams = new URLSearchParams(urlParams);
+    let hashData = searchParams.get('data');
+    if (hashData) {
+        return hashData;
+    }
+    else if (url.includes('event-details') || url.includes('team-details')) {
+        searchParams.forEach((key, value) => {
+            counter++;
+            if (value.toLowerCase() == 'competitorid') {
+                value = 'competitorId';
+            }
+            if (value.toLowerCase() == 'eventid') {
+                value = 'eventId';
+            }
+            if (value.toLowerCase() == 'resultpage') {
+                value = 'resultPage';
+            }
+            qs += `"${value}":"${key}"`;
+            if (counter != Array.from(searchParams).length) {
+                qs += ','
+            }
+        });
+        qs = '{ ' + qs + '}';
+        return JSON.parse(qs);
+    }
+    else if (url.includes('search')) {
+        searchParams.forEach((key, value) => {
+            qs += `${value}`;
+        });
+        return qs = {
+            q: qs
+        }
+    }
+    else {
+        const numbers = urlParams.match(/\d+/g);
+        if (numbers) {
+
+            if (numbers.length == 1) {
+                qs = `{"${numbers[0]}":{}}`;
+            } else {
+                for (var i = 0; i < numbers.length; i++) {
+                    if (i == 0) {
+                        qs += `{"${numbers[0]}"`;
+                    } else if (i == 1) {
+                        qs += `: {"${numbers[1]}"` + ': [';
+                    } else {
+                        qs += i == numbers.length - 1 ? numbers[i] : numbers[i] + ',';
+                    }
+                }
+                qs += ']}}';
+            }
+
+            return qs = {
+                q: qs
+            }
+        }
+    }
+    return qs;
+};
+function getSportRouting(sp_data) {
+    if (_isMobVersion) {
+        handleSpAppEventDispatch(sp_data);
+    }
+    let dataType = sp_data.type;
+    let metaData = '';
+    switch (dataType) {
+        case 3:
+            let allowReplace = sp_data.message != undefined && sp_data.message.action != undefined && sp_data.message.action.toLowerCase() == 'replace';
+            let url = '';
+            let qs = '';
+            let path = sp_data.message.path == '/' ? routePrefix : routePrefix + sp_data.message.path;
+            if (typeof sp_data.message.qs === 'object' && Object.keys(sp_data.message.qs).length !== 0 && sp_data.message.path.includes('event-details')) {
+                if (sp_data.message.qs.sport != undefined) {
+                    qs += 'sport=' + sp_data.message.qs.sport
+                }
+                if (sp_data.message.qs.country != undefined) {
+                    qs += qs == '' ? 'country' : '&country=' + sp_data.message.qs.country;
+                }
+                if (sp_data.message.qs.champ != undefined) {
+                    qs += qs == '' ? 'champ' : '&champ=' + sp_data.message.qs.champ;
+                }
+                if (sp_data.message.qs.event != undefined) {
+                    qs += qs == '' ? 'event' : '&event=' + sp_data.message.qs.event;
+                }
+                if (sp_data.message.qs.live != undefined) {
+                    qs += qs == '' ? 'live' : '&live=' + sp_data.message.qs.live;
+                }
+                if (sp_data.message.qs.chat != undefined) {
+                    qs += qs == '' ? 'chat' : '&chat=' + sp_data.message.qs.chat;
+                }
+                if (sp_data.message.qs.supertip != undefined) {
+                    qs += qs == '' ? 'supertip' : '&supertip=' + sp_data.message.qs.supertip;
+                }
+                if (sp_data.message.qs.resultPage != undefined) {
+                    qs += qs == '' ? 'resultPage' : '&resultPage=' + sp_data.message.qs.resultPage;
+                }
+            }
+            else if (typeof sp_data.message.qs === 'object' && Object.keys(sp_data.message.qs).length !== 0 && sp_data.message.path.includes('team-details')) {
+                if (sp_data.message.qs.competitorId != undefined) {
+                    qs += 'competitorId=' + sp_data.message.qs.competitorId
+                }
+                if (sp_data.message.qs.eventId != undefined) {
+                    qs += qs == '' ? 'eventId' : '&eventId=' + sp_data.message.qs.eventId;
+                }
+            }
+            else if (typeof sp_data.message.qs === 'object' && sp_data.message.qs.q) {
+                if (!sp_data.message.path.includes('search')) {
+                    qs = cratePreMatchRouting(sp_data.message.qs.q);
+                }
+                if (sp_data.message.hashData) {
+                    qs += '&data=' + sp_data.message.hashData;
+                }
+            }
+            else if (typeof sp_data.message.qs == 'string') {
+                qs = cratePreMatchRouting(sp_data.message.qs);
+            }
+            url = qs == '' ? path : path + '/?' + qs;
+
+            changePageUrlWithoutRefreshing(url, url, allowReplace);
+            if (_isMobVersion) {
+                setActiveClassToPrMenuItems('js_left_mn_items');
+                setActiveClassToPrMenuItems('js_bm_nav_items');
+                if (url.includes('event-details')) {
+                    document.getElementById('js_rg_cont_from_header')?.classList.add('hidden');
+                } else {
+                    document.getElementById('js_rg_cont_from_header')?.classList.remove('hidden');
+                }
+            } else {
+                setActiveClassToPrMenuItems('js_menu_links');
+            }
+            if (path.includes('event-details') && typeof sp_data.message.additionalData === 'object') {
+                let metaInfo = sp_data.message.additionalData;
+
+                let sport = metaInfo.sportCurrentName ? metaInfo.sportCurrentName : metaInfo.sportName;
+                let tournament = metaInfo.tournamentCurrentName ? metaInfo.tournamentCurrentName : metaInfo.tournamentName;
+                let event = metaInfo.eventCurrentName ? metaInfo.eventCurrentName : metaInfo.eventName;
+
+                metaData = `${sport} | ${tournament} | ${event}`;
+            }
+            else if (path.includes('team-details') && typeof sp_data.message.additionalData === 'object') {
+                metaData = sp_data.message.additionalData.sportName + ' | ' + sp_data.message.additionalData.sportCurrentName + ' | ' + sp_data.message.additionalData.competitorName + ' | ' + sp_data.message.additionalData.competitorCurrentName;
+            }
+            else if (typeof sp_data.message.additionalData === 'object' && sp_data.message.qs && Object.keys(sp_data.message.qs).length !== 0) {
+                if (sp_data.message.additionalData.countryName) {
+                    for (var i = 0; i < sp_data.message.additionalData.countryName.length; i++) {
+                        metaData += sp_data.message.additionalData.countryName[i] + ' | ';
+                    }
+                }
+                if (sp_data.message.additionalData.sportName) {
+                    for (var i = 0; i < sp_data.message.additionalData.sportName.length; i++) {
+                        metaData += sp_data.message.additionalData.sportName[i] + ' | ';
+                    }
+                }
+                if (sp_data.message.additionalData.chapmName) {
+                    for (var i = 0; i < sp_data.message.additionalData.chapmName.length; i++) {
+                        metaData += sp_data.message.additionalData.chapmName[i] + ' | ';
+                    }
+                }
+                metaData = metaData.slice(0, -2);
+            }
+            else if (typeof spOnNavigateCallback == 'function') {
+                metaData = spOnNavigateCallback(path);
+            }
+            if (metaData != '') {
+                document.title = metaData;
+            }
+            break;
+        case 4:
+            let metaPath = documentPath[2] == undefined ? '' : documentPath[2];
+            if (metaPath.includes('event-details') && typeof sp_data.message.additionalData === 'object') {
+                metaData = sp_data.message.additionalData.sportCurrentName + ' | ' + sp_data.message.additionalData.tournamentCurrentName + ' | ' + sp_data.message.additionalData.eventCurrentName;
+            }
+            else if (metaPath.includes('team-details') && typeof sp_data.message.additionalData === 'object') {
+                metaData = sp_data.message.additionalData.sportName + ' | ' + sp_data.message.additionalData.sportCurrentName + ' | ' + sp_data.message.additionalData.competitorName + ' | ' + sp_data.message.additionalData.competitorCurrentName;
+            }
+            else if (typeof sp_data.message.additionalData === 'object') {
+                if (sp_data.message.additionalData.countryName) {
+                    for (var i = 0; i < sp_data.message.additionalData.countryName.length; i++) {
+                        metaData += sp_data.message.additionalData.countryName[i] + ' | ';
+                    }
+                }
+                if (sp_data.message.additionalData.sportName) {
+                    for (var i = 0; i < sp_data.message.additionalData.sportName.length; i++) {
+                        metaData += sp_data.message.additionalData.sportName[i] + ' | ';
+                    }
+                }
+                if (sp_data.message.additionalData.chapmName) {
+                    for (var i = 0; i < sp_data.message.additionalData.chapmName.length; i++) {
+                        metaData += sp_data.message.additionalData.chapmName[i] + ' | ';
+                    }
+                }
+                metaData = metaData.slice(0, -2);
+            }
+            else if (typeof spOnNavigateCallback == 'function') {
+                metaData = spOnNavigateCallback(metaPath);
+            }
+            if (metaData != '') {
+                document.title = metaData;
+            }
+            break;
+        case 5:
+            handleDepositNotifyPopup(sp_data);
+            break;
+
+        case 18:
+            if (typeof openRegulatoryInfoPopup === 'function') {
+                openRegulatoryInfoPopup('header');
+            }
+            break;
+        case 19:
+            if (typeof redirectToResponsibleGamingPage === 'function') {
+                redirectToResponsibleGamingPage();
+            }
+            break;
+    }
+};
+
+let sp_inst;
+let documentPath = document.location.pathname.toLowerCase().split('/');
+let qsparam = setSportRouting();
+let path = setPath(documentPath);
+
+qsparam = qsparam == undefined || qsparam == "" ? {} : qsparam;
+
+let initialRoutePrematch = {
+    path: path,
+    hashData: qsparam
+};
+let initialRouteEventDetails = {
+    path: path,
+    qs: qsparam
+};
+var SportHelper = SportHelper || (function () {
+    return {
+        init: function (args) {
+            (async () => {
+                args.params.initialRoute = path.includes('event-details') || path.includes('team-details') || path.includes('search') ? initialRouteEventDetails : initialRoutePrematch;
+                if (_isMobVersion && args.type.toLowerCase() == 'asianview') {
+                    args.params.view = 'asian';
+                }
+                sp_inst = await Bootstrapper.boot(args.params, { name: args.name });
+
+                if (typeof insFoundsCheck == 'function') {
+                    sp_inst.addEventListener("deposit", function (event) {
+                        insFoundsCheck();
+                    });
+                }
+
+                if (typeof handleSpAppEventDispatch == 'function' && args.allowDispatch.toLowerCase() == 'true') {
+                    sp_inst.addEventListener('sportAppEventDispatch', ({ data }) => getSportRouting(data))
+                }
+
+                if (typeof handleSportBalanceChange == 'function') {
+                    sp_inst.addEventListener('updateUserBalance', ({ data }) => { if (data) { handleSportBalanceChange(data) } });
+                }
+            })();
+
+        }
+    }
+})();

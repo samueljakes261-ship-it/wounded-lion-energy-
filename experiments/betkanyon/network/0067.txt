@@ -1,0 +1,11 @@
+URL:
+https://api.softsysteamapi.com/api/find-agent/1?playerId=
+
+STATUS:
+302
+
+CONTENT-TYPE:
+text/html; charset=utf-8
+
+BODY:
+<BINARY>

@@ -1,0 +1,11 @@
+URL:
+https://ffa3baa3-a0e1-4958-a746-753bef2147fd.licensecloudsystem.com/site/1/licence.js?v=5587390844871083
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=utf-8
+
+BODY:
+<BINARY>

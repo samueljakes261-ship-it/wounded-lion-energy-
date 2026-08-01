@@ -1,0 +1,11 @@
+URL:
+https://betkanyon1617.com/DynamicPopUp/GetAreaSettings
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/json; charset=utf-8
+
+BODY:
+<BINARY>

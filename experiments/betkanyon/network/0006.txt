@@ -1,0 +1,143 @@
+URL:
+https://cdn.betkanyon1617.com/plat/prd/CW/CW1/Scripts/DynamicContent/CurrencyManager.js?v=1.2807.2026.1002
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript
+
+BODY:
+const CurrencyManager = (function () {
+    const STORAGE_KEY = 'app_currency_payload';
+    const CACHE_MINUTES = 5;
+    let COOKIE_NAME = 'Preference_ShowUsd_';
+    let _activePromise = null;
+    let currencyCache = null;
+
+    return {
+        setPreference(showUsd) {
+            const date = new Date();
+            date.setTime(date.getTime() + (30 * 24 * 60 * 60 * 1000));
+            document.cookie = `${COOKIE_NAME}=${showUsd}; expires=${date.toUTCString()}; path=/`;
+        },
+
+        getPreference() {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${COOKIE_NAME}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift() === 'true';
+            return false;
+        },
+
+        async init(userId) {
+            
+            if (!isNaN(userId) && COOKIE_NAME == 'Preference_ShowUsd_') {
+                COOKIE_NAME += userId;
+            }
+            const cachedStr = localStorage.getItem(STORAGE_KEY);
+            const now = Date.now();
+            let needsUpdate = true;
+
+            if (cachedStr) {
+                const cache = JSON.parse(cachedStr);
+                currencyCache = cache.data;
+                if (now < cache.expiresAt) {
+                    needsUpdate = false;
+                }
+            }
+
+            if (needsUpdate) {
+                await this.sync();
+            }
+        },
+
+        async sync() {
+            if (_activePromise) return _activePromise;
+
+            _activePromise = (async () => {
+                try {
+                    const response = await fetch('/Wallet/GetCurrencySettings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    const freshData = await response.json();
+                    if (freshData && freshData.Success) {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                            expiresAt: Date.now() + (CACHE_MINUTES * 60 * 1000),
+                            data: freshData.Data
+                        }));
+                        currencyCache = freshData.Data;
+                        return freshData.Data;
+                    }
+                } finally { _activePromise = null; }
+            })();
+            return _activePromise;
+        },
+
+        async refreshUI() {
+
+            if (currencyCache == null) return;
+
+            const elements = document.querySelectorAll('.js_display_currency');
+
+            elements.forEach(el => {
+                const amount = parseFloat(el.dataset.amount);
+                const currencyId = el.dataset.id;
+                const formatted = this.format(amount, currencyId);
+                el.innerText = `$ ${formatted}`;
+            });
+        },
+
+        format(amount, currencyId) {
+            if (currencyCache == null) {
+                return amount;
+            }
+            const isUsd = this.getPreference(); 
+
+            const currentCfg = currencyCache.find(c => c.CurrencyId === currencyId);
+
+            const cfg = isUsd
+                ? currencyCache.find(c => c.CurrencyId === "USD")
+                : currentCfg;
+
+            if (!cfg) return amount;
+
+            let val = amount;
+            if (isUsd && currentCfg) {
+                val = amount * currentCfg.CurrentRate;
+            }
+
+            const digits = cfg.DigitsAfterPoint || 0;
+            const multiplier = Math.pow(10, digits);
+
+            const truncatedVal = Math.trunc(val * multiplier) / multiplier;
+
+
+            let str = truncatedVal.toFixed(digits);
+
+
+            if (cfg.ExcludeZeros && str.includes('.')) {
+                str = str.replace(/\.?0+$/, "");
+            }
+
+            const sep = cfg.AmountFormatType === 2 ? " " : ","; 
+            const parts = str.split(".");
+
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+
+            return parts.join(".");
+        },
+
+        getCurrencyIcon(currencyId) {
+            if (currencyCache == null) {
+                return amount;
+            }
+            const currentCfg = currencyCache.find(c => c.CurrencyId === currencyId);
+            if (!currentCfg) return "";
+
+            return currentCfg.IconUrl;
+        }
+    };
+})();

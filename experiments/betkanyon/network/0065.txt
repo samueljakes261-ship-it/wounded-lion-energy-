@@ -1,0 +1,11 @@
+URL:
+https://api.livechatinc.com/v3.6/customer/action/get_dynamic_configuration?x-region=us-south1&license_id=15563706&client_id=c5e4f61e1a6c3b1521b541bc5c5a2ac5&url=https%3A%2F%2Fbetkanyon1617.com%2Ftr%2Fsport%2Fprematchevents%2F29324&group_id=2&channel_type=code&jsonp=__mg0c2rmheum
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=UTF-8
+
+BODY:
+<BINARY>

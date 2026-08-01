@@ -1,0 +1,11 @@
+URL:
+https://betkanyon1617.com/Wallet/GetCurrencySettings
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/json; charset=utf-8
+
+BODY:
+{"Success":true,"Data":[{"CurrencyId":"TRY","IconUrl":"Currency/TRY.webp","Type":1,"CurrentRate":0.02139236,"AvailableForDefault":true,"IsPartnerDefault":true,"DigitsAfterPoint":2,"AmountFormatType":1,"ExcludeZeros":true,"ShowOnWeb":true,"Status":1},{"CurrencyId":"EUR","IconUrl":"Currency/EUR.webp","Type":1,"CurrentRate":1.13940000,"AvailableForDefault":true,"IsPartnerDefault":false,"DigitsAfterPoint":2,"AmountFormatType":1,"ExcludeZeros":true,"ShowOnWeb":false,"Status":1},{"CurrencyId":"USD","IconUrl":"Currency/USD.webp","Type":1,"CurrentRate":1.00000000,"AvailableForDefault":true,"IsPartnerDefault":false,"DigitsAfterPoint":2,"AmountFormatType":1,"ExcludeZeros":true,"ShowOnWeb":true,"Status":1}]}

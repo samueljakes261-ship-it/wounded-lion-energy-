@@ -1,0 +1,11 @@
+URL:
+https://www.googletagmanager.com/gtag/js?id=G-Y9W0S9ZCQZ&cx=c&gtm=4e67t1
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=UTF-8
+
+BODY:
+<BINARY>

@@ -1,0 +1,11 @@
+URL:
+https://betkanyon1617.com/cdn-cgi/challenge-platform/h/g/scripts/jsd/f70cb37711aa/main.js?
+
+STATUS:
+200
+
+CONTENT-TYPE:
+application/javascript; charset=UTF-8
+
+BODY:
+<BINARY>

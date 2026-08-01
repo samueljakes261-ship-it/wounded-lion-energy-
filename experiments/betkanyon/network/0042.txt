@@ -1,0 +1,11 @@
+URL:
+https://betkanyon1617.com/cdn-cgi/challenge-platform/h/g/jsd/oneshot/f70cb37711aa/0.43238776021468683:1785506421:e4p57ZblmPcrr4yuDSZoZzaRZXdALauHvPMgqUpXA24/jsdapi-jrl23o
+
+STATUS:
+200
+
+CONTENT-TYPE:
+text/plain; charset=UTF-8
+
+BODY:
+<BINARY>

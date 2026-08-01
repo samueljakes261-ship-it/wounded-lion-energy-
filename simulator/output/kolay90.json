@@ -1,0 +1,68 @@
+{
+    "matches": [
+        {
+            "match_id": "KY1000",
+            "league": "England Premier League",
+            "match": {
+                "home": "LIVERPOOL",
+                "away": "CHELSEA"
+            },
+            "kickoff": 1784560842094,
+            "markets": {
+                "1X2": {
+                    "home": 2.3,
+                    "draw": 3.51,
+                    "away": 3.26
+                }
+            }
+        },
+        {
+            "match_id": "KY1001",
+            "league": "England Premier League",
+            "match": {
+                "home": "ARSENAL",
+                "away": "TOTTENHAM"
+            },
+            "kickoff": 1784560842094,
+            "markets": {
+                "1X2": {
+                    "home": 2.1,
+                    "draw": 3.8,
+                    "away": 3.39
+                }
+            }
+        },
+        {
+            "match_id": "KY1002",
+            "league": "England La Liga",
+            "match": {
+                "home": "BARCELONA",
+                "away": "REAL MADRID"
+            },
+            "kickoff": 1784560842094,
+            "markets": {
+                "1X2": {
+                    "home": 2.57,
+                    "draw": 3.36,
+                    "away": 2.96
+                }
+            }
+        },
+        {
+            "match_id": "KY1003",
+            "league": "England Turkish Super Lig",
+            "match": {
+                "home": "GALATASARAY",
+                "away": "FENERBAHCE"
+            },
+            "kickoff": 1784560842094,
+            "markets": {
+                "1X2": {
+                    "home": 2.4,
+                    "draw": 3.63,
+                    "away": 3.03
+                }
+            }
+        }
+    ]
+}

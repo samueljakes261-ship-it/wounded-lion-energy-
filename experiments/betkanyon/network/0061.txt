@@ -1,0 +1,11 @@
+URL:
+https://api.livechatinc.com/global-mapper/lc_license_id/15563706/region?jsonp=__lc_region
+
+STATUS:
+200
+
+CONTENT-TYPE:
+text/plain; charset=utf-8
+
+BODY:
+<BINARY>

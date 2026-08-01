@@ -1,0 +1,11 @@
+URL:
+https://betkanyon1617.com/cdn-cgi/challenge-platform/scripts/jsd/api.js?onload=jsdOnload
+
+STATUS:
+302
+
+CONTENT-TYPE:
+
+
+BODY:
+<BINARY>

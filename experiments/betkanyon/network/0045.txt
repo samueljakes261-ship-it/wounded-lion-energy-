@@ -1,0 +1,11 @@
+URL:
+https://onesignal.com/api/v1/sync/79e66e5d-3d63-4205-a9f8-a9432fe00f19/web?callback=__jp0
+
+STATUS:
+200
+
+CONTENT-TYPE:
+text/javascript; charset=utf-8
+
+BODY:
+<BINARY>
