@@ -1,282 +1,366 @@
 [
     {
         "sport": "Soccer",
-        "competition": "Elite Friendlies",
+        "competition": "Georgian Cup",
         "market": "Match Odds",
-        "homeTeam": "Chelsea",
-        "awayTeam": "Tottenham",
-        "profitPercentage": 2.51,
-        "impliedProbability": 0.9749,
-        "roi": 2.57,
-        "guaranteedProfit": 25.7,
-        "guaranteedReturn": 1025.7,
+        "homeTeam": "FC Rustavi",
+        "awayTeam": "FC Spaeri",
+        "profitPercentage": 30.74,
+        "impliedProbability": 0.6926,
+        "roi": 44.39,
+        "guaranteedProfit": 443.9,
+        "guaranteedReturn": 1443.9,
         "totalStake": 1000,
         "home": {
-            "bookmaker": "Orbit",
-            "odds": 2.68,
-            "stake": 382.72
+            "bookmaker": "Betkanyon",
+            "odds": 6.75,
+            "stake": 213.91
         },
         "draw": {
             "bookmaker": "Orbit",
-            "odds": 3.4,
-            "stake": 301.68
+            "odds": 5.2,
+            "stake": 277.67
         },
         "away": {
-            "bookmaker": "Betkanyon",
-            "odds": 3.25,
-            "stake": 315.6
+            "bookmaker": "Orbit",
+            "odds": 2.84,
+            "stake": 508.42
         }
     },
     {
         "sport": "Soccer",
-        "competition": "Polish III Liga",
+        "competition": "Friendly Matches",
         "market": "Match Odds",
-        "homeTeam": "Wisla Krakow II",
-        "awayTeam": "Star Starachowice",
-        "profitPercentage": 0.98,
-        "impliedProbability": 0.9902,
-        "roi": 0.99,
-        "guaranteedProfit": 9.93,
-        "guaranteedReturn": 1009.93,
+        "homeTeam": "Kasimpasa",
+        "awayTeam": "Hull",
+        "profitPercentage": 34.47,
+        "impliedProbability": 0.6553,
+        "roi": 52.59,
+        "guaranteedProfit": 525.93,
+        "guaranteedReturn": 1525.93,
         "totalStake": 1000,
         "home": {
             "bookmaker": "Orbit",
-            "odds": 1.36,
-            "stake": 742.6
+            "odds": 5.5,
+            "stake": 277.44
         },
         "draw": {
             "bookmaker": "Orbit",
-            "odds": 8.0,
-            "stake": 126.24
+            "odds": 4.3,
+            "stake": 354.87
         },
         "away": {
             "bookmaker": "Betkanyon",
-            "odds": 7.7,
-            "stake": 131.16
+            "odds": 4.15,
+            "stake": 367.69
         }
     },
     {
         "sport": "Soccer",
-        "competition": "Other Competitions Soccer",
+        "competition": "Friendly Matches",
         "market": "Match Odds",
-        "homeTeam": "Laos",
-        "awayTeam": "Philippines",
-        "profitPercentage": 42.48,
-        "impliedProbability": 0.5752,
-        "roi": 73.85,
-        "guaranteedProfit": 738.51,
-        "guaranteedReturn": 1738.51,
+        "homeTeam": "Westerlo",
+        "awayTeam": "Samsunspor",
+        "profitPercentage": 52.87,
+        "impliedProbability": 0.4713,
+        "roi": 112.18,
+        "guaranteedProfit": 1121.8,
+        "guaranteedReturn": 2121.8,
         "totalStake": 1000,
         "home": {
             "bookmaker": "Orbit",
-            "odds": 7.6,
-            "stake": 228.75
+            "odds": 23.0,
+            "stake": 92.25
         },
         "draw": {
             "bookmaker": "Betkanyon",
-            "odds": 4.25,
-            "stake": 409.06
+            "odds": 4.65,
+            "stake": 456.3
         },
         "away": {
             "bookmaker": "Orbit",
-            "odds": 4.8,
-            "stake": 362.19
+            "odds": 4.7,
+            "stake": 451.45
         }
     },
     {
         "sport": "Soccer",
-        "competition": "Polish III Liga",
+        "competition": "Czech 2 Liga",
         "market": "Match Odds",
-        "homeTeam": "Grom Nowy Staw",
-        "awayTeam": "Unia Swarzedz",
-        "profitPercentage": 43.88,
-        "impliedProbability": 0.5612,
-        "roi": 78.2,
-        "guaranteedProfit": 782.03,
-        "guaranteedReturn": 1782.03,
+        "homeTeam": "Trinec",
+        "awayTeam": "Vysocina Jihlava",
+        "profitPercentage": 25.0,
+        "impliedProbability": 0.75,
+        "roi": 33.33,
+        "guaranteedProfit": 333.33,
+        "guaranteedReturn": 1333.33,
         "totalStake": 1000,
         "home": {
             "bookmaker": "Orbit",
-            "odds": 8.4,
-            "stake": 212.15
+            "odds": 12.0,
+            "stake": 111.11
         },
         "draw": {
-            "bookmaker": "Betkanyon",
-            "odds": 4.45,
-            "stake": 400.46
-        },
-        "away": {
-            "bookmaker": "Orbit",
-            "odds": 4.6,
-            "stake": 387.4
-        }
-    },
-    {
-        "sport": "Soccer",
-        "competition": "Chinese League 1",
-        "market": "Match Odds",
-        "homeTeam": "Yanbian Longding",
-        "awayTeam": "Nanjing City",
-        "profitPercentage": 12.45,
-        "impliedProbability": 0.8755,
-        "roi": 14.22,
-        "guaranteedProfit": 142.23,
-        "guaranteedReturn": 1142.23,
-        "totalStake": 1000,
-        "home": {
-            "bookmaker": "Orbit",
-            "odds": 2.32,
-            "stake": 492.34
-        },
-        "draw": {
-            "bookmaker": "Orbit",
-            "odds": 4.5,
-            "stake": 253.83
-        },
-        "away": {
-            "bookmaker": "Betkanyon",
-            "odds": 4.5,
-            "stake": 253.83
-        }
-    },
-    {
-        "sport": "Soccer",
-        "competition": "South Korean K2 League",
-        "market": "Match Odds",
-        "homeTeam": "Hwaseong FC",
-        "awayTeam": "Daegu Fc",
-        "profitPercentage": 13.57,
-        "impliedProbability": 0.8643,
-        "roi": 15.71,
-        "guaranteedProfit": 157.07,
-        "guaranteedReturn": 1157.07,
-        "totalStake": 1000,
-        "home": {
-            "bookmaker": "Orbit",
-            "odds": 3.2,
-            "stake": 361.59
-        },
-        "draw": {
-            "bookmaker": "Betkanyon",
-            "odds": 3.6,
-            "stake": 321.41
-        },
-        "away": {
-            "bookmaker": "Orbit",
-            "odds": 3.65,
-            "stake": 317.01
-        }
-    },
-    {
-        "sport": "Soccer",
-        "competition": "South Korean K1 League",
-        "market": "Match Odds",
-        "homeTeam": "Gangwon",
-        "awayTeam": "Bucheon FC 1995",
-        "profitPercentage": 3.98,
-        "impliedProbability": 0.9602,
-        "roi": 4.15,
-        "guaranteedProfit": 41.45,
-        "guaranteedReturn": 1041.45,
-        "totalStake": 1000,
-        "home": {
-            "bookmaker": "Betkanyon",
-            "odds": 1.61,
-            "stake": 646.86
-        },
-        "draw": {
-            "bookmaker": "Orbit",
-            "odds": 5.8,
-            "stake": 179.56
-        },
-        "away": {
-            "bookmaker": "Betkanyon",
-            "odds": 6.0,
-            "stake": 173.58
-        }
-    },
-    {
-        "sport": "Soccer",
-        "competition": "Chinese League 2",
-        "market": "Match Odds",
-        "homeTeam": "Dalian Yingbo II",
-        "awayTeam": "Shanghai Port B",
-        "profitPercentage": 1.88,
-        "impliedProbability": 0.9812,
-        "roi": 1.92,
-        "guaranteedProfit": 19.17,
-        "guaranteedReturn": 1019.17,
-        "totalStake": 1000,
-        "home": {
             "bookmaker": "Orbit",
             "odds": 3.0,
-            "stake": 339.72
-        },
-        "draw": {
-            "bookmaker": "Orbit",
-            "odds": 2.9,
-            "stake": 351.44
+            "stake": 444.44
         },
         "away": {
-            "bookmaker": "Orbit",
-            "odds": 3.3,
-            "stake": 308.84
+            "bookmaker": "Betkanyon",
+            "odds": 3.0,
+            "stake": 444.44
         }
     },
     {
         "sport": "Soccer",
-        "competition": "Lithuanian 1 Lyga",
+        "competition": "Friendly Matches",
         "market": "Match Odds",
-        "homeTeam": "FK Kauno Zalgiris 2",
-        "awayTeam": "FK Atmosfera",
-        "profitPercentage": 44.44,
-        "impliedProbability": 0.5556,
-        "roi": 80.0,
-        "guaranteedProfit": 800.0,
-        "guaranteedReturn": 1800.0,
+        "homeTeam": "Empoli",
+        "awayTeam": "Spezia",
+        "profitPercentage": 10.9,
+        "impliedProbability": 0.891,
+        "roi": 12.24,
+        "guaranteedProfit": 122.37,
+        "guaranteedReturn": 1122.37,
         "totalStake": 1000,
         "home": {
             "bookmaker": "Orbit",
-            "odds": 6.0,
-            "stake": 300.0
+            "odds": 1.23,
+            "stake": 912.5
         },
         "draw": {
             "bookmaker": "Orbit",
-            "odds": 6.0,
-            "stake": 300.0
+            "odds": 29.0,
+            "stake": 38.7
         },
         "away": {
-            "bookmaker": "Orbit",
-            "odds": 4.5,
-            "stake": 400.0
+            "bookmaker": "Betkanyon",
+            "odds": 23.0,
+            "stake": 48.8
         }
     },
     {
         "sport": "Soccer",
-        "competition": "Swedish Division 1",
+        "competition": "Elite Friendlies",
         "market": "Match Odds",
-        "homeTeam": "FC Jarfalla",
-        "awayTeam": "FC Stockholm Internazionale",
-        "profitPercentage": 33.95,
-        "impliedProbability": 0.6605,
-        "roi": 51.39,
-        "guaranteedProfit": 513.93,
-        "guaranteedReturn": 1513.93,
+        "homeTeam": "Real Madrid",
+        "awayTeam": "Fiorentina",
+        "profitPercentage": 42.58,
+        "impliedProbability": 0.5742,
+        "roi": 74.16,
+        "guaranteedProfit": 741.64,
+        "guaranteedReturn": 1741.64,
         "totalStake": 1000,
         "home": {
             "bookmaker": "Orbit",
-            "odds": 5.6,
-            "stake": 270.34
+            "odds": 3.95,
+            "stake": 440.92
         },
         "draw": {
             "bookmaker": "Orbit",
-            "odds": 3.85,
-            "stake": 393.23
+            "odds": 5.9,
+            "stake": 295.19
+        },
+        "away": {
+            "bookmaker": "Betkanyon",
+            "odds": 6.6,
+            "stake": 263.88
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "Finnish Veikkausliiga",
+        "market": "Match Odds",
+        "homeTeam": "Gnistan",
+        "awayTeam": "KuPS",
+        "profitPercentage": 60.63,
+        "impliedProbability": 0.3937,
+        "roi": 154.01,
+        "guaranteedProfit": 1540.05,
+        "guaranteedReturn": 2540.05,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Orbit",
+            "odds": 36.0,
+            "stake": 70.56
+        },
+        "draw": {
+            "bookmaker": "Betkanyon",
+            "odds": 5.25,
+            "stake": 483.82
         },
         "away": {
             "bookmaker": "Orbit",
-            "odds": 4.5,
-            "stake": 336.43
+            "odds": 5.7,
+            "stake": 445.62
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "Friendly Matches",
+        "market": "Match Odds",
+        "homeTeam": "Frosinone",
+        "awayTeam": "Benevento",
+        "profitPercentage": 5.08,
+        "impliedProbability": 0.9492,
+        "roi": 5.35,
+        "guaranteedProfit": 53.49,
+        "guaranteedReturn": 1053.49,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Betkanyon",
+            "odds": 2.31,
+            "stake": 456.06
+        },
+        "draw": {
+            "bookmaker": "Orbit",
+            "odds": 3.95,
+            "stake": 266.71
+        },
+        "away": {
+            "bookmaker": "Betkanyon",
+            "odds": 3.8,
+            "stake": 277.24
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "Scottish Premiership",
+        "market": "Match Odds",
+        "homeTeam": "Aberdeen",
+        "awayTeam": "Hearts",
+        "profitPercentage": 39.06,
+        "impliedProbability": 0.6094,
+        "roi": 64.09,
+        "guaranteedProfit": 640.93,
+        "guaranteedReturn": 1640.93,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Orbit",
+            "odds": 10.5,
+            "stake": 156.28
+        },
+        "draw": {
+            "bookmaker": "Betkanyon",
+            "odds": 3.7,
+            "stake": 443.49
+        },
+        "away": {
+            "bookmaker": "Orbit",
+            "odds": 4.1,
+            "stake": 400.23
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "Chilean Primera Division",
+        "market": "Match Odds",
+        "homeTeam": "Cobresal",
+        "awayTeam": "Union La Calera",
+        "profitPercentage": 5.11,
+        "impliedProbability": 0.9489,
+        "roi": 5.39,
+        "guaranteedProfit": 53.87,
+        "guaranteedReturn": 1053.87,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Orbit",
+            "odds": 1.17,
+            "stake": 900.75
+        },
+        "draw": {
+            "bookmaker": "Orbit",
+            "odds": 27.0,
+            "stake": 39.03
+        },
+        "away": {
+            "bookmaker": "Betkanyon",
+            "odds": 17.5,
+            "stake": 60.22
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "CAF Ladies Africa Nations Cup",
+        "market": "Match Odds",
+        "homeTeam": "Egypt (W)",
+        "awayTeam": "Malawi (W)",
+        "profitPercentage": 56.86,
+        "impliedProbability": 0.4314,
+        "roi": 131.8,
+        "guaranteedProfit": 1318.02,
+        "guaranteedReturn": 2318.02,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Betkanyon",
+            "odds": 16.0,
+            "stake": 144.88
+        },
+        "draw": {
+            "bookmaker": "Betkanyon",
+            "odds": 8.0,
+            "stake": 289.75
+        },
+        "away": {
+            "bookmaker": "Orbit",
+            "odds": 4.1,
+            "stake": 565.37
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "Serbian First League",
+        "market": "Match Odds",
+        "homeTeam": "FK Javor Ivanjica",
+        "awayTeam": "FK Teleoptik Zemun",
+        "profitPercentage": 1.66,
+        "impliedProbability": 0.9834,
+        "roi": 1.68,
+        "guaranteedProfit": 16.85,
+        "guaranteedReturn": 1016.85,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Orbit",
+            "odds": 1.27,
+            "stake": 800.67
+        },
+        "draw": {
+            "bookmaker": "Orbit",
+            "odds": 17.5,
+            "stake": 58.11
+        },
+        "away": {
+            "bookmaker": "Orbit",
+            "odds": 7.2,
+            "stake": 141.23
+        }
+    },
+    {
+        "sport": "Soccer",
+        "competition": "Friendly Matches",
+        "market": "Match Odds",
+        "homeTeam": "Stoke",
+        "awayTeam": "Valencia",
+        "profitPercentage": 1.86,
+        "impliedProbability": 0.9814,
+        "roi": 1.9,
+        "guaranteedProfit": 18.98,
+        "guaranteedReturn": 1018.98,
+        "totalStake": 1000,
+        "home": {
+            "bookmaker": "Orbit",
+            "odds": 2.7,
+            "stake": 377.4
+        },
+        "draw": {
+            "bookmaker": "Betkanyon",
+            "odds": 3.35,
+            "stake": 304.17
+        },
+        "away": {
+            "bookmaker": "Orbit",
+            "odds": 3.2,
+            "stake": 318.43
         }
     }
 ]
