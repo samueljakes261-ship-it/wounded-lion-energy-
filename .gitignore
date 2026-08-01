@@ -1,20 +1,79 @@
-# Python
+# ==========================
+# PYTHON
+# ==========================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
 .venv/
 .venv-1/
-__pycache__/
-*.pyc
+venv/
+env/
 
-# Node
-node_modules/
-
-# Environment
+# Environment variables
 .env
 
-# IDE
-.vscode/
+# ==========================
+# FASTAPI / CACHE
+# ==========================
+
+cached_opportunities.json
 
 # Logs
 *.log
 
-# Temporary
+# Temporary debug output
 orbit_output.txt
+
+# ==========================
+# NODE / FRONTEND
+# ==========================
+
+node_modules/
+dist/
+build/
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================
+# VSCODE
+# ==========================
+
+.vscode/
+
+# ==========================
+# PYTEST
+# ==========================
+
+.pytest_cache/
+
+# ==========================
+# MYPY
+# ==========================
+
+.mypy_cache/
+
+# ==========================
+# SYSTEM FILES
+# ==========================
+
+.DS_Store
+Thumbs.db
+
+# ==========================
+# IDE
+# ==========================
+
+.idea/
+
+# ==========================
+# MISC
+# ==========================
+
+*.tmp
+*.bak
