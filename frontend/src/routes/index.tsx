@@ -47,7 +47,11 @@ function Dashboard() {
     try {
       setLoading(true)
 
-      const response = await fetch(API_URL)
+      const response = await fetch(API_URL, {
+       headers: {
+        "ngrok-skip-browser-warning": "true",
+       },
+    })
 
       if (!response.ok) {
         throw new Error("Failed to fetch opportunities")
