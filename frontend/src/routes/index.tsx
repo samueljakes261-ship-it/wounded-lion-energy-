@@ -36,7 +36,7 @@ away: {
 }
 }
 
-const API_URL = "http://127.0.0.1:8000/opportunities"
+const API_URL = "https://wounded-lion-energy.onrender.com/opportunities"
 
 function Dashboard() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
