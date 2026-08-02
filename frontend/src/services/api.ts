@@ -1,4 +1,4 @@
-const API_BASE = "https://wounded-lion-energy.onrender.com";
+const API_BASE = "https://vivacious-angler-maturity.ngrok-free.dev/opportunities";
 
 export async function getOpportunities() {
     const response = await fetch(

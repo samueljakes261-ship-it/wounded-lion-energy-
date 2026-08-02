@@ -36,7 +36,7 @@ away: {
 }
 }
 
-const API_URL = "https://wounded-lion-energy.onrender.com/opportunities"
+const API_URL = "https://vivacious-angler-maturity.ngrok-free.dev/opportunities"
 
 function Dashboard() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
