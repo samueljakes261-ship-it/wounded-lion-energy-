@@ -1,1 +1,5 @@
 python run_engine.py
+uvicorn api:app --reload
+
+         ngrok authtoken
+	3HM4P1QJhBS7iXLKzocl6IcxNxF_7eUgL3hEXw91f12wiLRTb
