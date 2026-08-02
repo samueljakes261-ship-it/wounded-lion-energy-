@@ -1,4 +1,4 @@
-const API_BASE = "https://vivacious-angler-maturity.ngrok-free.dev/opportunities";
+const API_BASE = "https://vivacious-angler-maturity.ngrok-free.dev";
 
 export async function getOpportunities() {
     const response = await fetch(
