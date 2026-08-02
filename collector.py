@@ -9,15 +9,9 @@ from engine.stake_calculator import StakeCalculator
 
 from models.arbitrage_opportunity import ArbitrageOpportunity
 
-from parsers.orbit.feed import OrbitFeed
-from parsers.betkanyon.feed import BetkanyonFeed
-
 
 CACHE_FILE = Path("cached_opportunities.json")
 
-
-orbit = OrbitFeed()
-betkanyon = BetkanyonFeed()
 
 finder = MatchFinder()
 selector = BestOddsSelector()
@@ -26,6 +20,16 @@ calculator = StakeCalculator()
 
 
 async def collect_opportunities(bankroll=1000):
+
+    #
+    # Import parsers ONLY when the scanner runs.
+    # This prevents Render from importing Playwright just to serve cached data.
+    #
+    from parsers.orbit.feed import OrbitFeed
+    from parsers.betkanyon.feed import BetkanyonFeed
+
+    orbit = OrbitFeed()
+    betkanyon = BetkanyonFeed()
 
     #
     # Collect bookmakers
