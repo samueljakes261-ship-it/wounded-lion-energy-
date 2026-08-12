@@ -1,9 +1,12 @@
 import asyncio
 
-from collector import collect_opportunities
-
-
-REFRESH_SECONDS = 20
+from collector import (
+    ENGINE_TICK_SECONDS,
+    collect_opportunities,
+    start_workers,
+    stop_betkanyon_worker,
+    stop_onwin_worker,
+)
 
 
 async def main():
@@ -13,86 +16,51 @@ async def main():
     print("ARBITRAGE ENGINE")
     print("=" * 70)
     print()
+    print("Starting persistent bookmaker workers (OnWin + BetKanyon)...")
+    print("Both run concurrently and independently in the background.")
+    print()
 
-    while True:
+    # Explicitly kick off both persistent workers up front so they
+    # start acquiring data CONCURRENTLY, rather than each only
+    # appearing lazily whenever collect_opportunities() first happens
+    # to touch it.
+    start_workers()
 
-        try:
+    try:
+        while True:
 
-            opportunities = await collect_opportunities()
+            try:
+                await collect_opportunities()
 
-            print("=" * 70)
-            print(f"SCAN COMPLETE | Opportunities Found: {len(opportunities)}")
-            print("=" * 70)
+            except Exception as e:
+                print()
+                print("=" * 70)
+                print("ENGINE ERROR")
+                print("=" * 70)
+                print(e)
 
-            if opportunities:
+            # NOTE: this sleep only paces how often the engine
+            # re-checks/re-matches whatever OnWin/BetKanyon have
+            # already published -- it does NOT control bookmaker
+            # freshness. OnWin patches its state continuously as
+            # find_event_snapshots arrives; BetKanyon polls on its own
+            # ~BETKANYON_POLL_INTERVAL cycle. Both keep running
+            # regardless of this loop's pace.
+            await asyncio.sleep(ENGINE_TICK_SECONDS)
 
-                for opportunity in opportunities:
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print()
+        print("Shutting down...")
 
-                    event = opportunity.event
-                    result = opportunity.result
-                    plan = opportunity.stake_plan
-
-                    print()
-
-                    print(
-                        f"{event.home_team} vs {event.away_team}"
-                    )
-
-                    print(
-                        f"{event.competition}"
-                    )
-
-                    print(
-                        f"Profit : {result.profit_percentage:.2f}%"
-                    )
-
-                    print(
-                        f"ROI : {plan.roi:.2f}%"
-                    )
-
-                    print(
-                        f"Guaranteed Profit : {plan.guaranteed_profit:.2f}"
-                    )
-
-                    print()
-
-                    print(
-                        f"HOME  -> {plan.home.bookmaker:<12}"
-                        f"{plan.home.odds:<8}"
-                        f"Stake {plan.home.stake}"
-                    )
-
-                    print(
-                        f"DRAW  -> {plan.draw.bookmaker:<12}"
-                        f"{plan.draw.odds:<8}"
-                        f"Stake {plan.draw.stake}"
-                    )
-
-                    print(
-                        f"AWAY  -> {plan.away.bookmaker:<12}"
-                        f"{plan.away.odds:<8}"
-                        f"Stake {plan.away.stake}"
-                    )
-
-                    print("-" * 70)
-
-            else:
-
-                print("No arbitrage opportunities found.")
-
-        except Exception as e:
-
-            print()
-            print("=" * 70)
-            print("ENGINE ERROR")
-            print("=" * 70)
-            print(e)
-
-        print(f"\nNext scan in {REFRESH_SECONDS} seconds...\n")
-
-        await asyncio.sleep(REFRESH_SECONDS)
+    finally:
+        stop_onwin_worker()
+        stop_betkanyon_worker()
+        print("Workers stopped. Goodbye.")
 
 
 if __name__ == "__main__":
 
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
