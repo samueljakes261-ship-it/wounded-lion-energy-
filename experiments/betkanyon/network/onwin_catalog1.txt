@@ -1,0 +1,76 @@
+Request URL
+https://api-onwin-tr--prd--sb.538.lol/graphql-gateway__api/graphql?query=%23Sportsbook_CouponGroupsByPlayerGroupId%231bbf7b30993a2080a07d575b6e70b08d5f086b4cad79a4e3d719cdcfcff9e6b1%23&variables=ewAiAHAAbABhAHkAZQByAEcAcgBvAHUAcABJAGQAIgA6ACIAMwBiADYAZgAzAGYAOAA0AC0AYwBmADAAZQAtADEAMQBlADkALQBiAGIANgA1AC0AMgBhADIAYQBlADIAZABiAGMAYwBlADQAIgB9AA%3D%3D
+Request Method
+GET
+Status Code
+304 Not Modified
+Remote Address
+154.200.89.32:443
+Referrer Policy
+same-origin
+access-control-allow-credentials
+true
+access-control-allow-origin
+https://onwin4504.com
+access-control-expose-headers
+Content-Length,Content-Range,Response-Result
+cache-control
+private
+cf-cache-status
+DYNAMIC
+cf-ray
+a26440f1ce774f1f-NBO
+date
+Wed, 05 Aug 2026 07:57:55 GMT
+etag
+W/"3b085655b88f0ebdc4bbfd376ac712520be43e17e65c5d1bd8794ee55a075019"
+nel
+{"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+referrer-policy
+strict-origin
+report-to
+{"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=uv3MO5NkqfX0d9lFr1%2BYO%2BgCFdrmPuYByi0gUSndC%2F8sh9WG9Og3ULE2RwcSv0KPXiDZOWXhQh3zgQJsbu1DpbDo74X2B1WfJ2YP7ZB85RmeblSguDrtkCMxDhn%2B39r9jgcNpWjBgfZnHRaxSM663w%3D%3D"}]}
+server
+cloudflare
+x-content-type-options
+nosniff
+:authority
+api-onwin-tr--prd--sb.538.lol
+:method
+GET
+:path
+/graphql-gateway__api/graphql?query=%23Sportsbook_CouponGroupsByPlayerGroupId%231bbf7b30993a2080a07d575b6e70b08d5f086b4cad79a4e3d719cdcfcff9e6b1%23&variables=ewAiAHAAbABhAHkAZQByAEcAcgBvAHUAcABJAGQAIgA6ACIAMwBiADYAZgAzAGYAOAA0AC0AYwBmADAAZQAtADEAMQBlADkALQBiAGIANgA1AC0AMgBhADIAYQBlADIAZABiAGMAYwBlADQAIgB9AA%3D%3D
+:scheme
+https
+accept
+application/json, application/graphql-response+json, application/json
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+content-type
+application/json, application/json
+if-none-match
+W/"3b085655b88f0ebdc4bbfd376ac712520be43e17e65c5d1bd8794ee55a075019"
+origin
+https://onwin4504.com
+priority
+u=1, i
+sec-ch-ua
+"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+cross-site
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36
+x-message-metadata
+eyJzZWNyZXQiOiJ2aXNpdG9ySWQ9aXRRYzZSY29ycCZzZXNzaW9uSWQ9YjRMQjlSekMmY2xpZW50S2V5PTAxOGM0YThiLWM3OTgtNzI1My1hNjE0LWQzZjI0OGViMDgxZiZ0b2tlbj0xJTdDMzczMzA3M2VmOWNkZTY3OCU3Q2ptYVNKOCUyRllOYVl1TG02eUM4aTN5RlF5WWJmeFQlMkJjd1ZqbHpheHhtZnZXeHhRdUpqd2hndFZuYVg4YU0zemF4TUlEJTJCJTJGNWZNJTJCQ3k2SnRWQ2xQSWZEWld2aFJXa1VJOTlzb1prRkpvQUc1S0RBVEY2S0RhbTUlMkZjTldqOTdlWTJFR1ZmRUloJTJGbXk2aHo4cHVIJTJCQWdtJTJCTEY4WXUwRnYxJTJCc0FMeHpoYXB3WHBtNDJPQiUyQiU3Q2ljaTBrMTZpMHBuMjBtM2kyaXRpNGsxNmkwcG4yMG0zaTBpMGkwaTBpMGkwaTBpMGkxaTBpMGljbDhrMW4xdjIxaTBpMGkwaTBpMWxhZDFsYWQxbGFkMWkwaTBpMGkwaTBpMGkwaTAlN0MlN0NBQlFBRVJFUkVoQVJFUkFYJTdDZDdiZmE0ODNjNDQ5NzI2NWYzYWMyMWY4JTdDMjk3NjUyNzclN0MxLjcuMCU3Q05QTS4xLjIuMiU3Q1sxNzg1OTE1OTcwNDQyLDE3ODU5MTY1NzU0MTMsMTc4NTkxNjU3NTQyNywxNzg1OTE2NTc2MzQzLDE3ODU5MTY1NzY0MDMsMTc4NTkxNjE1MjUzNywxNzg1OTE2MTUyODA2LDE3ODU5MTY1NzY5NTIsMTc4NTkxNTk3MDg0OSwxNzg1OTE2NjUyOTQ2LDEzLDE3ODU5MTY1OTcwMDAsMF0ifQ==
+x-token
+dmlzaXRvcklkPWl0UWM2UmNvcnAmc2Vzc2lvbklkPWI0TEI5UnpDJmNsaWVudEtleT0wMThjNGE4Yi1jNzk4LTcyNTMtYTYxNC1kM2YyNDhlYjA4MWYmdG9rZW49MSU3QzM3MzMwNzNlZjljZGU2NzglN0NqbWFTSjglMkZZTmFZdUxtNnlDOGkzeUZReVliZnhUJTJCY3dWamx6YXh4bWZ2V3h4UXVKandoZ3RWbmFYOGFNM3pheEJLeWslMkYlMkI3UTZ6dTZMNWtNbGZFV0FKR25pbDdwVTRScXJvWmtDSVVKRkl1ZkFUUXhQQ3FtNCUyRlJFVHo4N2VKU2FIZzNGSnh2OGhxUng0N3lCMlVKZTNNZCUyRlJPOTFxM0doQVBKeGhhcDJXNTI1M3VNJTNEJTdDaWNpMGsxNGkwcG4yMG0zaTJpdGwxZDFrMTZpMHBuMjBtM2kwaTBpMGkwaTBpMGkwaTBpMWkwaTBpY2w4NjFuMjBhMWkwaTBpMGkwaTFsM3UxbDN1MWwzdTFpMGkwaTBpMGkwaTBpMGkwJTdDJTdDQUJRQUVSRVJFaEFSRVJBWCU3Q2Q3YmZhNDgzYzQ0OTcyNjVmM2FjMjFmOCU3QzI5NzY1Mjc3JTdDMS43LjAlN0NVTktOT1dOLjAuMC4wJTdDWzE3ODU5MTU5NjE2OTQsMTc4NTkxNjYyNDI5NiwxNzg1OTE1OTYxNzAwLDE3ODU5MTU5NjE3MDAsMTc4NTkxNjYyNTIwOSwxNzg1OTE1Nzg0NjMyLDE3ODU5MTU3ODUwMDksMTc4NTkxNjYyNTY5MiwxNzg1OTE1OTYxODY0LDE3ODU5MTY2NTMwMjgsMTYsMTc4NTkxNTk4MTk4NywwXQ==

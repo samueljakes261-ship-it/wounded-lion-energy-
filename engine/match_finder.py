@@ -6,15 +6,18 @@ from models.matched_event import MatchedEvent
 
 class MatchFinder:
     """
-    Groups MatchOdds that represent the same sporting event,
-    regardless of bookmaker.
+    Groups MatchOdds that represent the same sporting event
+    across different bookmakers.
     """
 
     def __init__(self):
 
         self.matcher = EventMatcher()
 
-    def find(self, matches: list[MatchOdds]) -> list[MatchedEvent]:
+    def find(
+        self,
+        matches: list[MatchOdds],
+    ) -> list[MatchedEvent]:
 
         matched_events = []
 
@@ -43,7 +46,22 @@ class MatchFinder:
 
                 other = matches[j]
 
-                if self.matcher.is_same_event(match, other):
+                #
+                # Never match two odds from the
+                # same bookmaker.
+                #
+
+                if match.bookmaker == other.bookmaker:
+                    continue
+
+                #
+                # Match the sporting event.
+                #
+
+                if self.matcher.is_same_event(
+                    match,
+                    other,
+                ):
 
                     event.add_match(other)
                     used.add(j)

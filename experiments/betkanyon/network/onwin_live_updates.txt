@@ -1,0 +1,78 @@
+Request URL
+https://api-onwin-tr--prd--sb.538.lol/frontserver-erisgaming__api/rpc/sumstats.frontserver.command.get_main_line_gap.erisgaming
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+154.200.89.32:443
+Referrer Policy
+same-origin
+access-control-allow-credentials
+true
+access-control-allow-origin
+https://onwin4504.com
+access-control-expose-headers
+Content-Length,Content-Range,Response-Result
+cf-cache-status
+DYNAMIC
+cf-ray
+a25dcb49782d5e43-MBA
+content-encoding
+zstd
+content-type
+application/json
+date
+Tue, 04 Aug 2026 13:09:01 GMT
+nel
+{"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+referrer-policy
+strict-origin
+report-to
+{"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=iW5FX5qExt6K8RYP520XRIwRPLP2lf8AvipjgIb8n0aZV9IqpQkN95rX2MBbuvZQA1uRxUlL5%2BMsE9c0Gub0VGc%2B8uYw8%2BNovuxr025gdRnUO2dg8KTv9Z1CaXfSWqHCrCFLl06aqvZBDwlWZwZ8qg%3D%3D"}]}
+response-result
+SUCCESS
+server
+cloudflare
+x-content-type-options
+nosniff
+:authority
+api-onwin-tr--prd--sb.538.lol
+:method
+POST
+:path
+/frontserver-erisgaming__api/rpc/sumstats.frontserver.command.get_main_line_gap.erisgaming
+:scheme
+https
+accept
+application/json
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+content-length
+17
+content-type
+application/json
+origin
+https://onwin4504.com
+priority
+u=1, i
+sec-ch-ua
+"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+cross-site
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36
+x-message-metadata
+eyJzZWNyZXQiOiJ2aXNpdG9ySWQ9aXRRYzZSY29ycCZzZXNzaW9uSWQ9YjRMQjlSekMmY2xpZW50S2V5PTAxOGM0YThiLWM3OTgtNzI1My1hNjE0LWQzZjI0OGViMDgxZiZ0b2tlbj0xJTdDYzMyNTlmZGViNzM1OTc2NSU3Q1RCZ2wlMkZuJTJCSDNpdDM2aFNYRSUyQlEyS2J2cldRVkU5endCMXYwNE9odHRtcmIwSEFpRUJtajNrZ29HZUZxdnFmS0lGRzlEZm44N3hZRTZJdk5hQ2xkMyUyQllOMWE0V1p1WTF3MjFqb1laSjRRczlPbHJuZHJjMjE0JTJCNkJ0NWNONGNSWlgxZjZMN1VSWlJTN25HNzI4Y0tUdWFjbHFSSVclN0NpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwJTdDJTdDQUJRQUVSRVJFaEFSRVJBWCU3Q2Q3YmZhNDgzYzQ0OTcyNjU0MzQ3Y2U0NiU3QzI5NzY0MTQ5JTdDMS43LjAlN0NOUE0uMS4yLjIlN0NbMTc4NTg0ODg3MjMzOSwxNzg1ODQ4ODcyMzM5LDE3ODU4NDg4NzIzNDAsMTc4NTg0ODg3NjY1MywxNzg1ODQ4ODgwOTYyLDE3ODU4NDg0NzYzODIsMTc4NTg0ODQ3NjYxNSwxNzg1ODQ4ODgxMDE3LDE3ODU4NDg4ODEwMTYsMTc4NTg0ODkxOTM3NSwyMCwxNzg1ODQ4ODk2MDAwLDBdIn0=
+x-token
+dmlzaXRvcklkPWl0UWM2UmNvcnAmc2Vzc2lvbklkPWI0TEI5UnpDJmNsaWVudEtleT0wMThjNGE4Yi1jNzk4LTcyNTMtYTYxNC1kM2YyNDhlYjA4MWYmdG9rZW49MSU3Q2MzMjU5ZmRlYjczNTk3NjUlN0MlMkZGY0ZIdGxVYTg3VkY0UnNJTVd4RFJ1cnJqZVlhdEdOS1FBVkFydmJmMjROTk05MFlrZkhWeEVBeEFKbGhTbW9ac3BqU1cybXI3a0ZvbzlqWWpZdmthUUVzNFcwJTJCQ254clVXY0R5UjhzV3dUeTZpYTZnU25sbXdWOFc0OFVvQ0dSdEs4VWs0YnJaeFAlMkZWOFNhN3pqJTdDaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMGkwaTBpMCU3QyU3Q0FCUUFFUkVSRWhBUkVSQVglN0NkN2JmYTQ4M2M0NDk3MjY1NDM0N2NlNDYlN0MyOTc2NDE0OCU3QzEuNy4wJTdDVU5LTk9XTi4wLjAuMCU3Q1sxNzg1ODQ4ODQ0Mzk4LDE3ODU4NDg4NDQzOTksMTc4NTg0ODg0NDM5OSwxNzg1ODQ4ODQ0Mzk5LDE3ODU4NDg4NDQ5NTIsMTc4NTg0ODQ3NjM4MiwxNzg1ODQ4NDc2NjE1LDE3ODU4NDg4NDUwMjksMTc4NTg0ODg0NTAyOCwxNzg1ODQ4OTE5Mzk2LDE5LDE3ODU4NDg4NDU4MzUsMF0=

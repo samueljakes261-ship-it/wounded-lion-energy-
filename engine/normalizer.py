@@ -23,7 +23,7 @@ class TeamNameNormalizer:
         ↓
     Collapse whitespace
         ↓
-    Remove club suffixes
+    Remove club prefixes/suffixes
         ↓
     Normalize common words
         ↓
@@ -59,7 +59,7 @@ class TeamNameNormalizer:
         self._debug("SPACES", value, debug)
 
         value = self._remove_suffixes(value)
-        self._debug("SUFFIXES", value, debug)
+        self._debug("CLUB PREFIXES/SUFFIXES", value, debug)
 
         value = self._normalize_words(value)
         self._debug("WORDS", value, debug)
@@ -112,6 +112,13 @@ class TeamNameNormalizer:
 
         words = text.split()
 
+        # Remove bookmaker club-designation words
+        # appearing at the beginning.
+        while words and words[0] in CLUB_SUFFIXES:
+            words.pop(0)
+
+        # Remove bookmaker club-designation words
+        # appearing at the end.
         while words and words[-1] in CLUB_SUFFIXES:
             words.pop()
 
@@ -144,7 +151,12 @@ class TeamNameNormalizer:
     # Debug helper
     # ---------------------------------------------------
 
-    def _debug(self, stage: str, value: str, enabled: bool):
+    def _debug(
+        self,
+        stage: str,
+        value: str,
+        enabled: bool,
+    ):
 
         if enabled:
 

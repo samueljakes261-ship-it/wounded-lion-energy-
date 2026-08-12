@@ -6,11 +6,15 @@ class EventMatcher:
     """
     Temporary V1 matcher.
 
-    Matches two events if the first three letters of the
-    normalized home team and away team are the same.
+    Matches two events if:
 
-    This is intentionally simple to prove the end-to-end
-    arbitrage pipeline.
+    1. They represent the same sport.
+    2. Their normalized home-team prefixes match.
+    3. Their normalized away-team prefixes match.
+
+    The current V1 matching rule intentionally uses
+    the first three letters of the first normalized
+    team-name word.
     """
 
     def __init__(self):
@@ -37,6 +41,7 @@ class EventMatcher:
         #
         # Football == Soccer
         #
+
         sport1 = match1.sport.lower()
         sport2 = match2.sport.lower()
 
@@ -49,18 +54,22 @@ class EventMatcher:
         if sport1 != sport2:
             return False
 
+        #
+        # Normalize home and away teams
+        #
+
         home1 = self._prefix(match1.home_team)
         away1 = self._prefix(match1.away_team)
 
         home2 = self._prefix(match2.home_team)
         away2 = self._prefix(match2.away_team)
 
+        #
+        # Compare home + away teams
+        #
+
         return (
-
             home1 == home2
-
             and
-
             away1 == away2
-
         )

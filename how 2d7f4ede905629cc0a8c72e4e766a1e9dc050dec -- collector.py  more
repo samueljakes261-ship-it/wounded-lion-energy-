@@ -1,0 +1,44 @@
+[33mcommit 2d7f4ede905629cc0a8c72e4e766a1e9dc050dec[m
+Author: unknown <samueljakes261@gmail.com>
+Date:   Sun Aug 2 14:27:41 2026 +0300
+
+    Lazy-load parsers to support Render deployment
+
+[1mdiff --git a/collector.py b/collector.py[m
+[1mindex 1bd602a..2210f47 100644[m
+[1m--- a/collector.py[m
+[1m+++ b/collector.py[m
+[36m@@ -9,16 +9,10 @@[m [mfrom engine.stake_calculator import StakeCalculator[m
+ [m
+ from models.arbitrage_opportunity import ArbitrageOpportunity[m
+ [m
+[31m-from parsers.orbit.feed import OrbitFeed[m
+[31m-from parsers.betkanyon.feed import BetkanyonFeed[m
+[31m-[m
+ [m
+ CACHE_FILE = Path("cached_opportunities.json")[m
+ [m
+ [m
+[31m-orbit = OrbitFeed()[m
+[31m-betkanyon = BetkanyonFeed()[m
+[31m-[m
+ finder = MatchFinder()[m
+ selector = BestOddsSelector()[m
+ detector = ArbitrageDetector()[m
+[36m@@ -27,6 +21,16 @@[m [mcalculator = StakeCalculator()[m
+ [m
+ async def collect_opportunities(bankroll=1000):[m
+ [m
+[32m+[m[32m    #[m
+[32m+[m[32m    # Import parsers ONLY when the scanner runs.[m
+[32m+[m[32m    # This prevents Render from importing Playwright just to serve cached data.[m
+[32m+[m[32m    #[m
+[32m+[m[32m    from parsers.orbit.feed import OrbitFeed[m
+[32m+[m[32m    from parsers.betkanyon.feed import BetkanyonFeed[m
+[32m+[m
+[32m+[m[32m    orbit = OrbitFeed()[m
+[32m+[m[32m    betkanyon = BetkanyonFeed()[m
+[32m+[m
+     #[m
+     # Collect bookmakers[m
+     #[m
