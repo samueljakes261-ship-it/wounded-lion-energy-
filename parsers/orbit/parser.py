@@ -16,21 +16,14 @@ class OrbitParser:
         else:
             data = message
 
+        # "rc" entries carry price data only (no runner name) -- keyed
+        # by selection id so it can be paired with the catalogue's
+        # runner name/order below.
         live = {}
 
         for runner in data.get("rc", []):
 
-            live[runner["id"]] = RunnerOdds(
-
-                selection_id=runner["id"],
-
-                back=runner.get("catb", []),
-
-                lay=runner.get("catl", []),
-
-                traded_volume=runner.get("tv", 0),
-
-            )
+            live[runner["id"]] = runner
 
         ordered = []
 
@@ -38,27 +31,39 @@ class OrbitParser:
 
             sid = runner["selectionId"]
 
-            if sid in live:
+            rc = live.get(sid)
 
-                ordered.append(live[sid])
+            ordered.append(
 
-            else:
+                RunnerOdds(
 
-                ordered.append(
+                    selection_id=sid,
 
-                    RunnerOdds(
+                    name=runner.get("runnerName"),
 
-                        selection_id=sid,
+                    # "bdatb"/"bdatl" ("book data available to
+                    # back/lay") each carry an explicit "index" (0 =
+                    # best price for that side) alongside "odds" and
+                    # "amount" (liquidity size) -- unlike "catb"/"catl",
+                    # which are plain [price, size] pairs sorted purely
+                    # by ascending numeric price. Ascending-by-price
+                    # order means index 0 of "catb" is actually the
+                    # WORST back price (best back = highest price), so
+                    # using it as "top price" silently returned the
+                    # wrong price level. "catl" happened to look
+                    # correct (ascending == best-first for LAY, since
+                    # best lay = lowest price) which is exactly the
+                    # kind of order-position assumption that must not
+                    # be trusted -- see parsers/orbit/adapter.py.
+                    back=rc.get("bdatb", []) if rc else [],
 
-                        back=[],
+                    lay=rc.get("bdatl", []) if rc else [],
 
-                        lay=[],
-
-                        traded_volume=0,
-
-                    )
+                    traded_volume=rc.get("tv", 0) if rc else 0,
 
                 )
+
+            )
 
         definition = data["marketDefinition"]
 
