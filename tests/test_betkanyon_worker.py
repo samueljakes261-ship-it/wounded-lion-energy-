@@ -49,6 +49,14 @@ class FakeBetkanyonFeed:
       - fail_first_instances: how many *feed instances* (not calls)
         should always raise on collect_once(), simulating a dead
         browser/session that needs a full reconnect.
+      - fail_first_calls: how many collect_once() *calls* (across the
+        current instance) should raise before succeeding, simulating
+        a transient (non-connection) hiccup that should be retried in
+        place without recreating the feed.
+      - fail_message: the exception message raised by the above two
+        knobs -- lets a test control whether it's classified as a
+        dead-connection error or a generic transient one (see
+        engine.collector_health.is_connection_dead_error).
       - call_delay: artificial time spent "processing" one cycle.
     """
 
@@ -74,7 +82,20 @@ class FakeBetkanyonFeed:
             self.call_count += 1
 
             if self.instance_index < self.script.get("fail_first_instances", 0):
-                raise RuntimeError("simulated BetKanyon fetch failure")
+                factory = self.script.get("fail_factory")
+                if factory is not None:
+                    raise factory()
+                raise RuntimeError(
+                    self.script.get("fail_message", "simulated BetKanyon fetch failure")
+                )
+
+            if self.call_count <= self.script.get("fail_first_calls", 0):
+                factory = self.script.get("fail_factory")
+                if factory is not None:
+                    raise factory()
+                raise RuntimeError(
+                    self.script.get("fail_message", "simulated BetKanyon fetch failure")
+                )
 
             delay = self.script.get("call_delay", 0.0)
             if delay:
@@ -193,11 +214,15 @@ def test_worker_no_overlapping_polls_when_cycle_is_slow(monkeypatch):
 # ----------------------------------------------------------------------
 
 def test_worker_reconnects_after_feed_failure(monkeypatch):
-    """First feed instance always fails -> worker must close it, create
-    a brand-new feed instance, and recover to a healthy state."""
+    """First feed instance always fails with a dead-browser-style error
+    -> worker must close it immediately, create a brand-new feed
+    instance, and recover to a healthy state."""
 
     worker = BetkanyonWorker(poll_interval=0.02)
-    script = {"fail_first_instances": 1}
+    script = {
+        "fail_first_instances": 1,
+        "fail_message": "Target page, context or browser has been closed",
+    }
     monkeypatch.setattr(
         worker_module, "BetkanyonFeed", lambda: FakeBetkanyonFeed(script)
     )
@@ -224,6 +249,81 @@ def test_worker_reconnects_after_feed_failure(monkeypatch):
     assert len(FakeBetkanyonFeed.instances) == 2
     assert FakeBetkanyonFeed.instances[0].closed is True
     assert worker.get_status()["error"] is None
+
+
+# ----------------------------------------------------------------------
+# Resilience: transient (non-connection) failures retry IN PLACE
+# instead of tearing down and recreating the whole browser session.
+# ----------------------------------------------------------------------
+
+def test_transient_failure_retries_in_place_without_reconnecting(monkeypatch):
+    """
+    A single decrypt/parse-style failure (NOT a browser/connection
+    error) must be retried on the SAME feed instance -- no new
+    BetkanyonFeed, no "reconnecting" status, no closed browser --
+    exactly the LEVEL 1 escalation from the resilience spec.
+    """
+    monkeypatch.setattr(worker_module, "INPLACE_RETRY_PAUSE_SECONDS", 0.01)
+
+    worker = BetkanyonWorker(poll_interval=0.02)
+    script = {
+        "fail_first_calls": 1,
+        "fail_message": "malformed payload: could not decrypt",
+    }
+    monkeypatch.setattr(
+        worker_module, "BetkanyonFeed", lambda: FakeBetkanyonFeed(script)
+    )
+
+    worker.start()
+
+    try:
+        assert wait_until(lambda: worker.get_status()["success_count"] >= 1, timeout=3.0)
+
+        # Checked BEFORE stop() (which always closes the feed as part
+        # of a clean shutdown) -- what matters here is that the feed
+        # was never closed WHILE recovering from the transient error.
+        assert len(FakeBetkanyonFeed.instances) == 1
+        assert FakeBetkanyonFeed.instances[0].closed is False
+        status = worker.get_status()
+        assert status["reconnect_count"] == 0
+        assert status["failed_count"] >= 1
+    finally:
+        worker.stop()
+
+
+def test_persistent_transient_failures_eventually_force_reconnect(monkeypatch):
+    """
+    Bounded safety net: even an exception NOT recognized as a
+    connection-dead signal must eventually force a real reconnect if
+    it keeps recurring on the same feed instance -- a worker must
+    never retry forever against a session that never actually
+    recovers.
+    """
+    monkeypatch.setattr(worker_module, "INPLACE_RETRY_PAUSE_SECONDS", 0.01)
+    monkeypatch.setattr(worker_module, "INITIAL_BACKOFF_SECONDS", 0.02)
+    monkeypatch.setattr(worker_module, "MAX_BACKOFF_SECONDS", 0.02)
+
+    worker = BetkanyonWorker(poll_interval=0.02)
+    script = {
+        "fail_first_instances": 1,
+        "fail_message": "unexpected KeyError in parser",
+    }
+    monkeypatch.setattr(
+        worker_module, "BetkanyonFeed", lambda: FakeBetkanyonFeed(script)
+    )
+
+    worker.start()
+
+    try:
+        assert wait_until(
+            lambda: worker.get_status()["status"] == "running", timeout=5.0
+        )
+    finally:
+        worker.stop()
+
+    assert len(FakeBetkanyonFeed.instances) == 2
+    assert FakeBetkanyonFeed.instances[0].closed is True
+    assert worker.get_status()["reconnect_count"] >= 1
 
 
 # ----------------------------------------------------------------------
@@ -258,3 +358,36 @@ def test_worker_start_is_idempotent(monkeypatch):
     assert first_thread is second_thread
 
     worker.stop()
+
+
+def test_worker_waits_on_credential_cooldown_then_recovers(monkeypatch):
+    """AllCredentialsUnavailableError must wait retry_after instead of
+    spinning in-place 1s retries, then resume on a fresh feed."""
+    from credentials.errors import AllCredentialsUnavailableError
+
+    worker = make_worker(
+        monkeypatch,
+        poll_interval=0.02,
+        fail_first_instances=1,
+        fail_factory=lambda: AllCredentialsUnavailableError(
+            "cooling down", retry_after_seconds=0.05,
+        ),
+    )
+    monkeypatch.setattr(worker_module, "INITIAL_BACKOFF_SECONDS", 0.05)
+    monkeypatch.setattr(worker_module, "MAX_BACKOFF_SECONDS", 0.05)
+
+    started = time.monotonic()
+    worker.start()
+    try:
+        assert wait_until(
+            lambda: worker.get_status()["status"] == "running",
+            timeout=3.0,
+        )
+    finally:
+        worker.stop()
+
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0
+    assert len(FakeBetkanyonFeed.instances) == 2
+    assert FakeBetkanyonFeed.instances[0].closed is True
+    assert worker.get_status()["error"] is None
