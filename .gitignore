@@ -16,10 +16,22 @@ env/
 .env
 
 # ==========================
+# CREDENTIAL MANAGEMENT
+# ==========================
+
+# Encrypted credential store (real secrets) -- never commit this,
+# even though the API keys inside it are encrypted at rest.
+credentials.json
+
+# Non-secret runtime credential health state (safe to delete/regenerate).
+runtime/
+
+# ==========================
 # FASTAPI / CACHE
 # ==========================
 
 cached_opportunities.json
+cached_status.json
 
 # Logs
 *.log

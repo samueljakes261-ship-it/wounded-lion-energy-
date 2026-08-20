@@ -22,8 +22,11 @@ def anyio_backend():
 
 
 @pytest.mark.anyio
-async def test_cancelling_main_stops_both_workers_cleanly(monkeypatch):
-    calls = {"start": 0, "stop_onwin": 0, "stop_betkanyon": 0, "ticks": 0}
+async def test_cancelling_main_stops_all_three_workers_cleanly(monkeypatch):
+    calls = {
+        "start": 0, "stop_onwin": 0, "stop_betkanyon": 0, "stop_orbit": 0,
+        "ticks": 0,
+    }
 
     def fake_start_workers():
         calls["start"] += 1
@@ -34,6 +37,9 @@ async def test_cancelling_main_stops_both_workers_cleanly(monkeypatch):
     def fake_stop_betkanyon():
         calls["stop_betkanyon"] += 1
 
+    async def fake_stop_orbit():
+        calls["stop_orbit"] += 1
+
     async def fake_collect_opportunities(*args, **kwargs):
         calls["ticks"] += 1
         return []
@@ -41,6 +47,7 @@ async def test_cancelling_main_stops_both_workers_cleanly(monkeypatch):
     monkeypatch.setattr(run_engine, "start_workers", fake_start_workers)
     monkeypatch.setattr(run_engine, "stop_onwin_worker", fake_stop_onwin)
     monkeypatch.setattr(run_engine, "stop_betkanyon_worker", fake_stop_betkanyon)
+    monkeypatch.setattr(run_engine, "stop_orbit_worker", fake_stop_orbit)
     monkeypatch.setattr(run_engine, "collect_opportunities", fake_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 
@@ -64,6 +71,7 @@ async def test_cancelling_main_stops_both_workers_cleanly(monkeypatch):
 
     assert calls["stop_onwin"] == 1
     assert calls["stop_betkanyon"] == 1
+    assert calls["stop_orbit"] == 1
     assert task.cancelled() is False  # main() caught it and returned normally
 
 
@@ -72,13 +80,16 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
     """An exception from one collect_opportunities() call must be
     logged and swallowed, not kill the whole engine loop."""
 
-    calls = {"ticks": 0, "stop_onwin": 0, "stop_betkanyon": 0}
+    calls = {"ticks": 0, "stop_onwin": 0, "stop_betkanyon": 0, "stop_orbit": 0}
 
     async def flaky_collect_opportunities(*args, **kwargs):
         calls["ticks"] += 1
         if calls["ticks"] == 1:
             raise RuntimeError("simulated transient engine error")
         return []
+
+    async def fake_stop_orbit():
+        calls["stop_orbit"] += 1
 
     monkeypatch.setattr(run_engine, "start_workers", lambda: None)
     monkeypatch.setattr(
@@ -89,6 +100,7 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
         run_engine, "stop_betkanyon_worker",
         lambda: calls.__setitem__("stop_betkanyon", calls["stop_betkanyon"] + 1),
     )
+    monkeypatch.setattr(run_engine, "stop_orbit_worker", fake_stop_orbit)
     monkeypatch.setattr(run_engine, "collect_opportunities", flaky_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 
@@ -106,3 +118,4 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
 
     assert calls["stop_onwin"] == 1
     assert calls["stop_betkanyon"] == 1
+    assert calls["stop_orbit"] == 1

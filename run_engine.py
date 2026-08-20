@@ -6,6 +6,7 @@ from collector import (
     start_workers,
     stop_betkanyon_worker,
     stop_onwin_worker,
+    stop_orbit_worker,
 )
 
 
@@ -16,11 +17,11 @@ async def main():
     print("ARBITRAGE ENGINE")
     print("=" * 70)
     print()
-    print("Starting persistent bookmaker workers (OnWin + BetKanyon)...")
-    print("Both run concurrently and independently in the background.")
+    print("Starting persistent bookmaker workers (OnWin + BetKanyon + Orbit)...")
+    print("All three run concurrently and independently in the background.")
     print()
 
-    # Explicitly kick off both persistent workers up front so they
+    # Explicitly kick off all three persistent workers up front so they
     # start acquiring data CONCURRENTLY, rather than each only
     # appearing lazily whenever collect_opportunities() first happens
     # to touch it.
@@ -55,6 +56,7 @@ async def main():
     finally:
         stop_onwin_worker()
         stop_betkanyon_worker()
+        await stop_orbit_worker()
         print("Workers stopped. Goodbye.")
 
 
