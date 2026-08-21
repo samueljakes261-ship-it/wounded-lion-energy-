@@ -1,11 +1,19 @@
 from datetime import datetime, timezone
 import json
+import os
+from pathlib import Path
 
-from parsers.betkanyon.parser import parse_json
 from parsers.betkanyon_prematch.adapter import BetkanyonPrematchAdapter
 from parsers.betkanyon_prematch.decrypt import PrematchDecryptor
 from parsers.betkanyon_prematch.fetcher import BetkanyonPrematchFetcher
+from parsers.betkanyon_prematch.parser import parse_prematch, summarize_structure
 from parsers.betkanyon_prematch.tournaments import TOURNAMENT_IDS
+
+
+_FORENSICS_FILE = Path(os.environ.get("TEMP") or os.environ.get("TMP") or ".") / (
+    "arbscanner-bk-prematch-python-forensics.json"
+)
+_FORENSICS_PRINTED = False
 
 
 def _as_decoded(payload):
@@ -16,6 +24,36 @@ def _as_decoded(payload):
         if text.startswith("{") or text.startswith("["):
             return json.loads(text)
     return None
+
+
+def _print_forensics_once(payload):
+    global _FORENSICS_PRINTED
+    if _FORENSICS_PRINTED:
+        return
+    _FORENSICS_PRINTED = True
+    root_type = type(payload).__name__
+    root_keys = list(payload.keys()) if isinstance(payload, dict) else []
+    print("[BETKANYON PREMATCH FORENSICS]")
+    print(f"root type: {root_type}")
+    print("root keys:")
+    for key in root_keys[:30]:
+        value = payload.get(key) if isinstance(payload, dict) else None
+        print(f"    {key}: {type(value).__name__}")
+    try:
+        _FORENSICS_FILE.write_text(
+            json.dumps(
+                {
+                    "root_type": root_type,
+                    "root_keys": root_keys,
+                    "structure": summarize_structure(payload),
+                },
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+        print(f"[BETKANYON PREMATCH FORENSICS] structure written to {_FORENSICS_FILE}")
+    except Exception:
+        pass
 
 
 class BetkanyonPrematchFeed:
@@ -30,14 +68,18 @@ class BetkanyonPrematchFeed:
             "tournaments": len(self.tournament_ids),
             "events": 0,
             "odds": 0,
+            "match_odds_markets": 0,
         }
 
     def collect_once(self):
+        print("[BETKANYON PREMATCH] RUNNING")
         payloads = self.fetcher.fetch_all(self.tournament_ids)
         print(
             f"[BETKANYON PREMATCH] encrypted payloads: "
             f"{len(payloads)}/{len(self.tournament_ids)}"
         )
+        if payloads:
+            print("[BETKANYON PREMATCH] encrypted payload received")
         sample = next(iter(payloads.values()), None)
         sample_kind = type(sample).__name__
         sample_prefix = (
@@ -64,25 +106,36 @@ class BetkanyonPrematchFeed:
             f"wasm={len(needs_decrypt)}"
         )
         if decrypted:
+            print("[BETKANYON PREMATCH] decrypted successfully")
             sample_dec = next(iter(decrypted.values()))
-            if isinstance(sample_dec, dict):
-                print(
-                    "[BETKANYON PREMATCH] decrypted keys="
-                    f"{list(sample_dec.keys())[:15]}"
-                )
+            _print_forensics_once(sample_dec)
 
         matches = []
         parsed_events = 0
+        match_odds_markets = 0
+        complete_1x2 = 0
         for tournament_id, data in decrypted.items():
             try:
-                parsed = parse_json(data)
+                parsed, stats = parse_prematch(data)
             except Exception as exc:
                 print(
                     f"[BETKANYON PREMATCH] tournament {tournament_id} "
                     f"parse failed ({type(exc).__name__}: {exc})"
                 )
                 continue
-            parsed_events += len(parsed)
+            parsed_events += stats.get("events_discovered", 0)
+            match_odds_markets += stats.get("match_odds_markets", 0)
+            complete_1x2 += stats.get("complete_1x2", 0)
+            if parsed and not getattr(self, "_1x2_forensics_printed", False):
+                sample = parsed[0]
+                self._1x2_forensics_printed = True
+                print("[PREMATCH 1X2 FORENSICS]")
+                print(f"event: {sample.get('home')} vs {sample.get('away')}")
+                print(f"event_id: {sample.get('event_id')}")
+                print(f"tournament_id: {tournament_id}")
+                print(f"home selection coefficient: {sample.get('home_odds')}")
+                print(f"draw selection coefficient: {sample.get('draw_odds')}")
+                print(f"away selection coefficient: {sample.get('away_odds')}")
             for event in parsed:
                 match = BetkanyonPrematchAdapter.to_match_odds(
                     event,
@@ -95,6 +148,10 @@ class BetkanyonPrematchFeed:
         for match in matches:
             match.collected_at = snapshot_at
 
+        print(f"[BETKANYON PREMATCH] events discovered: {parsed_events}")
+        print(f"[BETKANYON PREMATCH] 1X2 markets discovered: {match_odds_markets}")
+        print(f"[BETKANYON PREMATCH] MatchOdds produced: {len(matches)}")
+
         self._match_odds = matches
         self._parsed_event_count = parsed_events
         self._odds_count = len(matches)
@@ -102,6 +159,8 @@ class BetkanyonPrematchFeed:
             "tournaments": len(self.tournament_ids),
             "events": parsed_events,
             "odds": len(matches),
+            "match_odds_markets": match_odds_markets,
+            "complete_1x2": complete_1x2,
         }
         return matches
 

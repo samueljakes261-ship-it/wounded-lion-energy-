@@ -122,9 +122,15 @@ class BetkanyonPrematchWorker:
                 stats = self._feed.last_stats
                 remaining = max(0.0, self.poll_interval - (elapsed_ms / 1000.0))
                 print(
-                    f"[BETKANYON PREMATCH] events received: {stats['events']}"
+                    f"[BETKANYON PREMATCH] events discovered: {stats['events']}"
                 )
-                print(f"[BETKANYON PREMATCH] odds parsed: {stats['odds']}")
+                print(
+                    f"[BETKANYON PREMATCH] 1X2 markets discovered: "
+                    f"{stats.get('match_odds_markets', 0)}"
+                )
+                print(
+                    f"[BETKANYON PREMATCH] MatchOdds produced: {stats['odds']}"
+                )
                 print("[BETKANYON PREMATCH] state updated")
                 print(
                     f"[BETKANYON PREMATCH] next refresh in {remaining:.0f}s"
