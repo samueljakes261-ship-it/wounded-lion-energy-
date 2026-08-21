@@ -29,11 +29,22 @@ def split_event_name(name):
 
 
 def _implied_ok(home, draw, away):
+    """BACK 1X2 sanity check.
+
+    Rejects placeholder ladders (1.10/1.10/1.10) and inverted books
+    like 12/6.6/5.9. Thin prematch BACK books can sit a bit above 1.35
+    overround; those are still real quotes.
+    """
     try:
-        implied = (1.0 / float(home)) + (1.0 / float(draw)) + (1.0 / float(away))
-    except (TypeError, ValueError, ZeroDivisionError):
+        prices = [float(home), float(draw), float(away)]
+    except (TypeError, ValueError):
         return False
-    return 0.95 <= implied <= 1.35
+    if any(price <= 0 for price in prices):
+        return False
+    if all(1.01 <= price <= 1.15 for price in prices):
+        return False
+    implied = sum(1.0 / price for price in prices)
+    return 0.90 <= implied <= 1.60
 
 
 def normalize_prematch_market(market):

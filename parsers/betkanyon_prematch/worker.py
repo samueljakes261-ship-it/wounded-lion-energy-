@@ -178,7 +178,6 @@ class BetkanyonPrematchWorker:
     def _publish_success(self, matches, elapsed_ms):
         with self._lock:
             state = self._state
-            state["matches"] = matches
             state["status"] = "running"
             state["error"] = None
             state["last_update_at"] = time.time()
@@ -187,10 +186,12 @@ class BetkanyonPrematchWorker:
             state["consecutive_failures"] = 0
             state["consecutive_successes"] += 1
             state["last_processing_ms"] = elapsed_ms
-            state["last_event_count"] = (
-                self._feed.get_parsed_event_count() if self._feed else 0
-            )
-            state["last_odds_count"] = len(matches)
+            if matches or not state["matches"]:
+                state["matches"] = matches
+                state["last_event_count"] = (
+                    self._feed.get_parsed_event_count() if self._feed else 0
+                )
+                state["last_odds_count"] = len(matches)
             prev_avg = state["avg_processing_ms"]
             n = state["success_count"]
             state["avg_processing_ms"] = (

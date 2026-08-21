@@ -9,6 +9,7 @@ POST /customer/api/sport/details?page=&size=
 """
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import ORBIT_COOKIES, ORBIT_CSRF_TOKEN
 
@@ -106,71 +107,117 @@ def _filter_markets(raw_markets, stats=None):
     return kept
 
 
-def _fetch_tab(tab):
+def _post_page(tab, page):
     payload = {
         "id": SOCCER_EVENT_TYPE,
         "timeFilter": tab,
         "contextFilter": "EVENT_TYPE",
         "viewBy": "TIME",
     }
-    collected = []
-    pages_fetched = 0
-    raw_count = 0
-    for page in range(MAX_PAGES):
-        url = (
-            f"{BASE_URL}/customer/api/sport/details"
-            f"?page={page}&size={PAGE_SIZE}"
+    url = (
+        f"{BASE_URL}/customer/api/sport/details"
+        f"?page={page}&size={PAGE_SIZE}"
+    )
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                url, json=payload, headers=HEADERS, timeout=REQUEST_TIMEOUT
+            )
+            if response.status_code >= 400:
+                body = response.text[:180].replace("\n", " ")
+                raise RuntimeError(f"HTTP {response.status_code} {body}")
+            return response.json()
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                continue
+    raise last_error
+
+
+def _summarize_page(tab, page, data):
+    markets = _extract_markets(data)
+    catalogue = data.get("marketCatalogueList") or {}
+    last_flag = catalogue.get("last")
+    total_pages = catalogue.get("totalPages") or 1
+    total_elements = catalogue.get("totalElements")
+    if page == 0 or last_flag is True:
+        print(
+            f"[PREMATCH][ORBIT] {tab} pagination "
+            f"page={page} size={PAGE_SIZE} batch={len(markets)} "
+            f"last={last_flag} totalPages={total_pages} "
+            f"totalElements={total_elements}"
         )
-        data = None
-        last_error = None
-        for attempt in range(3):
-            try:
-                response = requests.post(
-                    url, json=payload, headers=HEADERS, timeout=REQUEST_TIMEOUT
-                )
-                if response.status_code >= 400:
-                    body = response.text[:180].replace("\n", " ")
-                    raise RuntimeError(
-                        f"HTTP {response.status_code} {body}"
-                    )
-                data = response.json()
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-                if attempt < 2:
-                    continue
-        if last_error is not None:
-            raise last_error
-        pages_fetched += 1
-        markets = _extract_markets(data)
-        raw_count += len(markets)
-        if not markets:
-            print(
-                f"[PREMATCH][ORBIT] {tab} page={page} empty "
-                f"(stop pagination)"
-            )
-            break
-        collected.extend(markets)
-        catalogue = data.get("marketCatalogueList") or {}
-        last_flag = catalogue.get("last")
-        total_pages = catalogue.get("totalPages")
-        total_elements = catalogue.get("totalElements")
-        if page == 0 or last_flag is True:
-            print(
-                f"[PREMATCH][ORBIT] {tab} pagination "
-                f"page={page} size={PAGE_SIZE} batch={len(markets)} "
-                f"last={last_flag} totalPages={total_pages} "
-                f"totalElements={total_elements}"
-            )
-        if last_flag is True:
-            break
-        if isinstance(total_pages, int) and page + 1 >= total_pages:
-            break
-        if last_flag is not True and len(markets) < PAGE_SIZE:
-            break
+    return markets, last_flag, total_pages
+
+
+def _fetch_pages(tab, pages):
+    if not pages:
+        return [], 0
+    collected = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_post_page, tab, page) for page in pages]
+        for future in as_completed(futures):
+            collected.extend(_extract_markets(future.result()))
+    return collected, len(pages)
+
+
+def _fetch_tab_first_page(tab):
+    data = _post_page(tab, 0)
+    markets, last_flag, total_pages = _summarize_page(tab, 0, data)
+    stats = {"rejected_inplay_or_closed": 0}
+    kept = _filter_markets(markets, stats)
+    remaining = []
+    if last_flag is not True and markets:
+        if isinstance(total_pages, int) and total_pages > 1:
+            remaining = list(range(1, min(total_pages, MAX_PAGES)))
+        elif len(markets) >= PAGE_SIZE:
+            remaining = list(range(1, MAX_PAGES))
+    return kept, {
+        "tab": tab,
+        "pages": 1,
+        "raw": len(markets),
+        "kept": len(kept),
+        "rejected": stats,
+        "remaining_pages": remaining,
+    }
+
+
+def _fetch_tab_remaining(tab, remaining_pages):
+    if not remaining_pages:
+        return [], {
+            "tab": tab,
+            "pages": 0,
+            "raw": 0,
+            "kept": 0,
+            "rejected": {},
+        }
+    collected, pages_fetched = _fetch_pages(tab, remaining_pages)
     stats = {"rejected_inplay_or_closed": 0}
     kept = _filter_markets(collected, stats)
+    print(
+        f"[PREMATCH][ORBIT] {tab} remaining pages={pages_fetched} "
+        f"raw={len(collected)} match_odds={len(kept)} "
+        f"rejected={stats}"
+    )
+    return kept, {
+        "tab": tab,
+        "pages": pages_fetched,
+        "raw": len(collected),
+        "kept": len(kept),
+        "rejected": stats,
+    }
+
+
+def _fetch_tab(tab):
+    first, first_stats = _fetch_tab_first_page(tab)
+    rest, rest_stats = _fetch_tab_remaining(tab, first_stats["remaining_pages"])
+    kept = first + rest
+    pages_fetched = first_stats["pages"] + rest_stats["pages"]
+    raw_count = first_stats["raw"] + rest_stats["raw"]
+    stats = dict(first_stats["rejected"])
+    for key, value in rest_stats["rejected"].items():
+        stats[key] = stats.get(key, 0) + value
     print(
         f"[PREMATCH][ORBIT] {tab} pages={pages_fetched} "
         f"raw={raw_count} match_odds={len(kept)} "
@@ -189,9 +236,18 @@ def get_upcoming_markets():
     """Soccer Match Odds markets for today + tomorrow + future tabs."""
     collected = {}
     tab_stats = []
-    for tab in TABS:
-        try:
-            markets, stats = _fetch_tab(tab)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_fetch_tab, tab): tab for tab in TABS}
+        for future in as_completed(futures):
+            tab = futures[future]
+            try:
+                markets, stats = future.result()
+            except Exception as exc:
+                print(
+                    f"[ORBIT PREMATCH] {tab.lower()} catalogue failed "
+                    f"({type(exc).__name__}: {exc})"
+                )
+                continue
             tab_stats.append(stats)
             added = 0
             for market in markets:
@@ -204,11 +260,7 @@ def get_upcoming_markets():
                 f"[ORBIT PREMATCH] {tab.lower()} unique +{added} "
                 f"(merged total {len(collected)})"
             )
-        except Exception as exc:
-            print(
-                f"[ORBIT PREMATCH] {tab.lower()} catalogue failed "
-                f"({type(exc).__name__}: {exc})"
-            )
+    tab_stats.sort(key=lambda row: TABS.index(row["tab"]) if row["tab"] in TABS else 99)
     if not collected:
         raise RuntimeError("Orbit prematch catalogue empty")
     print(

@@ -152,17 +152,34 @@ class BetkanyonPrematchFeed:
         print(f"[BETKANYON PREMATCH] 1X2 markets discovered: {match_odds_markets}")
         print(f"[BETKANYON PREMATCH] MatchOdds produced: {len(matches)}")
 
-        self._match_odds = matches
-        self._parsed_event_count = parsed_events
-        self._odds_count = len(matches)
-        self.last_stats = {
-            "tournaments": len(self.tournament_ids),
-            "events": parsed_events,
-            "odds": len(matches),
-            "match_odds_markets": match_odds_markets,
-            "complete_1x2": complete_1x2,
-        }
-        return matches
+        if matches:
+            self._match_odds = matches
+            self._parsed_event_count = parsed_events
+            self._odds_count = len(matches)
+            self.last_stats = {
+                "tournaments": len(self.tournament_ids),
+                "events": parsed_events,
+                "odds": len(matches),
+                "match_odds_markets": match_odds_markets,
+                "complete_1x2": complete_1x2,
+            }
+        elif self._match_odds:
+            print(
+                "[BETKANYON PREMATCH] empty cycle ignored; "
+                f"keeping {len(self._match_odds)} last MatchOdds"
+            )
+        else:
+            self._match_odds = matches
+            self._parsed_event_count = parsed_events
+            self._odds_count = 0
+            self.last_stats = {
+                "tournaments": len(self.tournament_ids),
+                "events": parsed_events,
+                "odds": 0,
+                "match_odds_markets": match_odds_markets,
+                "complete_1x2": complete_1x2,
+            }
+        return self._match_odds
 
     def get_match_odds(self):
         return self._match_odds

@@ -7,6 +7,7 @@ from parsers.orbit_prematch.catalogue import split_event_name, _implied_ok
 from parsers.orbit_prematch.rest import (
     _extract_markets,
     _fetch_tab,
+    _fetch_tab_first_page,
     _is_match_odds,
     get_upcoming_markets,
 )
@@ -109,16 +110,42 @@ def test_al_prefix_does_not_false_match_prematch_events():
     assert live_matcher.is_same_event(kalba, ain) in (True, False)
 
 
+def test_two_char_normalized_prefix_matches_abbreviations():
+    matcher = PrematchEventMatcher()
+    bk = _odds("Betkanyon", "Man Utd", "Chelsea", 2.2, 3.3, 3.1)
+    orbit = _odds("Orbit", "Manchester United", "Chelsea", 2.1, 3.4, 3.2, side="BACK")
+    assert matcher.is_same_event(bk, orbit) is True
+    hull = _odds("Betkanyon", "Hull", "Middlesbrough", 2.2, 3.3, 3.1)
+    hull_city = _odds("Orbit", "Hull City", "Middlesbrough", 2.1, 3.4, 3.2, side="BACK")
+    assert matcher.is_same_event(hull, hull_city) is True
+    finder = PrematchMatchFinder()
+    events = finder.find([bk, orbit, _odds("Orbit", "Manchester United", "Chelsea", 1.9, 3.6, 3.5, side="LAY")])
+    assert len(events) == 1
+    assert len(events[0].matches) == 3
+
+
+def test_two_char_prefix_does_not_merge_city_and_united():
+    finder = PrematchMatchFinder()
+    events = finder.find(
+        [
+            _odds("Betkanyon", "Manchester United", "Chelsea", 2.2, 3.3, 3.1),
+            _odds("Orbit", "Manchester City", "Chelsea", 2.1, 3.4, 3.2, side="BACK"),
+        ]
+    )
+    assert len(events) == 2
+
+
 def test_prematch_same_teams_still_match():
     finder = PrematchMatchFinder()
     events = finder.find(
         [
             _odds("Betkanyon", "Alpha FC", "Beta FC", 2.2, 3.3, 3.4),
             _odds("Orbit", "Alpha FC", "Beta FC", 2.1, 3.4, 3.5, side="BACK"),
+            _odds("Orbit", "Alpha FC", "Beta FC", 1.95, 3.6, 4.1, side="LAY"),
         ]
     )
     assert len(events) == 1
-    assert len(events[0].matches) == 2
+    assert len(events[0].matches) == 3
 
 
 def test_live_and_prematch_still_do_not_match():
@@ -146,8 +173,10 @@ def test_orbit_event_name_split():
 def test_orbit_implied_book_guard():
     assert _implied_ok(2.78, 3.60, 2.40) is True
     assert _implied_ok(12.0, 6.6, 5.9) is False
-    # A real LAY book can sit under 1.0; the guard is BACK-only.
-    assert _implied_ok(2.36, 3.85, 4.0) is False
+    assert _implied_ok(1.34, 3.10, 3.45) is True
+    assert _implied_ok(1.10, 1.10, 1.10) is False
+    # Placeholder ladders are not 1X2 books; the guard is BACK-only.
+    assert _implied_ok(1.05, 1.08, 1.10) is False
 
 
 def test_orbit_match_odds_name_filter():
@@ -210,9 +239,13 @@ def test_orbit_pagination_stops_on_last_flag(monkeypatch):
         )
 
     monkeypatch.setattr("parsers.orbit_prematch.rest.requests.post", fake_post)
+    first, first_stats = _fetch_tab_first_page("TODAY")
+    assert len(pages) == 1
+    assert first_stats["remaining_pages"] == [1]
+    assert len(first) == 20
     kept, stats = _fetch_tab("TODAY")
     assert stats["pages"] == 2
-    assert len(pages) == 2
+    assert len(pages) == 3  # first-page probe + full tab (page 0 and 1)
     assert len(kept) == 21
 
 
@@ -243,3 +276,61 @@ def test_today_tomorrow_future_merge_by_market_id(monkeypatch):
     markets = get_upcoming_markets()
     ids = {row["marketId"] for row in markets}
     assert ids == {"1.1", "1.2", "1.3", "1.4"}
+
+
+def test_direct_http_fetcher_does_not_import_zenrows_browser():
+    import parsers.betkanyon_prematch.fetcher as fetcher_mod
+
+    source = open(fetcher_mod.__file__, encoding="utf-8").read()
+    assert "BetkanyonBrowser" not in source
+    from parsers.betkanyon_prematch.fetcher import BetkanyonPrematchFetcher
+
+    instance = BetkanyonPrematchFetcher()
+    assert instance.__class__.__name__ == "BetkanyonPrematchFetcher"
+
+
+def test_zenrows_fallback_fetcher_file_is_preserved():
+    from pathlib import Path
+
+    path = Path("parsers/betkanyon_prematch/fetcher_zenrows.py")
+    assert path.exists()
+    text = path.read_text(encoding="utf-8")
+    assert "BetkanyonBrowser" in text
+    assert "BetkanyonPrematchZenrowsFetcher" in text
+
+
+def test_extract_encrypted_payload_from_json_envelope():
+    from parsers.betkanyon_prematch.fetcher import extract_encrypted_payload
+
+    blob = "A" * 40
+    assert extract_encrypted_payload({"payload": blob}) == blob
+    assert extract_encrypted_payload({"Payload": blob}) == blob
+    assert extract_encrypted_payload({"payload": 1}) is None
+    assert extract_encrypted_payload(None, "<html>challenge</html>") is None
+
+
+def test_http_404_is_empty_payload_not_batch_abort():
+    from parsers.betkanyon_prematch.fetcher import BetkanyonPrematchHttpFetcher
+
+    class FakeResponse:
+        def __init__(self, status, payload=None, html=False):
+            self.status_code = status
+            self._payload = payload
+            self.text = "<html>404</html>" if html else '{"payload":"%s"}' % (payload or "")
+
+        def json(self):
+            if self.status_code >= 400:
+                raise ValueError("not json")
+            return {"payload": self._payload}
+
+    fetcher = BetkanyonPrematchHttpFetcher()
+
+    def fake_get(url, timeout=None):
+        if "tournamentId=1" in url:
+            return FakeResponse(404, html=True)
+        return FakeResponse(200, payload="B" * 40)
+
+    fetcher.session.get = fake_get
+    payloads = fetcher.fetch_all(["1", "4520"])
+    assert "1" not in payloads
+    assert payloads["4520"] == "B" * 40
