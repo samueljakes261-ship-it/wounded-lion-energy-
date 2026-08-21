@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from collector import get_cached_opportunities, get_collector_status
+from collector import (
+    get_cached_opportunities,
+    get_cached_prematch_opportunities,
+    get_collector_status,
+)
 
 
 app = FastAPI(
@@ -44,8 +48,14 @@ def health():
 
 
 @app.get("/opportunities")
-def opportunities():
-
+def opportunities(mode: str = "live"):
+    """
+    Live opportunities by default so existing consumers are unchanged.
+    Pass mode=prematch for the separate prematch cache.
+    """
+    normalized = (mode or "live").strip().lower()
+    if normalized in ("prematch", "pre-match", "mac-oncesi", "maç öncesi"):
+        return get_cached_prematch_opportunities()
     return get_cached_opportunities()
 
 

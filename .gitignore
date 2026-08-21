@@ -31,6 +31,7 @@ runtime/
 # ==========================
 
 cached_opportunities.json
+cached_prematch_opportunities.json
 cached_status.json
 
 # Logs

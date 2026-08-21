@@ -24,6 +24,17 @@ def test_opportunities_endpoint_returns_cache_verbatim(monkeypatch):
     assert result[0]["home"]["odds"] == 2.157
 
 
+def test_opportunities_prematch_mode_uses_separate_cache(monkeypatch):
+    monkeypatch.setattr(api, "get_cached_opportunities", lambda: [{"feed": "live"}])
+    monkeypatch.setattr(
+        api, "get_cached_prematch_opportunities", lambda: [{"feed": "prematch"}]
+    )
+
+    assert api.opportunities() == [{"feed": "live"}]
+    assert api.opportunities(mode="prematch") == [{"feed": "prematch"}]
+    assert api.opportunities(mode="live") == [{"feed": "live"}]
+
+
 def test_opportunities_endpoint_returns_empty_list_when_no_cache(monkeypatch):
     monkeypatch.setattr(api, "get_cached_opportunities", lambda: [])
 

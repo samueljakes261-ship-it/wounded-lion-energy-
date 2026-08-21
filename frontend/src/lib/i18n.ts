@@ -1,0 +1,59 @@
+export type Lang = "tr" | "en"
+export type FeedMode = "live" | "prematch"
+
+export const translations = {
+  tr: {
+    title: "Wounded Lion Energy",
+    subtitleLive: "Canlı arbitraj fırsatları",
+    subtitlePrematch: "Maç öncesi arbitraj fırsatları",
+    live: "CANLI",
+    prematch: "MAÇ ÖNCESİ",
+    scanAgain: "Yeniden Tara",
+    lastUpdated: "Son güncelleme",
+    waiting: "İlk tarama bekleniyor...",
+    scanning: "Oranlar taranıyor...",
+    scanningHint: "BetKanyon • Orbit",
+    backendError: "Tarayıcıya ulaşılamadı",
+    noOpps: "Arbitraj fırsatı bulunamadı.",
+    collectors: "KAYNAKLAR",
+    matchedEvents: "Eşleşen maçlar",
+    opportunities: "Fırsatlar",
+    stakePlan: "Bahis Planı",
+    home: "EV SAHİBİ",
+    draw: "BERABERLİK",
+    away: "DEPLASMAN",
+    totalStake: "Toplam Bahis",
+    expectedReturn: "Beklenen Getiri",
+    guaranteedProfit: "Garantili Kâr",
+    roi: "ROI",
+  },
+  en: {
+    title: "Wounded Lion Energy",
+    subtitleLive: "Live arbitrage opportunities",
+    subtitlePrematch: "Prematch arbitrage opportunities",
+    live: "LIVE",
+    prematch: "PREMATCH",
+    scanAgain: "Scan Again",
+    lastUpdated: "Last updated",
+    waiting: "Waiting for first scan...",
+    scanning: "Scanning bookmakers...",
+    scanningHint: "BetKanyon • Orbit",
+    backendError: "Unable to reach the scanner backend",
+    noOpps: "No arbitrage opportunities detected.",
+    collectors: "COLLECTORS",
+    matchedEvents: "Matched events",
+    opportunities: "Opportunities",
+    stakePlan: "Stake Plan",
+    home: "HOME",
+    draw: "DRAW",
+    away: "AWAY",
+    totalStake: "Total Stake",
+    expectedReturn: "Expected Return",
+    guaranteedProfit: "Guaranteed Profit",
+    roi: "ROI",
+  },
+} as const
+
+export function t(lang: Lang, key: keyof typeof translations.en): string {
+  return translations[lang][key]
+}

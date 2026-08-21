@@ -45,9 +45,16 @@ async def test_cancelling_main_stops_all_three_workers_cleanly(monkeypatch):
         return []
 
     monkeypatch.setattr(run_engine, "start_workers", fake_start_workers)
+    monkeypatch.setattr(run_engine, "start_prematch_workers", lambda: None)
     monkeypatch.setattr(run_engine, "stop_onwin_worker", fake_stop_onwin)
     monkeypatch.setattr(run_engine, "stop_betkanyon_worker", fake_stop_betkanyon)
     monkeypatch.setattr(run_engine, "stop_orbit_worker", fake_stop_orbit)
+    monkeypatch.setattr(run_engine, "stop_betkanyon_prematch_worker", lambda: None)
+
+    async def fake_stop_orbit_prematch():
+        return None
+
+    monkeypatch.setattr(run_engine, "stop_orbit_prematch_worker", fake_stop_orbit_prematch)
     monkeypatch.setattr(run_engine, "collect_opportunities", fake_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 
@@ -92,6 +99,7 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
         calls["stop_orbit"] += 1
 
     monkeypatch.setattr(run_engine, "start_workers", lambda: None)
+    monkeypatch.setattr(run_engine, "start_prematch_workers", lambda: None)
     monkeypatch.setattr(
         run_engine, "stop_onwin_worker",
         lambda: calls.__setitem__("stop_onwin", calls["stop_onwin"] + 1),
@@ -101,6 +109,12 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
         lambda: calls.__setitem__("stop_betkanyon", calls["stop_betkanyon"] + 1),
     )
     monkeypatch.setattr(run_engine, "stop_orbit_worker", fake_stop_orbit)
+    monkeypatch.setattr(run_engine, "stop_betkanyon_prematch_worker", lambda: None)
+
+    async def fake_stop_orbit_prematch():
+        return None
+
+    monkeypatch.setattr(run_engine, "stop_orbit_prematch_worker", fake_stop_orbit_prematch)
     monkeypatch.setattr(run_engine, "collect_opportunities", flaky_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 

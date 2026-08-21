@@ -32,6 +32,16 @@ class MatchOdds:
     # (see engine/best_odds_selector.py and engine/back_lay_detector.py).
     side: Optional[str] = None
 
+    # live | prematch -- default "live" so existing adapters are
+    # unchanged. Prematch feeds set this explicitly so a live event
+    # and a prematch event with the same team names can never collapse
+    # into one opportunity.
+    feed_type: str = "live"
+
+    # BetKanyon prematch tournament/competition id this event came
+    # from. Unused (None) for live feeds and for Orbit.
+    tournament_id: Optional[str] = None
+
     def __str__(self):
         side_label = f" [{self.side}]" if self.side else ""
         return (

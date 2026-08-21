@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { resolveApiConfig } from "@/lib/api-config"
+import { t, type FeedMode, type Lang } from "@/lib/i18n"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,6 @@ import {
 import {
   RefreshCw,
   TrendingUp,
-  Activity,
   ChevronDown,
   AlertTriangle,
   CircleDot,
@@ -136,10 +136,15 @@ function traceDisplayedOdds(opportunity: Opportunity) {
 // wherever a leg's bookmaker name is displayed, per the requirement
 // that an Orbit price must never appear without its BACK/LAY side.
 function bookmakerLabel(leg: Leg): string {
+  const name =
+    leg.bookmaker.toLowerCase() === "orbit" ? "Orbit" : leg.bookmaker
+  if (leg.bookmaker.toLowerCase() === "orbit" && leg.side) {
+    return `${name} — ${leg.side}`
+  }
   if (leg.bookmaker.toLowerCase() === "orbit") {
     return "Orbit Exchange"
   }
-  return leg.bookmaker
+  return name
 }
 
 function LegBadges({ leg }: { leg: Leg }) {
@@ -212,24 +217,41 @@ function formatAge(seconds: number | null): string {
 // different things (see collector.py's CollectorStatus docstring).
 function CollectorStatusPanel({
   status,
+  mode,
+  lang,
 }: {
   status: CollectorStatusResponse | null
+  mode: FeedMode
+  lang: Lang
 }) {
   if (!status) {
     return null
   }
 
-  const order = ["orbit", "betkanyon", "onwin"]
+  const order =
+    mode === "prematch"
+      ? ["orbit_prematch", "betkanyon_prematch"]
+      : ["orbit", "betkanyon", "onwin"]
   const collectors = order
     .map((key) => status.collectors[key])
     .filter((c): c is CollectorHealth => Boolean(c))
+  const matched =
+    mode === "prematch"
+      ? (status as CollectorStatusResponse & { prematchMatchedEvents?: number })
+          .prematchMatchedEvents ?? status.matchedEvents
+      : status.matchedEvents
+  const opps =
+    mode === "prematch"
+      ? (status as CollectorStatusResponse & { prematchOpportunityCount?: number })
+          .prematchOpportunityCount ?? status.opportunityCount
+      : status.opportunityCount
 
   return (
     <Card className="bg-slate-900 border-slate-800">
       <CardContent className="py-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="text-xs font-semibold text-slate-500 tracking-wide">
-            COLLECTORS
+            {t(lang, "collectors")}
           </div>
           {collectors.map((collector) => (
             <div key={collector.name} className="flex items-center gap-1.5">
@@ -244,8 +266,8 @@ function CollectorStatusPanel({
             </div>
           ))}
           <div className="text-xs text-slate-500 ml-auto">
-            Matched events: {status.matchedEvents} &middot; Opportunities:{" "}
-            {status.opportunityCount}
+            {t(lang, "matchedEvents")}: {matched} &middot; {t(lang, "opportunities")}:{" "}
+            {opps}
           </div>
         </div>
       </CardContent>
@@ -282,7 +304,13 @@ function StakeRow({
   )
 }
 
-function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
+function OpportunityCard({
+  opportunity,
+  lang,
+}: {
+  opportunity: Opportunity
+  lang: Lang
+}) {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -320,13 +348,13 @@ function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
 
             <CardContent className="pt-0">
               <OutcomeRow
-                label="HOME"
+                label={t(lang, "home")}
                 teamName={opportunity.homeTeam}
                 leg={opportunity.home}
               />
-              <OutcomeRow label="DRAW" leg={opportunity.draw} />
+              <OutcomeRow label={t(lang, "draw")} leg={opportunity.draw} />
               <OutcomeRow
-                label="AWAY"
+                label={t(lang, "away")}
                 teamName={opportunity.awayTeam}
                 leg={opportunity.away}
               />
@@ -338,28 +366,28 @@ function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
           <CardContent className="pt-0 pb-6">
             <div className="bg-slate-800 rounded-lg p-4 space-y-2">
               <div className="text-sm font-semibold text-slate-300 mb-1">
-                Stake Plan
+                {t(lang, "stakePlan")}
               </div>
 
-              <StakeRow label="Home" value={opportunity.home.stake} />
-              <StakeRow label="Draw" value={opportunity.draw.stake} />
-              <StakeRow label="Away" value={opportunity.away.stake} />
+              <StakeRow label={t(lang, "home")} value={opportunity.home.stake} />
+              <StakeRow label={t(lang, "draw")} value={opportunity.draw.stake} />
+              <StakeRow label={t(lang, "away")} value={opportunity.away.stake} />
 
               <div className="!my-3 border-t border-slate-700" />
 
-              <StakeRow label="Total Stake" value={opportunity.totalStake} />
+              <StakeRow label={t(lang, "totalStake")} value={opportunity.totalStake} />
               <StakeRow
-                label="Expected Return"
+                label={t(lang, "expectedReturn")}
                 value={opportunity.guaranteedReturn}
               />
               <StakeRow
-                label="Guaranteed Profit"
+                label={t(lang, "guaranteedProfit")}
                 value={opportunity.guaranteedProfit}
                 emphasize
               />
 
               <div className="flex items-center justify-between text-sm pt-1">
-                <span className="text-slate-400">ROI</span>
+                <span className="text-slate-400">{t(lang, "roi")}</span>
                 <span className="font-bold text-cyan-400">
                   {opportunity.roi.toFixed(2)}%
                 </span>
@@ -379,6 +407,8 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [collectorStatus, setCollectorStatus] =
     useState<CollectorStatusResponse | null>(null)
+  const [lang, setLang] = useState<Lang>("tr")
+  const [mode, setMode] = useState<FeedMode>("live")
 
   const loadCollectorStatus = async () => {
     try {
@@ -407,7 +437,7 @@ function Dashboard() {
     try {
       setLoading(true)
 
-      const response = await fetch(API_URL, {
+      const response = await fetch(`${API_URL}?mode=${mode}`, {
        headers: {
         "ngrok-skip-browser-warning": "true",
        },
@@ -448,24 +478,65 @@ function Dashboard() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [mode])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold">ArbScanner</h1>
+            <h1 className="text-3xl font-bold">{t(lang, "title")}</h1>
             <p className="text-slate-400">
-              Live arbitrage opportunities from 6 bookmakers
+              {mode === "live" ? t(lang, "subtitleLive") : t(lang, "subtitlePrematch")}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Badge className="bg-emerald-500 text-black">
-              <Activity className="w-3 h-3 mr-1" />
-              LIVE
-            </Badge>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex rounded-md overflow-hidden border border-slate-700">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  lang === "tr" ? "bg-cyan-500 text-black" : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setLang("tr")}
+              >
+                TR
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  lang === "en" ? "bg-cyan-500 text-black" : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setLang("en")}
+              >
+                EN
+              </button>
+            </div>
+
+            <div className="flex rounded-md overflow-hidden border border-slate-700">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  mode === "live"
+                    ? "bg-emerald-500 text-black"
+                    : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setMode("live")}
+              >
+                {t(lang, "live")}
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  mode === "prematch"
+                    ? "bg-emerald-500 text-black"
+                    : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setMode("prematch")}
+              >
+                {t(lang, "prematch")}
+              </button>
+            </div>
 
             <Button
               variant="outline"
@@ -475,26 +546,26 @@ function Dashboard() {
               <RefreshCw
                 className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
               />
-              Scan Again
+              {t(lang, "scanAgain")}
             </Button>
           </div>
         </div>
 
         <div className="text-sm text-slate-500">
           {lastUpdated
-            ? `Last updated: ${lastUpdated.toLocaleTimeString()}`
-            : "Waiting for first scan..."}
+            ? `${t(lang, "lastUpdated")}: ${lastUpdated.toLocaleTimeString()}`
+            : t(lang, "waiting")}
         </div>
 
-        <CollectorStatusPanel status={collectorStatus} />
+        <CollectorStatusPanel status={collectorStatus} mode={mode} lang={lang} />
 
         {loading && opportunities.length === 0 && !error ? (
           <Card className="bg-slate-900 border-slate-800">
             <CardContent className="py-12 text-center">
               <RefreshCw className="w-8 h-8 mx-auto mb-4 animate-spin text-cyan-400" />
-              <div className="text-lg font-semibold">Scanning bookmakers...</div>
+              <div className="text-lg font-semibold">{t(lang, "scanning")}</div>
               <div className="text-slate-400 mt-2">
-                Orbit • Betfair • Kolay90 • Novel34 • BetKanyon • OnWin
+                {t(lang, "scanningHint")}
               </div>
             </CardContent>
           </Card>
@@ -503,7 +574,7 @@ function Dashboard() {
             <CardContent className="py-12 text-center">
               <AlertTriangle className="w-10 h-10 mx-auto mb-4 text-amber-500" />
               <div className="text-xl font-semibold">
-                Unable to reach the scanner backend
+                {t(lang, "backendError")}
               </div>
               <div className="text-slate-400 mt-2">{error}</div>
             </CardContent>
@@ -513,14 +584,14 @@ function Dashboard() {
             <CardContent className="py-12 text-center">
               <TrendingUp className="w-10 h-10 mx-auto mb-4 text-slate-500" />
               <div className="text-xl font-semibold">
-                No arbitrage opportunities detected.
+                {t(lang, "noOpps")}
               </div>
             </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {opportunities.map((opportunity, index) => (
-              <OpportunityCard key={index} opportunity={opportunity} />
+              <OpportunityCard key={index} opportunity={opportunity} lang={lang} />
             ))}
           </div>
         )}

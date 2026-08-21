@@ -24,8 +24,16 @@ from engine.back_lay_detector import BackLayDetector
 from models.arbitrage_opportunity import ArbitrageOpportunity
 
 from parsers.betkanyon.worker import BetkanyonWorker
+from parsers.betkanyon_prematch.worker import BetkanyonPrematchWorker
 from parsers.onwin.feed import OnwinFeed
 from parsers.orbit.worker import OrbitWorker
+from parsers.orbit_prematch.worker import OrbitPrematchWorker
+from prematch.pipeline import (
+    PREMATCH_CACHE_FILE,
+    build_prematch_opportunities,
+    serialize_opportunities,
+    _filter_stale as _filter_prematch_stale,
+)
 
 
 CACHE_FILE = Path("cached_opportunities.json")
@@ -666,6 +674,61 @@ async def stop_orbit_worker():
         _orbit_worker = None
 
 
+# ============================================================
+# PREMATCH WORKERS (additive; live workers above are unchanged)
+# ============================================================
+
+_betkanyon_prematch_worker: BetkanyonPrematchWorker | None = None
+_orbit_prematch_worker: OrbitPrematchWorker | None = None
+_prematch_last_matched = 0
+_prematch_last_opportunities = 0
+
+
+def _get_betkanyon_prematch_worker() -> BetkanyonPrematchWorker:
+    global _betkanyon_prematch_worker
+    if _betkanyon_prematch_worker is None:
+        _betkanyon_prematch_worker = BetkanyonPrematchWorker()
+        _betkanyon_prematch_worker.start()
+    return _betkanyon_prematch_worker
+
+
+def _get_orbit_prematch_worker() -> OrbitPrematchWorker:
+    global _orbit_prematch_worker
+    if _orbit_prematch_worker is None:
+        _orbit_prematch_worker = OrbitPrematchWorker()
+        _orbit_prematch_worker.start()
+    return _orbit_prematch_worker
+
+
+def stop_betkanyon_prematch_worker():
+    global _betkanyon_prematch_worker
+    if _betkanyon_prematch_worker is not None:
+        _betkanyon_prematch_worker.stop()
+        _betkanyon_prematch_worker = None
+
+
+async def stop_orbit_prematch_worker():
+    global _orbit_prematch_worker
+    if _orbit_prematch_worker is not None:
+        await _orbit_prematch_worker.stop()
+        _orbit_prematch_worker = None
+
+
+def start_prematch_workers():
+    """Start prematch workers independently of live start_workers()."""
+    for name, starter in (
+        ("BetKanyon prematch", _get_betkanyon_prematch_worker),
+        ("Orbit prematch", _get_orbit_prematch_worker),
+    ):
+        try:
+            starter()
+        except Exception as exc:
+            print(
+                f"[{name.upper()}] Failed to start worker "
+                f"({type(exc).__name__}: {exc}). Other collectors continue."
+            )
+
+
 def start_workers():
     """
     Explicitly start all three persistent bookmaker workers up front so
@@ -702,6 +765,8 @@ _worker_restart_at = {
     "onwin": 0.0,
     "betkanyon": 0.0,
     "orbit": 0.0,
+    "betkanyon_prematch": 0.0,
+    "orbit_prematch": 0.0,
 }
 
 
@@ -758,6 +823,26 @@ async def _ensure_workers_alive():
 
     if _orbit_worker is not None and not _worker_alive(_orbit_worker._task):
         await _restart_worker("orbit", stop_orbit_worker, _get_orbit_worker)
+
+    if (
+        _betkanyon_prematch_worker is not None
+        and not _worker_alive(_betkanyon_prematch_worker._thread)
+    ):
+        await _restart_worker(
+            "betkanyon_prematch",
+            stop_betkanyon_prematch_worker,
+            _get_betkanyon_prematch_worker,
+        )
+
+    if (
+        _orbit_prematch_worker is not None
+        and not _worker_alive(_orbit_prematch_worker._task)
+    ):
+        await _restart_worker(
+            "orbit_prematch",
+            stop_orbit_prematch_worker,
+            _get_orbit_prematch_worker,
+        )
 
 
 # ============================================================
@@ -1255,6 +1340,14 @@ async def collect_opportunities(bankroll=1000):
     if not orbit_stale:
         matches.extend(orbit_matches)
 
+    # Live pipeline must never ingest prematch MatchOdds even if a
+    # worker handle were accidentally shared.
+    matches = [
+        match
+        for match in matches
+        if getattr(match, "feed_type", "live") == "live"
+    ]
+
     # Second, finer-grained pass: even within a healthy feed, drop any
     # INDIVIDUAL match whose own collected_at is too old (see
     # _filter_stale_matches docstring) so a stale single match can
@@ -1422,6 +1515,8 @@ async def collect_opportunities(bankroll=1000):
     if triggered or not CACHE_FILE.exists():
         _write_cache(opportunities, generated_at_dt=now_dt)
 
+    _run_prematch_tick(bankroll=bankroll, now_dt=now_dt)
+
     _write_status(
         onwin_status=onwin_status,
         betkanyon_status=betkanyon_status,
@@ -1435,6 +1530,49 @@ async def collect_opportunities(bankroll=1000):
     )
 
     return opportunities
+
+
+def _run_prematch_tick(bankroll, now_dt):
+    """Match/arbitrage prematch feeds only. Never mixes live MatchOdds."""
+    global _prematch_last_matched, _prematch_last_opportunities
+
+    if _betkanyon_prematch_worker is None and _orbit_prematch_worker is None:
+        return
+
+    matches = []
+    if _betkanyon_prematch_worker is not None:
+        matches.extend(_betkanyon_prematch_worker.get_matches())
+    if _orbit_prematch_worker is not None:
+        matches.extend(_orbit_prematch_worker.get_matches())
+    matches = [
+        match
+        for match in matches
+        if getattr(match, "feed_type", "prematch") == "prematch"
+    ]
+    matches, _dropped = _filter_prematch_stale(matches, now_dt)
+    try:
+        matched_events, opportunities = build_prematch_opportunities(
+            matches, bankroll=bankroll
+        )
+    except Exception as exc:
+        print(
+            f"[PREMATCH] matching failed ({type(exc).__name__}: {exc}); "
+            "live pipeline unaffected"
+        )
+        return
+
+    matched_n = len(matched_events)
+    arb_n = len(opportunities)
+    if matched_n != _prematch_last_matched or arb_n != _prematch_last_opportunities:
+        print(f"[MATCHER] prematch events matched: {matched_n}")
+        print(f"[ARBITRAGE] prematch opportunities: {arb_n}")
+    _prematch_last_matched = matched_n
+    _prematch_last_opportunities = arb_n
+    cache = serialize_opportunities(opportunities, generated_at_dt=now_dt)
+    _atomic_write_text(
+        PREMATCH_CACHE_FILE,
+        json.dumps(cache, indent=4, ensure_ascii=False),
+    )
 
 
 def _worker_alive(process_or_thread_or_task) -> bool:
@@ -1548,11 +1686,28 @@ def _write_status(
         _betkanyon_worker._thread if _betkanyon_worker else None
     )
     orbit_alive = _worker_alive(_orbit_worker._task if _orbit_worker else None)
+    now = now_dt.timestamp() if hasattr(now_dt, "timestamp") else time.time()
+    bk_pm_status = (
+        _betkanyon_prematch_worker.get_status()
+        if _betkanyon_prematch_worker is not None
+        else {"status": "stopped", "error": None, "last_update_at": None}
+    )
+    orbit_pm_status = (
+        _orbit_prematch_worker.get_status()
+        if _orbit_prematch_worker is not None
+        else {"status": "stopped", "error": None, "last_update_at": None}
+    )
+    bk_pm_last = bk_pm_status.get("last_update_at")
+    orbit_pm_last = orbit_pm_status.get("last_update_at")
+    bk_pm_age = (now - bk_pm_last) if bk_pm_last else None
+    orbit_pm_age = (now - orbit_pm_last) if orbit_pm_last else None
 
     payload = {
         "generatedAt": _iso_dt(now_dt),
         "matchedEvents": matched_count,
         "opportunityCount": opportunity_count,
+        "prematchMatchedEvents": _prematch_last_matched,
+        "prematchOpportunityCount": _prematch_last_opportunities,
         "collectors": {
             "onwin": _collector_snapshot(
                 "OnWin", onwin_status.get("status"), onwin_age,
@@ -1565,6 +1720,30 @@ def _write_status(
             "orbit": _collector_snapshot(
                 "Orbit", orbit_status.get("status"), orbit_age,
                 orbit_alive, orbit_status, now_dt,
+            ),
+            "betkanyon_prematch": _collector_snapshot(
+                "BetKanyon Prematch",
+                bk_pm_status.get("status"),
+                bk_pm_age,
+                _worker_alive(
+                    _betkanyon_prematch_worker._thread
+                    if _betkanyon_prematch_worker
+                    else None
+                ),
+                bk_pm_status,
+                now_dt,
+            ),
+            "orbit_prematch": _collector_snapshot(
+                "Orbit Prematch",
+                orbit_pm_status.get("status"),
+                orbit_pm_age,
+                _worker_alive(
+                    _orbit_prematch_worker._task
+                    if _orbit_prematch_worker
+                    else None
+                ),
+                orbit_pm_status,
+                now_dt,
             ),
         },
     }
@@ -1589,6 +1768,12 @@ def get_cached_opportunities():
             encoding="utf-8"
         )
     )
+
+
+def get_cached_prematch_opportunities():
+    if not PREMATCH_CACHE_FILE.exists():
+        return []
+    return json.loads(PREMATCH_CACHE_FILE.read_text(encoding="utf-8"))
 
 
 def get_collector_status():
@@ -1623,6 +1808,8 @@ def get_collector_status():
                     ("onwin", "OnWin"),
                     ("betkanyon", "BetKanyon"),
                     ("orbit", "Orbit"),
+                    ("betkanyon_prematch", "BetKanyon Prematch"),
+                    ("orbit_prematch", "Orbit Prematch"),
                 )
             },
         }

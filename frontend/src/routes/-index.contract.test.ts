@@ -18,8 +18,8 @@ describe("dashboard data-fetching contract (frontend/src/routes/index.tsx)", () 
     expect(SOURCE).toMatch(/from ["']@\/lib\/api-config["']/)
   })
 
-  it("fetches opportunities from API_URL and status from STATUS_URL", () => {
-    expect(SOURCE).toMatch(/fetch\(API_URL/)
+  it("fetches opportunities from API_URL (with mode) and status from STATUS_URL", () => {
+    expect(SOURCE).toMatch(/fetch\(`\$\{API_URL\}\?mode=\$\{mode\}`/)
     expect(SOURCE).toMatch(/fetch\(STATUS_URL/)
   })
 

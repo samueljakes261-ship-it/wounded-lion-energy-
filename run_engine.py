@@ -3,9 +3,12 @@ import asyncio
 from collector import (
     ENGINE_TICK_SECONDS,
     collect_opportunities,
+    start_prematch_workers,
     start_workers,
+    stop_betkanyon_prematch_worker,
     stop_betkanyon_worker,
     stop_onwin_worker,
+    stop_orbit_prematch_worker,
     stop_orbit_worker,
 )
 
@@ -17,8 +20,8 @@ async def main():
     print("ARBITRAGE ENGINE")
     print("=" * 70)
     print()
-    print("Starting persistent bookmaker workers (OnWin + BetKanyon + Orbit)...")
-    print("All three run concurrently and independently in the background.")
+    print("Starting persistent bookmaker workers (live + prematch)...")
+    print("Live BetKanyon/Orbit/OnWin continue independently of prematch.")
     print()
 
     # Explicitly kick off all three persistent workers up front so they
@@ -26,6 +29,7 @@ async def main():
     # appearing lazily whenever collect_opportunities() first happens
     # to touch it.
     start_workers()
+    start_prematch_workers()
 
     try:
         while True:
@@ -57,6 +61,8 @@ async def main():
         stop_onwin_worker()
         stop_betkanyon_worker()
         await stop_orbit_worker()
+        stop_betkanyon_prematch_worker()
+        await stop_orbit_prematch_worker()
         print("Workers stopped. Goodbye.")
 
 
