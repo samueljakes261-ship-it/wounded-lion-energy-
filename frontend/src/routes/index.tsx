@@ -72,6 +72,9 @@ type CollectorStatusResponse = {
   generatedAt: string | null
   matchedEvents: number
   opportunityCount: number
+  engineMode?: "live" | "prematch"
+  prematchMatchedEvents?: number
+  prematchOpportunityCount?: number
   collectors: Record<string, CollectorHealth>
 }
 
@@ -480,6 +483,12 @@ function Dashboard() {
     return () => clearInterval(interval)
   }, [mode])
 
+  useEffect(() => {
+    if (collectorStatus?.engineMode === "prematch" && mode !== "prematch") {
+      setMode("prematch")
+    }
+  }, [collectorStatus?.engineMode])
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -556,6 +565,14 @@ function Dashboard() {
             ? `${t(lang, "lastUpdated")}: ${lastUpdated.toLocaleTimeString()}`
             : t(lang, "waiting")}
         </div>
+
+        {collectorStatus?.engineMode === "prematch" ? (
+          <div className="text-sm text-amber-300 border border-amber-500/40 bg-amber-500/10 rounded-md px-3 py-2">
+            {lang === "tr"
+              ? "Maç öncesi hata ayıklama: canlı işçiler donduruldu. Sadece /opportunities?mode=prematch gösteriliyor."
+              : "Prematch debug: live workers are frozen. Showing /opportunities?mode=prematch only."}
+          </div>
+        ) : null}
 
         <CollectorStatusPanel status={collectorStatus} mode={mode} lang={lang} />
 

@@ -8,9 +8,9 @@ from pathlib import Path
 
 from engine.arbitrage_detector import ArbitrageDetector
 from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
-from engine.match_finder import MatchFinder
 from engine.stake_calculator import StakeCalculator
 from models.arbitrage_opportunity import ArbitrageOpportunity
+from prematch.matcher import PrematchMatchFinder
 
 PREMATCH_CACHE_FILE = Path("cached_prematch_opportunities.json")
 # Prematch snapshots can take longer than a live poll (many tournament
@@ -45,8 +45,30 @@ def _filter_stale(matches, now_dt):
     return kept, dropped
 
 
+def _leg_label(match, outcome):
+    price = getattr(match, f"{outcome}_odds")
+    if match.bookmaker.lower() == "orbit":
+        side = match.side or "?"
+        return f"Orbit {side} @ {price}"
+    return f"{match.bookmaker} @ {price}"
+
+
+def _opportunity_is_source_safe(opportunity):
+    best = opportunity.result.best_odds
+    legs = (best.home_match, best.draw_match, best.away_match)
+    books = {leg.bookmaker for leg in legs}
+    if len(books) < 2:
+        return False, "all three legs from one bookmaker"
+    for leg in legs:
+        if getattr(leg, "feed_type", "prematch") != "prematch":
+            return False, "non-prematch leg"
+        if leg.bookmaker.lower() == "orbit" and leg.side not in ("BACK", "LAY"):
+            return False, "Orbit leg missing BACK/LAY"
+    return True, "VERIFIED"
+
+
 def build_prematch_opportunities(matches, bankroll=1000):
-    finder = MatchFinder()
+    finder = PrematchMatchFinder()
     selector = BestOddsSelector()
     detector = ArbitrageDetector()
     calculator = StakeCalculator()
@@ -62,9 +84,22 @@ def build_prematch_opportunities(matches, bankroll=1000):
         if not result.arbitrage_exists:
             continue
         stake_plan = calculator.calculate(result=result, bankroll=bankroll)
-        opportunities.append(
-            ArbitrageOpportunity(event=event, result=result, stake_plan=stake_plan)
+        opportunity = ArbitrageOpportunity(
+            event=event, result=result, stake_plan=stake_plan
         )
+        ok, reason = _opportunity_is_source_safe(opportunity)
+        best = opportunity.result.best_odds
+        print("[PREMATCH ARB]")
+        print(f"Event: {event.home_team} vs {event.away_team}")
+        print(f"HOME: {_leg_label(best.home_match, 'home')}")
+        print(f"DRAW: {_leg_label(best.draw_match, 'draw')}")
+        print(f"AWAY: {_leg_label(best.away_match, 'away')}")
+        print(f"ROI: {stake_plan.roi}")
+        if not ok:
+            print(f"Confidence: REJECTED ({reason})")
+            continue
+        print("Confidence: VERIFIED")
+        opportunities.append(opportunity)
     return matched_events, opportunities
 
 

@@ -90,3 +90,6 @@ Thumbs.db
 
 *.tmp
 *.bak
+
+# Isolated experiment dumps (encrypted betting payloads)
+experiments/betkanyon_prematch_direct/output/

@@ -28,6 +28,7 @@ from parsers.betkanyon_prematch.worker import BetkanyonPrematchWorker
 from parsers.onwin.feed import OnwinFeed
 from parsers.orbit.worker import OrbitWorker
 from parsers.orbit_prematch.worker import OrbitPrematchWorker
+from prematch.mode import engine_mode_label, is_prematch_only
 from prematch.pipeline import (
     PREMATCH_CACHE_FILE,
     build_prematch_opportunities,
@@ -1251,8 +1252,37 @@ async def collect_opportunities(bankroll=1000):
 
     await _ensure_workers_alive()
 
-    # Isolated construction: a raise from one getter must not skip the
-    # other two collectors for this tick.
+    now_dt = datetime.now(timezone.utc)
+    if is_prematch_only():
+        _run_prematch_tick(bankroll=bankroll, now_dt=now_dt)
+        empty = {
+            "matches": [],
+            "status": "stopped",
+            "error": None,
+            "last_update_at": None,
+            "last_attempt_at": None,
+            "consecutive_failures": 0,
+            "consecutive_successes": 0,
+            "reconnect_count": 0,
+            "event_count": 0,
+            "last_event_count": 0,
+            "market_count": 0,
+            "last_odds_count": 0,
+        }
+        _maybe_print_prematch_panel()
+        _write_status(
+            onwin_status=empty,
+            betkanyon_status=empty,
+            orbit_status=empty,
+            onwin_age=None,
+            betkanyon_age=None,
+            orbit_age=None,
+            matched_count=0,
+            opportunity_count=0,
+            now_dt=now_dt,
+        )
+        return []
+
     onwin_handle = None
     betkanyon_worker = None
     orbit_worker = None
@@ -1532,6 +1562,65 @@ async def collect_opportunities(bankroll=1000):
     return opportunities
 
 
+_prematch_panel_at = 0.0
+
+
+def _maybe_print_prematch_panel():
+    global _prematch_panel_at
+    now = time.monotonic()
+    if now - _prematch_panel_at < STATUS_PANEL_INTERVAL_SECONDS:
+        return
+    _prematch_panel_at = now
+    bk = (
+        _betkanyon_prematch_worker.get_status()
+        if _betkanyon_prematch_worker is not None
+        else {}
+    )
+    orbit = (
+        _orbit_prematch_worker.get_status()
+        if _orbit_prematch_worker is not None
+        else {}
+    )
+    orbit_feed_stats = {}
+    if _orbit_prematch_worker is not None and getattr(
+        _orbit_prematch_worker, "_feed", None
+    ) is not None:
+        orbit_feed_stats = getattr(_orbit_prematch_worker._feed, "stats", {}) or {}
+    bk_age = None
+    if bk.get("last_update_at"):
+        bk_age = time.time() - bk["last_update_at"]
+    print()
+    print("=" * 50)
+    print("PREMATCH ENGINE")
+    print("=" * 50)
+    print(
+        f"[BETKANYON] Browser: {str(bk.get('status', 'stopped')).upper()} "
+        f"| Last payload: {bk_age:.0f}s ago" if bk_age is not None
+        else f"[BETKANYON] Browser: {str(bk.get('status', 'stopped')).upper()}"
+    )
+    print(
+        f"[BETKANYON] Events: {bk.get('last_event_count', 0)} "
+        f"| Valid 1X2: {bk.get('last_odds_count', 0)}"
+    )
+    print(f"[ORBIT] Session: {str(orbit.get('status', 'stopped')).upper()}")
+    print(
+        f"[ORBIT] REST events: {orbit_feed_stats.get('rest_markets', 0)} "
+        f"| WS frames: {orbit_feed_stats.get('ws_frames', 0)} "
+        f"| WS odds: {orbit_feed_stats.get('ws_odds_frames', 0)}"
+    )
+    print(
+        f"[ORBIT] Final events: {orbit.get('last_event_count', 0)} "
+        f"| BACK: {orbit.get('back_count', 0)} "
+        f"| LAY: {orbit.get('lay_count', 0)}"
+    )
+    print(
+        f"[MATCHER] Matched: {_prematch_last_matched} "
+        f"| Verified arbs: {_prematch_last_opportunities}"
+    )
+    print("=" * 50)
+    print()
+
+
 def _run_prematch_tick(bankroll, now_dt):
     """Match/arbitrage prematch feeds only. Never mixes live MatchOdds."""
     global _prematch_last_matched, _prematch_last_opportunities
@@ -1568,6 +1657,7 @@ def _run_prematch_tick(bankroll, now_dt):
         print(f"[ARBITRAGE] prematch opportunities: {arb_n}")
     _prematch_last_matched = matched_n
     _prematch_last_opportunities = arb_n
+    _maybe_print_prematch_panel()
     cache = serialize_opportunities(opportunities, generated_at_dt=now_dt)
     _atomic_write_text(
         PREMATCH_CACHE_FILE,
@@ -1708,6 +1798,7 @@ def _write_status(
         "opportunityCount": opportunity_count,
         "prematchMatchedEvents": _prematch_last_matched,
         "prematchOpportunityCount": _prematch_last_opportunities,
+        "engineMode": engine_mode_label(),
         "collectors": {
             "onwin": _collector_snapshot(
                 "OnWin", onwin_status.get("status"), onwin_age,

@@ -11,6 +11,10 @@ import time
 from parsers.orbit.adapter import OrbitAdapter
 from parsers.orbit.client import OrbitWebSocketClient, is_orbit_heartbeat
 from parsers.orbit.parser import OrbitParser
+from parsers.orbit_prematch.catalogue import (
+    _implied_ok,
+    normalize_prematch_market,
+)
 from parsers.orbit_prematch.rest import get_upcoming_markets
 
 
@@ -42,6 +46,15 @@ class OrbitPrematchFeed:
         self.frame_count = 0
         self.back_count = 0
         self.lay_count = 0
+        self.stats = {
+            "rest_markets": 0,
+            "ws_frames": 0,
+            "ws_odds_frames": 0,
+            "ws_unknown_market": 0,
+            "parse_rejected": 0,
+            "implied_rejected": 0,
+            "valid_matchodds": 0,
+        }
 
     def get_match_odds(self):
         return [
@@ -76,12 +89,21 @@ class OrbitPrematchFeed:
         print("[ORBIT PREMATCH] fetching today/tomorrow/future catalogues...")
         markets = await asyncio.to_thread(get_upcoming_markets)
         for market in markets:
+            market = normalize_prematch_market(market)
+            if not (market.get("event") or {}).get("homeTeam"):
+                self.stats["parse_rejected"] += 1
+                print(
+                    "[PREMATCH][ORBIT] skip catalogue market "
+                    f"{market.get('marketId')}: missing home/away identity"
+                )
+                continue
             self._catalogue[market["marketId"]] = market
+        self.stats["rest_markets"] = len(self._catalogue)
         self._last_catalogue_refresh = time.monotonic()
         await self.client.connect()
-        print("[ORBIT PREMATCH] websocket connected")
-        print(f"[ORBIT PREMATCH] subscribing to {len(markets)} prematch markets...")
-        for market in markets:
+        print(f"[ORBIT PREMATCH] websocket connected")
+        print(f"[ORBIT PREMATCH] subscribing to {len(self._catalogue)} prematch markets...")
+        for market in self._catalogue.values():
             event = market.get("event") or {}
             await self.client.subscribe(market["marketId"], event.get("id"))
             self._subscribed_ids.add(market["marketId"])
@@ -91,7 +113,7 @@ class OrbitPrematchFeed:
                 self._catalogue_refresh_loop(),
                 name="orbit-prematch-catalogue-refresh",
             )
-        return len(markets)
+        return len(self._catalogue)
 
     async def _catalogue_refresh_loop(self):
         try:
@@ -123,7 +145,10 @@ class OrbitPrematchFeed:
         self._last_catalogue_refresh = time.monotonic()
         new_count = 0
         for market in markets:
+            market = normalize_prematch_market(market)
             market_id = market["marketId"]
+            if not (market.get("event") or {}).get("homeTeam"):
+                continue
             self._catalogue[market_id] = market
             if market_id in self._subscribed_ids:
                 continue
@@ -140,6 +165,7 @@ class OrbitPrematchFeed:
         )
         self._last_activity_at = time.monotonic()
         self.frame_count += 1
+        self.stats["ws_frames"] += 1
         if raw is None:
             self.last_frame_kind = "ignored"
             raise ConnectionError("Orbit prematch websocket closed by server.")
@@ -153,6 +179,7 @@ class OrbitPrematchFeed:
         market_id = raw["id"]
         if market_id not in self._catalogue:
             self.last_frame_kind = "ignored"
+            self.stats["ws_unknown_market"] += 1
             return []
         try:
             parsed = OrbitParser.parse(
@@ -167,10 +194,32 @@ class OrbitPrematchFeed:
                 f"{type(exc).__name__}: {exc}"
             )
             self.last_frame_kind = "ignored"
+            self.stats["parse_rejected"] += 1
             return []
+        kept = []
+        for match in matches:
+            # BACK 1X2 books have overround >= ~1.0. LAY books sit
+            # below 1.0 by design (the exchange spread). Do not apply
+            # the BACK overround guard to LAY.
+            if match.side == "BACK" and not _implied_ok(
+                match.home_odds, match.draw_odds, match.away_odds
+            ):
+                print(
+                    "[PREMATCH][ORBIT][REJECT] "
+                    f"event={match.home_team} vs {match.away_team} "
+                    f"side={match.side} "
+                    f"HOME={match.home_odds} DRAW={match.draw_odds} "
+                    f"AWAY={match.away_odds} reason=implied_sum_not_1X2_book"
+                )
+                self.stats["implied_rejected"] += 1
+                continue
+            kept.append(match)
+        matches = kept
         if matches:
             self._matches_by_market[market_id] = matches
             self.last_frame_kind = "odds"
+            self.stats["ws_odds_frames"] += 1
+            self.stats["valid_matchodds"] = len(self.get_match_odds())
             self.back_count = sum(
                 1 for item in self.get_match_odds() if item.side == "BACK"
             )

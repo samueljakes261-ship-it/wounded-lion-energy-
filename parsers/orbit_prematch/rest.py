@@ -78,26 +78,29 @@ def _is_match_odds(market):
         or (market.get("description") or {}).get("marketName")
         or ""
     ).lower()
-    if not name:
-        return True
     if "match odds" in name or "match winner" in name:
         return True
-    skip = ("over", "under", "handicap", "corner", "both teams", "correct score")
-    return not any(token in name for token in skip)
+    return False
 
 
-def _filter_markets(raw_markets):
+def _filter_markets(raw_markets, stats=None):
     kept = []
+    stats = stats if stats is not None else {}
     for market in raw_markets:
         if not _is_prematch_market(market):
+            stats["rejected_inplay_or_closed"] = stats.get("rejected_inplay_or_closed", 0) + 1
             continue
         if not _is_match_odds(market):
+            stats["rejected_not_match_odds"] = stats.get("rejected_not_match_odds", 0) + 1
             continue
         if not market.get("marketId"):
+            stats["rejected_missing_market_id"] = stats.get("rejected_missing_market_id", 0) + 1
             continue
         if not (market.get("event") or {}).get("id"):
+            stats["rejected_missing_event_id"] = stats.get("rejected_missing_event_id", 0) + 1
             continue
         if not market.get("runners"):
+            stats["rejected_missing_runners"] = stats.get("rejected_missing_runners", 0) + 1
             continue
         kept.append(market)
     return kept
@@ -111,6 +114,8 @@ def _fetch_tab(tab):
         "viewBy": "TIME",
     }
     collected = []
+    pages_fetched = 0
+    raw_count = 0
     for page in range(MAX_PAGES):
         url = (
             f"{BASE_URL}/customer/api/sport/details"
@@ -137,24 +142,57 @@ def _fetch_tab(tab):
                     continue
         if last_error is not None:
             raise last_error
+        pages_fetched += 1
         markets = _extract_markets(data)
+        raw_count += len(markets)
         if not markets:
+            print(
+                f"[PREMATCH][ORBIT] {tab} page={page} empty "
+                f"(stop pagination)"
+            )
             break
         collected.extend(markets)
         catalogue = data.get("marketCatalogueList") or {}
-        if catalogue.get("last") is True:
+        last_flag = catalogue.get("last")
+        total_pages = catalogue.get("totalPages")
+        total_elements = catalogue.get("totalElements")
+        if page == 0 or last_flag is True:
+            print(
+                f"[PREMATCH][ORBIT] {tab} pagination "
+                f"page={page} size={PAGE_SIZE} batch={len(markets)} "
+                f"last={last_flag} totalPages={total_pages} "
+                f"totalElements={total_elements}"
+            )
+        if last_flag is True:
             break
-        if len(markets) < PAGE_SIZE:
+        if isinstance(total_pages, int) and page + 1 >= total_pages:
             break
-    return _filter_markets(collected)
+        if last_flag is not True and len(markets) < PAGE_SIZE:
+            break
+    stats = {"rejected_inplay_or_closed": 0}
+    kept = _filter_markets(collected, stats)
+    print(
+        f"[PREMATCH][ORBIT] {tab} pages={pages_fetched} "
+        f"raw={raw_count} match_odds={len(kept)} "
+        f"rejected={stats}"
+    )
+    return kept, {
+        "tab": tab,
+        "pages": pages_fetched,
+        "raw": raw_count,
+        "kept": len(kept),
+        "rejected": stats,
+    }
 
 
 def get_upcoming_markets():
     """Soccer Match Odds markets for today + tomorrow + future tabs."""
     collected = {}
+    tab_stats = []
     for tab in TABS:
         try:
-            markets = _fetch_tab(tab)
+            markets, stats = _fetch_tab(tab)
+            tab_stats.append(stats)
             added = 0
             for market in markets:
                 market_id = market.get("marketId")
@@ -162,7 +200,10 @@ def get_upcoming_markets():
                     continue
                 collected[market_id] = market
                 added += 1
-            print(f"[ORBIT PREMATCH] {tab.lower()} page: +{added} (total {len(collected)})")
+            print(
+                f"[ORBIT PREMATCH] {tab.lower()} unique +{added} "
+                f"(merged total {len(collected)})"
+            )
         except Exception as exc:
             print(
                 f"[ORBIT PREMATCH] {tab.lower()} catalogue failed "
@@ -170,5 +211,13 @@ def get_upcoming_markets():
             )
     if not collected:
         raise RuntimeError("Orbit prematch catalogue empty")
+    print(
+        "[PREMATCH][ORBIT] REST "
+        + " ".join(
+            f"{row['tab']}: raw={row['raw']} kept={row['kept']}"
+            for row in tab_stats
+        )
+        + f" unique_markets={len(collected)}"
+    )
     print(f"[ORBIT PREMATCH] events parsed: {len(collected)} catalogue markets")
     return list(collected.values())

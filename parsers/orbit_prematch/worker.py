@@ -212,4 +212,16 @@ class OrbitPrematchWorker:
         )
         print(f"[ORBIT PREMATCH] back prices: {self._state.get('back_count', 0)}")
         print(f"[ORBIT PREMATCH] lay prices: {self._state.get('lay_count', 0)}")
+        if self._feed is not None:
+            stats = getattr(self._feed, "stats", {})
+            print(
+                "[PREMATCH][ORBIT] "
+                f"REST={stats.get('rest_markets', 0)} "
+                f"WS frames={stats.get('ws_frames', 0)} "
+                f"WS odds={stats.get('ws_odds_frames', 0)} "
+                f"unknown={stats.get('ws_unknown_market', 0)} "
+                f"parse_rejected={stats.get('parse_rejected', 0)} "
+                f"implied_rejected={stats.get('implied_rejected', 0)} "
+                f"MatchOdds={stats.get('valid_matchodds', 0)}"
+            )
         print("[ORBIT PREMATCH] state updated")

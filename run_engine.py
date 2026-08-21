@@ -11,6 +11,7 @@ from collector import (
     stop_orbit_prematch_worker,
     stop_orbit_worker,
 )
+from prematch.mode import is_prematch_only
 
 
 async def main():
@@ -20,16 +21,17 @@ async def main():
     print("ARBITRAGE ENGINE")
     print("=" * 70)
     print()
-    print("Starting persistent bookmaker workers (live + prematch)...")
-    print("Live BetKanyon/Orbit/OnWin continue independently of prematch.")
-    print()
-
-    # Explicitly kick off all three persistent workers up front so they
-    # start acquiring data CONCURRENTLY, rather than each only
-    # appearing lazily whenever collect_opportunities() first happens
-    # to touch it.
-    start_workers()
-    start_prematch_workers()
+    if is_prematch_only():
+        print("PREMATCH-ONLY MODE: live BetKanyon/Orbit/OnWin workers are frozen.")
+        print("Set ENGINE_MODE=live and restart to restore the live pipeline.")
+        print()
+        start_prematch_workers()
+    else:
+        print("Starting persistent bookmaker workers (live + prematch)...")
+        print("Live BetKanyon/Orbit/OnWin continue independently of prematch.")
+        print()
+        start_workers()
+        start_prematch_workers()
 
     try:
         while True:

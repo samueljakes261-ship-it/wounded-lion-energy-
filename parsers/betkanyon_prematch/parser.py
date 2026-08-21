@@ -10,6 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MIN_ODDS = 1.01
 MAX_ODDS = 100.0
+# A real 1X2 book (or exchange BACK book) has overround around 1.0-1.3.
+# Sum of implied probabilities like 0.40 means the three F values are
+# not match-result prices.
+MIN_IMPLIED = 0.95
+MAX_IMPLIED = 1.35
 
 HOME_TOKENS = {"1", "home", "ev sahibi", "evsahibi", "kazanan1"}
 DRAW_TOKENS = {"x", "draw", "beraberlik", "berabere"}
@@ -94,8 +99,6 @@ def _stake_lists(market: dict) -> list:
 
 def _is_match_odds_market(market: dict) -> bool:
     market_id = market.get("Id", market.get("id", market.get("SID")))
-    if market_id in (1, "1", 1.0):
-        return True
     name = _norm(
         market.get("N")
         or market.get("EN")
@@ -103,11 +106,11 @@ def _is_match_odds_market(market: dict) -> bool:
         or market.get("name")
         or market.get("GN")
     )
+    if market_id in (1, "1", 1.0) and (not name or name in MATCH_ODDS_NAMES or "sonucu" in name or "1x2" in name or "match" in name):
+        return True
     if name in MATCH_ODDS_NAMES:
         return True
-    stakes = _stake_lists(market)
-    sides = {_selection_side(stake) for stake in stakes if isinstance(stake, dict)}
-    return sides >= {"home", "draw", "away"}
+    return False
 
 
 def _selection_token(stake: dict) -> str:
@@ -143,17 +146,9 @@ def _stake_locked(stake: dict) -> bool:
 
 
 def _stake_price(stake: dict) -> Optional[float]:
-    for key in ("F", "CF", "Factor", "Odds", "odds", "C", "price"):
-        odds = _plausible_odds(stake.get(key))
-        if odds is not None:
-            return odds
-    factors = stake.get("Factors")
-    if isinstance(factors, dict):
-        for value in factors.values():
-            odds = _plausible_odds(value)
-            if odds is not None:
-                return odds
-    return None
+    # Prematch 1X2 decimal price is Stake.F. Do not fall back to
+    # identifiers or unrelated numeric fields.
+    return _plausible_odds(stake.get("F"))
 
 
 def _extract_1x2(event: dict) -> Optional[Tuple[float, float, float]]:
@@ -181,7 +176,17 @@ def _extract_1x2(event: dict) -> Optional[Tuple[float, float, float]]:
             elif side == "away":
                 away = price
         if home is not None and draw is not None and away is not None:
-            return home, draw, away
+            implied = (1.0 / home) + (1.0 / draw) + (1.0 / away)
+            if MIN_IMPLIED <= implied <= MAX_IMPLIED:
+                return home, draw, away
+            print(
+                "[PREMATCH][BETKANYON][REJECT] "
+                f"event={event.get('EHT') or event.get('HT')} vs "
+                f"{event.get('EAT') or event.get('AT')} "
+                f"market={market.get('Id')}/{market.get('N')} "
+                f"outcome=1X2 reason=implied_sum={implied:.4f} "
+                f"not a 1X2 book (HOME={home} DRAW={draw} AWAY={away})"
+            )
         home = draw = away = None
     return None
 
