@@ -44,6 +44,13 @@ Then:
 .\.venv\Scripts\python.exe experiments\onwin_direct_api\experiment.py
 ```
 
+To skip network interception and instead open Chrome, wait for Cloudflare
+to clear, then `fetch()` the captured endpoint from that same page:
+
+```
+.\.venv\Scripts\python.exe experiments\onwin_direct_api\direct_http.py
+```
+
 Optional environment:
 
 | Variable | Default | Meaning |
@@ -52,9 +59,13 @@ Optional environment:
 | `ONWIN_EXPERIMENT_HEADLESS` | `0` (headed, a normal window) | Set `1` for headless |
 | `ONWIN_EXPERIMENT_TIMEOUT` | `180` | Seconds to wait for `get_main_line` |
 
-The experiment prefers the system's Google Chrome (`channel="chrome"`) so
-the session matches the capture (Chrome 151). It falls back to Playwright
-Chromium if Chrome is unavailable. It does **not** replay captured tokens.
+The experiment prefers attaching to an already-open Google Chrome via CDP
+(`http://127.0.0.1:9222`) so it can use a real session that already passed
+Cloudflare. Chrome must have been started with `--remote-debugging-port=9222`.
+If attach fails, it can launch a separate Chrome window unless
+`ONWIN_EXPERIMENT_ATTACH_ONLY=1`.
+
+It does **not** replay captured tokens.
 
 Output is written under `experiments/onwin_direct_api/output/` (gitignored).
 Logs redact `x-token`, `x-message-metadata`, cookies, and similar values.

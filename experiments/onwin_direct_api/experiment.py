@@ -624,6 +624,25 @@ def launch_browser(playwright, headless: bool):
         )
 
 
+def connect_existing_chrome(playwright, cdp_url: str):
+    """Attach to an already-running Chrome via CDP. Does not launch ZenRows."""
+    browser = playwright.chromium.connect_over_cdp(cdp_url)
+    return browser
+
+
+def find_onwin_page(browser):
+    for context in browser.contexts:
+        for page in context.pages:
+            url = (page.url or "").lower()
+            if "onwin" in url:
+                return context, page
+    if browser.contexts:
+        context = browser.contexts[0]
+        page = context.pages[0] if context.pages else context.new_page()
+        return context, page
+    return None, None
+
+
 def standalone_http(url: str, method: str, headers: dict, post_data: str | None, cookies: list[dict]) -> dict:
     session = requests.Session()
     session.trust_env = False
@@ -716,6 +735,8 @@ def run() -> dict:
     page_url = os.environ.get("ONWIN_EXPERIMENT_PAGE") or DEFAULT_PAGE
     headless = os.environ.get("ONWIN_EXPERIMENT_HEADLESS", "0").strip() in ("1", "true", "True", "yes")
     timeout_s = int(os.environ.get("ONWIN_EXPERIMENT_TIMEOUT") or "180")
+    cdp_url = (os.environ.get("ONWIN_EXPERIMENT_CDP") or "http://127.0.0.1:9222").strip()
+    attach_only = os.environ.get("ONWIN_EXPERIMENT_ATTACH_ONLY", "0").strip() in ("1", "true", "True", "yes")
 
     report = {
         "started_at": _now(),
@@ -726,6 +747,8 @@ def run() -> dict:
         "page_url": page_url,
         "headless": headless,
         "timeout_s": timeout_s,
+        "cdp_url": cdp_url,
+        "attach_only": attach_only,
         "captured_shape": {
             "url_host": urlsplit(CAPTURED_SHAPE["url"]).hostname,
             "url_path": urlsplit(CAPTURED_SHAPE["url"]).path,
@@ -771,6 +794,8 @@ def run() -> dict:
     box = {"req": None, "finished": False, "other_api": []}
     browser = None
     context = None
+    attached = False
+    playwright = None
 
     try:
         playwright_cm = sync_playwright()
@@ -784,27 +809,57 @@ def run() -> dict:
 
     try:
         try:
+            print(f"Trying CDP attach: {cdp_url}")
+            browser = connect_existing_chrome(playwright, cdp_url)
+            attached = True
+            launch_mode = "existing_chrome_cdp"
+            print("Attached to already-running Chrome (will not close it).")
+        except Exception as cdp_exc:
+            print(f"CDP attach failed: {type(cdp_exc).__name__}: {cdp_exc}")
+            if attach_only:
+                report["browser"] = {
+                    "page_loaded": False,
+                    "launch_mode": "cdp_attach_failed",
+                    "cdp_error": f"{type(cdp_exc).__name__}: {cdp_exc}",
+                    "hint": (
+                        "Chrome is running without --remote-debugging-port, so this "
+                        "experiment cannot join the already-open window. Close Chrome, "
+                        "start it with --remote-debugging-port=9222, open the OnWin "
+                        "sportsbook, then re-run with ONWIN_EXPERIMENT_ATTACH_ONLY=1."
+                    ),
+                }
+                report["failure"] = (
+                    "could not attach to the already-open Chrome "
+                    "(no remote debugging port)"
+                )
+                report["classification"] = "INCONCLUSIVE"
+                report["situation"] = situation_note("INCONCLUSIVE", report)
+                return report
             browser, launch_mode = launch_browser(playwright, headless)
-        except Exception as exc:
-            report["browser"] = {
-                "page_loaded": False,
-                "error": f"chromium_launch: {type(exc).__name__}: {exc}",
-            }
-            report["failure"] = "could not launch local Chrome/Chromium"
-            report["classification"] = classify(report)
-            report["situation"] = situation_note(report["classification"], report)
-            return report
         print(f"Browser launch: {launch_mode}")
 
-        context = browser.new_context(
-            locale="en-US",
-            viewport={"width": 1400, "height": 900},
-            user_agent=CAPTURED_SHAPE["user_agent"],
-            extra_http_headers={
-                "accept-language": CAPTURED_SHAPE["accept_language"],
-            },
-        )
-        page = context.new_page()
+        if attached:
+            context, page = find_onwin_page(browser)
+            if page is None or context is None:
+                report["browser"] = {
+                    "page_loaded": False,
+                    "launch_mode": launch_mode,
+                    "error": "CDP attached but no page/context was available",
+                }
+                report["failure"] = "attached Chrome had no usable page"
+                report["classification"] = "INCONCLUSIVE"
+                report["situation"] = situation_note("INCONCLUSIVE", report)
+                return report
+        else:
+            context = browser.new_context(
+                locale="en-US",
+                viewport={"width": 1400, "height": 900},
+                user_agent=CAPTURED_SHAPE["user_agent"],
+                extra_http_headers={
+                    "accept-language": CAPTURED_SHAPE["accept_language"],
+                },
+            )
+            page = context.new_page()
 
         def _note_api(request):
             url = request.url or ""
@@ -844,6 +899,8 @@ def run() -> dict:
         nav_error = None
         try:
             print("Navigating (listeners already attached)...")
+            # Reloading the sportsbook URL recaptures a FRESH get_main_line
+            # from this session. It does not replay previously copied tokens.
             page.goto(page_url, wait_until="domcontentloaded", timeout=timeout_s * 1000)
         except Exception as exc:
             nav_error = f"{type(exc).__name__}: {exc}"
@@ -1046,18 +1103,23 @@ def run() -> dict:
         report["finished_at"] = _now()
         return report
     finally:
+        # Never close the user's already-open Chrome.
+        if not attached:
+            try:
+                if context is not None:
+                    context.close()
+            except Exception:
+                pass
+            try:
+                if browser is not None:
+                    browser.close()
+            except Exception:
+                pass
+        else:
+            print("Leaving the attached Chrome session open.")
         try:
-            if context is not None:
-                context.close()
-        except Exception:
-            pass
-        try:
-            if browser is not None:
-                browser.close()
-        except Exception:
-            pass
-        try:
-            playwright.stop()
+            if playwright is not None:
+                playwright.stop()
         except Exception:
             pass
 
