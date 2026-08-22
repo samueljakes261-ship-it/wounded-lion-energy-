@@ -129,6 +129,11 @@ class PrematchBackLayDetector:
                             continue
 
                         accepted += 1
+                        profit_percentage = (
+                            (back_odds - lay_odds)
+                            / (back_odds + lay_odds)
+                            * 100
+                        )
                         opp = BackLayOpportunity(
                             outcome=outcome,
                             sport=back.sport,
@@ -139,6 +144,7 @@ class PrematchBackLayDetector:
                             back_odds=back_odds,
                             lay_bookmaker=lay.bookmaker,
                             lay_odds=lay_odds,
+                            profit_percentage=profit_percentage,
                             opportunity_type=OPPORTUNITY_TYPE_BACK_LAY,
                             feed_type=_feed_type(back),
                             market=back.market,

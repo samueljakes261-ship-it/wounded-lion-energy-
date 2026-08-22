@@ -16,6 +16,37 @@ _FORENSICS_FILE = Path(os.environ.get("TEMP") or os.environ.get("TMP") or ".") /
 _FORENSICS_PRINTED = False
 
 
+def merge_incomplete_prematch_snapshot(
+    previous, incoming, fetched_ids, tournament_universe
+):
+    """Keep last-good MatchOdds for tournaments this cycle did not fetch.
+
+    A non-empty but partial HTTP batch used to replace the full snapshot
+    and wipe previously valid events. Empty cycles already keep last-good
+    in collect_once; this covers the incomplete-but-not-empty case.
+    A complete cycle (every tournament id fetched) still replaces.
+    """
+    if not previous or not incoming:
+        return incoming
+    fetched = {str(tid) for tid in fetched_ids}
+    universe = len(tournament_universe or [])
+    if not fetched or (universe and len(fetched) >= universe):
+        return incoming
+    kept = [
+        match
+        for match in previous
+        if str(getattr(match, "tournament_id", "") or "") not in fetched
+    ]
+    if not kept:
+        return incoming
+    print(
+        f"[BETKANYON PREMATCH] incomplete cycle "
+        f"payloads={len(fetched)}/{universe or '?'} ; "
+        f"keeping {len(kept)} last-good MatchOdds from missing tournaments"
+    )
+    return list(incoming) + kept
+
+
 def _as_decoded(payload):
     if isinstance(payload, dict):
         return payload
@@ -148,18 +179,32 @@ class BetkanyonPrematchFeed:
         for match in matches:
             match.collected_at = snapshot_at
 
+        fetched_ids = {str(tid) for tid in decrypted.keys()}
+        unique_ids = {(m.home_team, m.away_team) for m in matches}
         print(f"[BETKANYON PREMATCH] events discovered: {parsed_events}")
         print(f"[BETKANYON PREMATCH] 1X2 markets discovered: {match_odds_markets}")
         print(f"[BETKANYON PREMATCH] MatchOdds produced: {len(matches)}")
+        print(
+            f"[BETKANYON PREMATCH] payloads={len(fetched_ids)}/"
+            f"{len(self.tournament_ids)} unique_events={len(unique_ids)}"
+        )
 
         if matches:
+            matches = merge_incomplete_prematch_snapshot(
+                self._match_odds,
+                matches,
+                fetched_ids,
+                self.tournament_ids,
+            )
             self._match_odds = matches
             self._parsed_event_count = parsed_events
             self._odds_count = len(matches)
             self.last_stats = {
                 "tournaments": len(self.tournament_ids),
+                "payloads": len(fetched_ids),
                 "events": parsed_events,
                 "odds": len(matches),
+                "unique_events": len({(m.home_team, m.away_team) for m in matches}),
                 "match_odds_markets": match_odds_markets,
                 "complete_1x2": complete_1x2,
             }

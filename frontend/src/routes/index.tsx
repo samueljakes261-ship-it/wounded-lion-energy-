@@ -67,6 +67,7 @@ type BackLayOpportunity = {
   awayTeam: string
   outcome: string
   arbitrageTeam: string
+  profitPercentage?: number
   back: BackLayPrice
   lay: BackLayPrice
 }
@@ -354,12 +355,21 @@ function BackLayCard({
       className="bg-slate-900 border-slate-800 hover:border-cyan-500/50 transition-colors duration-300"
     >
       <CardHeader className="pb-3">
-        <div className="text-xs font-semibold text-slate-500 tracking-wide">
-          {t(lang, "matchLabel")}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-slate-500 tracking-wide">
+              {t(lang, "matchLabel")}
+            </div>
+            <CardTitle className="text-lg">
+              {opportunity.homeTeam} vs {opportunity.awayTeam}
+            </CardTitle>
+          </div>
+          {typeof opportunity.profitPercentage === "number" ? (
+            <Badge className="bg-emerald-500 text-black shrink-0">
+              +{opportunity.profitPercentage.toFixed(2)}%
+            </Badge>
+          ) : null}
         </div>
-        <CardTitle className="text-lg">
-          {opportunity.homeTeam} vs {opportunity.awayTeam}
-        </CardTitle>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         <div>

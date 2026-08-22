@@ -688,6 +688,7 @@ _orbit_prematch_worker: OrbitPrematchWorker | None = None
 _prematch_last_matched = 0
 _prematch_last_opportunities = 0
 _prematch_last_back_lay = 0
+_prematch_last_cache_n = 0
 _prematch_back_lay_sig = None
 
 
@@ -1616,18 +1617,53 @@ def _maybe_print_prematch_panel():
         f"| LAY: {orbit.get('lay_count', 0)}"
     )
     print(
-        f"[MATCHER] Matched: {_prematch_last_matched} "
-        f"| Verified arbs: {_prematch_last_opportunities} "
-        f"| BACK-LAY: {_prematch_last_back_lay}"
+        f"BETKANYON PREMATCH: {str(bk.get('status', 'stopped')).upper()} "
+        f"| events={bk.get('last_event_count', 0)} "
+        f"| 1X2={bk.get('last_odds_count', 0)} "
+        f"| age={bk_age:.0f}s" if bk_age is not None
+        else f"BETKANYON PREMATCH: {str(bk.get('status', 'stopped')).upper()} | events={bk.get('last_event_count', 0)} | 1X2={bk.get('last_odds_count', 0)} | age=?"
+    )
+    orbit_age = None
+    if orbit.get("last_update_at"):
+        orbit_age = time.time() - orbit["last_update_at"]
+    print(
+        f"ORBIT PREMATCH: {str(orbit.get('status', 'stopped')).upper()} "
+        f"| events={orbit.get('last_event_count', 0)} "
+        f"| 1X2={orbit.get('back_count', 0) + orbit.get('lay_count', 0)} "
+        f"| age={orbit_age:.0f}s" if orbit_age is not None
+        else f"ORBIT PREMATCH: {str(orbit.get('status', 'stopped')).upper()} | events={orbit.get('last_event_count', 0)} | 1X2={orbit.get('back_count', 0) + orbit.get('lay_count', 0)} | age=?"
+    )
+    print(f"MATCHED: {_prematch_last_matched}")
+    print(f"BACK/LAY ARBS: {_prematch_last_back_lay}")
+    print(f"BACK/BACK ARBS: {_prematch_last_opportunities}")
+    print(
+        f"TOTAL ARBS: {_prematch_last_back_lay + _prematch_last_opportunities}"
     )
     print("=" * 50)
     print()
+
+
+def _prematch_zero_reason(bk_n, orbit_n, matched_n, stale_n, total_arbs):
+    if total_arbs > 0:
+        return "qualifying_arbs"
+    if bk_n == 0 and orbit_n == 0:
+        return "both_feeds_empty"
+    if bk_n == 0:
+        return "betkanyon_empty"
+    if orbit_n == 0:
+        return "orbit_empty"
+    if matched_n == 0:
+        return "matcher_no_pairs"
+    if stale_n:
+        return "stale_filter"
+    return "no_qualifying_prices"
 
 
 def _run_prematch_tick(bankroll, now_dt):
     """Match/arbitrage prematch feeds only. Never mixes live MatchOdds."""
     global _prematch_last_matched, _prematch_last_opportunities
     global _prematch_last_back_lay, _prematch_back_lay_sig
+    global _prematch_last_cache_n
 
     if _betkanyon_prematch_worker is None and _orbit_prematch_worker is None:
         return
@@ -1642,7 +1678,11 @@ def _run_prematch_tick(bankroll, now_dt):
         for match in matches
         if getattr(match, "feed_type", "prematch") == "prematch"
     ]
-    matches, _dropped = _filter_prematch_stale(matches, now_dt)
+    matches, stale_dropped = _filter_prematch_stale(matches, now_dt)
+    bk_matches = [m for m in matches if m.bookmaker.lower() == "betkanyon"]
+    orbit_matches = [m for m in matches if m.bookmaker.lower() == "orbit"]
+    orbit_back = sum(1 for m in orbit_matches if (m.side or "").upper() == "BACK")
+    orbit_lay = sum(1 for m in orbit_matches if (m.side or "").upper() == "LAY")
     try:
         matched_events, opportunities = build_prematch_opportunities(
             matches, bankroll=bankroll
@@ -1666,14 +1706,33 @@ def _run_prematch_tick(bankroll, now_dt):
     matched_n = len(matched_events)
     arb_n = len(opportunities)
     back_lay_n = len(back_lay)
+    total_arbs = arb_n + back_lay_n
+    reason = _prematch_zero_reason(
+        len(bk_matches), len(orbit_matches), matched_n, stale_dropped, total_arbs
+    )
     if (
         matched_n != _prematch_last_matched
         or arb_n != _prematch_last_opportunities
         or back_lay_n != _prematch_last_back_lay
+        or stale_dropped
     ):
-        print(f"[MATCHER] prematch events matched: {matched_n}")
-        print(f"[ARBITRAGE] prematch BACK-vs-BACK opportunities: {arb_n}")
-        print(f"[BACK-LAY] prematch opportunities: {back_lay_n}")
+        print(
+            f"[BETKANYON PREMATCH] cycle matches={len(bk_matches)} "
+            f"unique={len({(m.home_team, m.away_team) for m in bk_matches})}"
+        )
+        print(
+            f"[ORBIT PREMATCH] cycle matches={len(orbit_matches)} "
+            f"BACK={orbit_back} LAY={orbit_lay} "
+            f"unique={len({(m.home_team, m.away_team) for m in orbit_matches})}"
+        )
+        print(
+            f"[MATCHER] matched={matched_n} stale_rejected={stale_dropped} "
+            f"bk={len(bk_matches)} orbit={len(orbit_matches)}"
+        )
+        print(
+            f"[ARB] BACK/LAY={back_lay_n} BACK/BACK={arb_n} "
+            f"TOTAL={total_arbs} reason={reason}"
+        )
     _prematch_last_matched = matched_n
     _prematch_last_opportunities = arb_n
     _prematch_last_back_lay = back_lay_n
@@ -1699,6 +1758,18 @@ def _run_prematch_tick(bankroll, now_dt):
     cache = serialize_prematch_cache(
         back_lay, opportunities, generated_at_dt=now_dt
     )
+    feed_gap = reason in {
+        "both_feeds_empty",
+        "betkanyon_empty",
+        "orbit_empty",
+    }
+    if feed_gap and not cache and _prematch_last_cache_n > 0:
+        print(
+            f"[ARB] cache kept ({_prematch_last_cache_n} last-good); "
+            f"this cycle is {reason}, not a genuine zero-arb book"
+        )
+        return
+    _prematch_last_cache_n = len(cache)
     _atomic_write_text(
         PREMATCH_CACHE_FILE,
         json.dumps(cache, indent=4, ensure_ascii=False),

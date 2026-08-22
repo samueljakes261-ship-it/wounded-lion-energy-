@@ -5,6 +5,8 @@ Does not modify engine/arbitrage_detector.py or engine/back_lay_detector.py.
 
 from datetime import datetime, timezone
 
+import pytest
+
 from engine.arbitrage_detector import ArbitrageDetector
 from engine.back_lay_detector import BackLayDetector
 from models.back_lay_opportunity import OPPORTUNITY_TYPE_BACK_LAY
@@ -17,7 +19,6 @@ from tests.test_orbit_adapter_sides import make_market
 NOW = datetime.now(timezone.utc)
 
 FORBIDDEN_BACK_LAY_API_KEYS = {
-    "profitPercentage",
     "impliedProbability",
     "roi",
     "guaranteedProfit",
@@ -86,6 +87,7 @@ def test_back_higher_than_lay_is_opportunity():
     assert opp.lay_odds == 3.50
     assert opp.arbitrage_team() == "Al Ittihad Kalba"
     assert opp.feed_type == "prematch"
+    assert opp.profit_percentage == pytest.approx((3.70 - 3.50) / (3.70 + 3.50) * 100)
 
 
 def test_away_opportunity_uses_away_team_name():
@@ -240,6 +242,8 @@ def test_back_lay_api_payload_omits_calculations():
     assert entry["opportunityType"] == "BACK_LAY"
     assert entry["back"]["side"] == "BACK"
     assert entry["lay"]["side"] == "LAY"
+    expected_pct = (3.70 - 3.50) / (3.70 + 3.50) * 100
+    assert entry["profitPercentage"] == round(expected_pct, 2)
     blob = str(entry)
     for key in FORBIDDEN_BACK_LAY_API_KEYS:
         assert key not in entry

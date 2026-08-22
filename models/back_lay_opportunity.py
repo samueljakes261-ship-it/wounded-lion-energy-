@@ -29,11 +29,9 @@ class BackLayOpportunity:
     lay_bookmaker: str
     lay_odds: float
 
-    # Kept for the live BackLayDetector's internal stake-split math.
-    # BACK-vs-LAY API cards must not expose this (or any other
-    # calculation). Default 0: the prematch detector does not compute
-    # it -- there is no exchange-commission configuration in this
-    # project, so profitability is the raw BACK > LAY test.
+    # Same closed-form as engine/back_lay_detector.py:
+    # (BACK - LAY) / (BACK + LAY) * 100. Detection stays BACK > LAY;
+    # this field is only exposed as profitPercentage on the card.
     profit_percentage: float = 0.0
 
     opportunity_type: str = OPPORTUNITY_TYPE_BACK_LAY
@@ -50,7 +48,14 @@ class BackLayOpportunity:
         return ""
 
     def to_api_dict(self) -> dict:
-        """UI payload: match, team, explicit BACK/LAY prices only."""
+        """UI payload: match, team, BACK/LAY prices, and existing %."""
+        pct = self.profit_percentage
+        if not pct and self.back_odds and self.lay_odds:
+            pct = (
+                (self.back_odds - self.lay_odds)
+                / (self.back_odds + self.lay_odds)
+                * 100
+            )
         return {
             "opportunityType": OPPORTUNITY_TYPE_BACK_LAY,
             "sport": self.sport,
@@ -61,6 +66,7 @@ class BackLayOpportunity:
             "awayTeam": self.away_team,
             "outcome": self.outcome,
             "arbitrageTeam": self.arbitrage_team(),
+            "profitPercentage": round(pct, 2),
             "back": {
                 "bookmaker": self.back_bookmaker,
                 "side": self.back_side or "BACK",

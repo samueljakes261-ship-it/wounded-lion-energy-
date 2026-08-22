@@ -66,7 +66,7 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     SOURCE.indexOf("backBackOpportunities.map")
   )
 
-  it("renders a dedicated BackLayCard with only match, team, and BACK/LAY prices", () => {
+  it("renders a dedicated BackLayCard with match, team, BACK/LAY prices, and percentage", () => {
     expect(SOURCE).toMatch(/function BackLayCard/)
     expect(backLayCard).toMatch(/matchLabel/)
     expect(backLayCard).toMatch(/arbitrageLabel/)
@@ -74,8 +74,9 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     expect(backLayCard).toMatch(/opportunity\.back\.side/)
     expect(backLayCard).toMatch(/opportunity\.lay\.bookmaker/)
     expect(backLayCard).toMatch(/opportunity\.lay\.side/)
+    expect(backLayCard).toMatch(/profitPercentage/)
     expect(backLayCard).not.toMatch(/stake/i)
-    expect(backLayCard).not.toMatch(/profit/i)
+    expect(backLayCard).not.toMatch(/guaranteedProfit/)
     expect(backLayCard).not.toMatch(/\broi\b/i)
     expect(backLayCard).not.toMatch(/liability/i)
     expect(backLayCard).not.toMatch(/implied/i)

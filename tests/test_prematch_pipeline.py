@@ -103,6 +103,50 @@ def test_known_prematch_arbitrage_and_stakes():
     ) < 0.01
 
 
+def test_incomplete_bk_cycle_keeps_missing_tournament_odds():
+    from parsers.betkanyon_prematch.feed import merge_incomplete_prematch_snapshot
+
+    previous = [
+        _odds("Betkanyon", "Alpha FC", "Beta FC", 2.0, 3.0, 4.0),
+        _odds("Betkanyon", "Gamma FC", "Delta FC", 2.2, 3.2, 4.2),
+    ]
+    previous[0].tournament_id = "1"
+    previous[1].tournament_id = "2"
+    incoming = [_odds("Betkanyon", "Alpha FC", "Beta FC", 2.5, 3.5, 4.5)]
+    incoming[0].tournament_id = "1"
+    merged = merge_incomplete_prematch_snapshot(
+        previous, incoming, {"1"}, ["1", "2", "3"]
+    )
+    by_id = {item.tournament_id: item for item in merged}
+    assert set(by_id) == {"1", "2"}
+    assert by_id["1"].home_odds == 2.5
+    assert by_id["2"].home_odds == 2.2
+
+
+def test_complete_bk_cycle_replaces_previous_snapshot():
+    from parsers.betkanyon_prematch.feed import merge_incomplete_prematch_snapshot
+
+    previous = [_odds("Betkanyon", "Alpha FC", "Beta FC", 2.0, 3.0, 4.0)]
+    previous[0].tournament_id = "1"
+    incoming = [_odds("Betkanyon", "Gamma FC", "Delta FC", 2.5, 3.5, 4.5)]
+    incoming[0].tournament_id = "2"
+    merged = merge_incomplete_prematch_snapshot(
+        previous, incoming, {"1", "2"}, ["1", "2"]
+    )
+    assert len(merged) == 1
+    assert merged[0].home_team == "Gamma FC"
+
+
+def test_zero_arb_reason_distinguishes_feed_gap_from_no_prices():
+    from collector import _prematch_zero_reason
+
+    assert _prematch_zero_reason(10, 10, 4, 0, 3) == "qualifying_arbs"
+    assert _prematch_zero_reason(0, 8, 0, 0, 0) == "betkanyon_empty"
+    assert _prematch_zero_reason(8, 0, 0, 0, 0) == "orbit_empty"
+    assert _prematch_zero_reason(8, 8, 0, 0, 0) == "matcher_no_pairs"
+    assert _prematch_zero_reason(8, 8, 4, 0, 0) == "no_qualifying_prices"
+
+
 def test_prematch_snapshot_stale_window_keeps_fresh_cycle():
     from datetime import timedelta
 
