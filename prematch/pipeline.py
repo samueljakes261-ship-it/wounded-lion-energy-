@@ -10,6 +10,8 @@ from engine.arbitrage_detector import ArbitrageDetector
 from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
 from engine.stake_calculator import StakeCalculator
 from models.arbitrage_opportunity import ArbitrageOpportunity
+from models.back_lay_opportunity import OPPORTUNITY_TYPE_BACK_BACK
+from prematch.back_lay import serialize_back_lay_opportunities
 from prematch.matcher import PrematchMatchFinder
 
 PREMATCH_CACHE_FILE = Path("cached_prematch_opportunities.json")
@@ -113,6 +115,7 @@ def serialize_opportunities(opportunities, generated_at_dt=None):
         best = result.best_odds
         cache.append(
             {
+                "opportunityType": OPPORTUNITY_TYPE_BACK_BACK,
                 "sport": event.sport,
                 "competition": event.competition,
                 "market": event.market,
@@ -153,3 +156,10 @@ def serialize_opportunities(opportunities, generated_at_dt=None):
             }
         )
     return cache
+
+
+def serialize_prematch_cache(back_lay_opportunities, back_back_opportunities, generated_at_dt=None):
+    """BACK-vs-LAY first, then unchanged BACK-vs-BACK cards."""
+    return serialize_back_lay_opportunities(back_lay_opportunities) + serialize_opportunities(
+        back_back_opportunities, generated_at_dt=generated_at_dt
+    )

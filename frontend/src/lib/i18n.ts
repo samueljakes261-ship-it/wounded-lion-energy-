@@ -26,6 +26,12 @@ export const translations = {
     expectedReturn: "Beklenen Getiri",
     guaranteedProfit: "Garantili Kâr",
     roi: "ROI",
+    backVsLay: "BACK vs LAY",
+    backVsBack: "BACK vs BACK",
+    backVsBackOpportunities: "BACK vs BACK FIRSATLARI",
+    matchLabel: "Maç",
+    arbitrageLabel: "Arbitraj",
+    noBackLay: "BACK vs LAY fırsatı bulunamadı.",
   },
   en: {
     title: "Wounded Lion Energy",
@@ -51,6 +57,12 @@ export const translations = {
     expectedReturn: "Expected Return",
     guaranteedProfit: "Guaranteed Profit",
     roi: "ROI",
+    backVsLay: "BACK vs LAY",
+    backVsBack: "BACK vs BACK",
+    backVsBackOpportunities: "BACK vs BACK OPPORTUNITIES",
+    matchLabel: "Match",
+    arbitrageLabel: "Arbitrage",
+    noBackLay: "No BACK vs LAY opportunities detected.",
   },
 } as const
 

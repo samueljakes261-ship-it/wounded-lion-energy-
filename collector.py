@@ -33,9 +33,10 @@ from prematch.pipeline import (
     PREMATCH_CACHE_FILE,
     PREMATCH_MAX_ODDS_AGE_SECONDS,
     build_prematch_opportunities,
-    serialize_opportunities,
+    serialize_prematch_cache,
     _filter_stale as _filter_prematch_stale,
 )
+from prematch.back_lay import find_prematch_back_lay
 
 
 CACHE_FILE = Path("cached_opportunities.json")
@@ -686,6 +687,8 @@ _betkanyon_prematch_worker: BetkanyonPrematchWorker | None = None
 _orbit_prematch_worker: OrbitPrematchWorker | None = None
 _prematch_last_matched = 0
 _prematch_last_opportunities = 0
+_prematch_last_back_lay = 0
+_prematch_back_lay_sig = None
 
 
 def _get_betkanyon_prematch_worker() -> BetkanyonPrematchWorker:
@@ -1108,20 +1111,11 @@ def _print_arbitrage_opportunity(opportunity: ArbitrageOpportunity):
 
 
 def _print_back_lay_opportunity(opportunity):
-    print()
-    print("=" * 60)
-    print("BACK-LAY HEDGE FOUND")
-    print("=" * 60)
-    print(f"Match: {opportunity.home_team} vs {opportunity.away_team}")
-    print(f"Competition: {opportunity.competition}")
-    print(f"Outcome: {opportunity.outcome}")
-    print()
-    print(f"BACK: {opportunity.back_bookmaker} @ {opportunity.back_odds}")
-    print(f"LAY : {opportunity.lay_bookmaker} @ {opportunity.lay_odds}")
-    print()
-    print(f"Guaranteed profit: {opportunity.profit_percentage:.2f}% of total stake")
-    print("=" * 60)
-    print()
+    print(f"[BACK-LAY] event={opportunity.home_team} vs {opportunity.away_team}")
+    print(f"[BACK-LAY] outcome={opportunity.outcome}")
+    print(f"[BACK-LAY] BACK {opportunity.back_bookmaker} @ {opportunity.back_odds}")
+    print(f"[BACK-LAY] LAY {opportunity.lay_bookmaker} @ {opportunity.lay_odds}")
+    print("[BACK-LAY] OPPORTUNITY")
 
 
 def _iso_dt(value) -> str | None:
@@ -1132,11 +1126,13 @@ def _iso_dt(value) -> str | None:
     return value.isoformat()
 
 
-def _write_cache(opportunities, generated_at_dt=None):
+def _write_cache(opportunities, generated_at_dt=None, back_lay_opportunities=None):
 
     generated_at_dt = generated_at_dt or datetime.now(timezone.utc)
 
     cache = []
+    for back_lay in back_lay_opportunities or []:
+        cache.append(back_lay.to_api_dict())
 
     for opportunity in opportunities:
 
@@ -1165,6 +1161,7 @@ def _write_cache(opportunities, generated_at_dt=None):
 
         cache.append(
             {
+                "opportunityType": "BACK_BACK",
                 "sport": event.sport,
                 "competition": event.competition,
                 "market": event.market,
@@ -1481,12 +1478,9 @@ async def collect_opportunities(bankroll=1000):
         )
 
     # --------------------------------------------------------
-    # Separate back-lay hedge detection (BACK on any bookmaker vs LAY
-    # on Orbit, same outcome) -- see engine/back_lay_detector.py for
-    # why this is intentionally NOT merged into the 3-way arbitrage
-    # formula above. Terminal-only for this V1 (not written to the
-    # cache/API/frontend, which only understand the 3-way
-    # ArbitrageOpportunity shape).
+    # Separate BACK-vs-LAY detection -- not merged into the 3-way
+    # BACK-vs-BACK formula. Written to the cache with
+    # opportunityType=BACK_LAY so the UI can render it first.
     # --------------------------------------------------------
 
     back_lay_opportunities = back_lay_detector.find(matches)
@@ -1536,8 +1530,9 @@ async def collect_opportunities(bankroll=1000):
     for opportunity in opportunities:
         _print_arbitrage_opportunity(opportunity)
 
-    for back_lay_opportunity in back_lay_opportunities:
-        _print_back_lay_opportunity(back_lay_opportunity)
+    if triggered:
+        for back_lay_opportunity in back_lay_opportunities:
+            _print_back_lay_opportunity(back_lay_opportunity)
 
     # --------------------------------------------------------
     # Cache: only rewrite when something actually changed (or on the
@@ -1546,7 +1541,11 @@ async def collect_opportunities(bankroll=1000):
     # --------------------------------------------------------
 
     if triggered or not CACHE_FILE.exists():
-        _write_cache(opportunities, generated_at_dt=now_dt)
+        _write_cache(
+            opportunities,
+            generated_at_dt=now_dt,
+            back_lay_opportunities=back_lay_opportunities,
+        )
 
     _run_prematch_tick(bankroll=bankroll, now_dt=now_dt)
 
@@ -1618,7 +1617,8 @@ def _maybe_print_prematch_panel():
     )
     print(
         f"[MATCHER] Matched: {_prematch_last_matched} "
-        f"| Verified arbs: {_prematch_last_opportunities}"
+        f"| Verified arbs: {_prematch_last_opportunities} "
+        f"| BACK-LAY: {_prematch_last_back_lay}"
     )
     print("=" * 50)
     print()
@@ -1627,6 +1627,7 @@ def _maybe_print_prematch_panel():
 def _run_prematch_tick(bankroll, now_dt):
     """Match/arbitrage prematch feeds only. Never mixes live MatchOdds."""
     global _prematch_last_matched, _prematch_last_opportunities
+    global _prematch_last_back_lay, _prematch_back_lay_sig
 
     if _betkanyon_prematch_worker is None and _orbit_prematch_worker is None:
         return
@@ -1653,15 +1654,51 @@ def _run_prematch_tick(bankroll, now_dt):
         )
         return
 
+    back_lay = []
+    try:
+        back_lay = find_prematch_back_lay(matches, log=False)
+    except Exception as exc:
+        print(
+            f"[BACK-LAY] detector failed ({type(exc).__name__}: {exc}); "
+            "BACK-vs-BACK unaffected"
+        )
+
     matched_n = len(matched_events)
     arb_n = len(opportunities)
-    if matched_n != _prematch_last_matched or arb_n != _prematch_last_opportunities:
+    back_lay_n = len(back_lay)
+    if (
+        matched_n != _prematch_last_matched
+        or arb_n != _prematch_last_opportunities
+        or back_lay_n != _prematch_last_back_lay
+    ):
         print(f"[MATCHER] prematch events matched: {matched_n}")
-        print(f"[ARBITRAGE] prematch opportunities: {arb_n}")
+        print(f"[ARBITRAGE] prematch BACK-vs-BACK opportunities: {arb_n}")
+        print(f"[BACK-LAY] prematch opportunities: {back_lay_n}")
     _prematch_last_matched = matched_n
     _prematch_last_opportunities = arb_n
+    _prematch_last_back_lay = back_lay_n
+    back_lay_sig = tuple(
+        sorted(
+            (
+                item.home_team,
+                item.away_team,
+                item.outcome,
+                item.back_bookmaker,
+                item.back_odds,
+                item.lay_bookmaker,
+                item.lay_odds,
+            )
+            for item in back_lay
+        )
+    )
+    if back_lay_sig != _prematch_back_lay_sig:
+        for item in back_lay:
+            _print_back_lay_opportunity(item)
+        _prematch_back_lay_sig = back_lay_sig
     _maybe_print_prematch_panel()
-    cache = serialize_opportunities(opportunities, generated_at_dt=now_dt)
+    cache = serialize_prematch_cache(
+        back_lay, opportunities, generated_at_dt=now_dt
+    )
     _atomic_write_text(
         PREMATCH_CACHE_FILE,
         json.dumps(cache, indent=4, ensure_ascii=False),

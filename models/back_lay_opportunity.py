@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 
 
+OPPORTUNITY_TYPE_BACK_BACK = "BACK_BACK"
+OPPORTUNITY_TYPE_BACK_LAY = "BACK_LAY"
+
+
 @dataclass
 class BackLayOpportunity:
     """
@@ -25,7 +29,46 @@ class BackLayOpportunity:
     lay_bookmaker: str
     lay_odds: float
 
-    # Guaranteed profit as a percentage of total stake across both
-    # legs, using the stake split that equalizes profit in both
-    # outcomes (see engine/back_lay_detector.py for the derivation).
-    profit_percentage: float
+    # Kept for the live BackLayDetector's internal stake-split math.
+    # BACK-vs-LAY API cards must not expose this (or any other
+    # calculation). Default 0: the prematch detector does not compute
+    # it -- there is no exchange-commission configuration in this
+    # project, so profitability is the raw BACK > LAY test.
+    profit_percentage: float = 0.0
+
+    opportunity_type: str = OPPORTUNITY_TYPE_BACK_LAY
+    feed_type: str = "live"
+    market: str = ""
+    back_side: str = "BACK"
+    lay_side: str = "LAY"
+
+    def arbitrage_team(self) -> str:
+        if self.outcome == "HOME":
+            return self.home_team
+        if self.outcome == "AWAY":
+            return self.away_team
+        return ""
+
+    def to_api_dict(self) -> dict:
+        """UI payload: match, team, explicit BACK/LAY prices only."""
+        return {
+            "opportunityType": OPPORTUNITY_TYPE_BACK_LAY,
+            "sport": self.sport,
+            "competition": self.competition,
+            "market": self.market,
+            "feedType": self.feed_type,
+            "homeTeam": self.home_team,
+            "awayTeam": self.away_team,
+            "outcome": self.outcome,
+            "arbitrageTeam": self.arbitrage_team(),
+            "back": {
+                "bookmaker": self.back_bookmaker,
+                "side": self.back_side or "BACK",
+                "odds": self.back_odds,
+            },
+            "lay": {
+                "bookmaker": self.lay_bookmaker,
+                "side": self.lay_side or "LAY",
+                "odds": self.lay_odds,
+            },
+        }

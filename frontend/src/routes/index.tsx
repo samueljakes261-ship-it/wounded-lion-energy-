@@ -40,6 +40,7 @@ type Leg = {
 }
 
 type Opportunity = {
+  opportunityType?: "BACK_BACK" | string
   competition: string
   homeTeam: string
   awayTeam: string
@@ -52,6 +53,30 @@ type Opportunity = {
   home: Leg
   draw: Leg
   away: Leg
+}
+
+type BackLayPrice = {
+  bookmaker: string
+  side: string
+  odds: number
+}
+
+type BackLayOpportunity = {
+  opportunityType: "BACK_LAY"
+  homeTeam: string
+  awayTeam: string
+  outcome: string
+  arbitrageTeam: string
+  back: BackLayPrice
+  lay: BackLayPrice
+}
+
+type ApiOpportunity = Opportunity | BackLayOpportunity
+
+function isBackLayOpportunity(
+  opportunity: ApiOpportunity
+): opportunity is BackLayOpportunity {
+  return opportunity.opportunityType === "BACK_LAY"
 }
 
 // One collector's health, independent of opportunity count -- see
@@ -307,6 +332,57 @@ function StakeRow({
   )
 }
 
+function formatOdds(odds: number): string {
+  return odds.toFixed(2)
+}
+
+function BackLayCard({
+  opportunity,
+  lang,
+}: {
+  opportunity: BackLayOpportunity
+  lang: Lang
+}) {
+  const teamName =
+    opportunity.outcome === "DRAW"
+      ? t(lang, "draw")
+      : opportunity.arbitrageTeam || opportunity.homeTeam
+
+  return (
+    <Card
+      data-testid="back-lay-card"
+      className="bg-slate-900 border-slate-800 hover:border-cyan-500/50 transition-colors duration-300"
+    >
+      <CardHeader className="pb-3">
+        <div className="text-xs font-semibold text-slate-500 tracking-wide">
+          {t(lang, "matchLabel")}
+        </div>
+        <CardTitle className="text-lg">
+          {opportunity.homeTeam} vs {opportunity.awayTeam}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
+        <div>
+          <div className="text-xs font-semibold text-slate-500 tracking-wide">
+            {t(lang, "arbitrageLabel")}
+          </div>
+          <div className="text-base text-slate-100 mt-0.5">{teamName}</div>
+        </div>
+        <div className="text-sm text-slate-200 space-y-1">
+          <div>
+            {opportunity.back.bookmaker} — {opportunity.back.side} @{" "}
+            {formatOdds(opportunity.back.odds)}
+          </div>
+          <div>
+            {opportunity.lay.bookmaker} — {opportunity.lay.side} @{" "}
+            {formatOdds(opportunity.lay.odds)}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function OpportunityCard({
   opportunity,
   lang,
@@ -404,7 +480,7 @@ function OpportunityCard({
 }
 
 function Dashboard() {
-  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [opportunities, setOpportunities] = useState<ApiOpportunity[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -412,6 +488,7 @@ function Dashboard() {
     useState<CollectorStatusResponse | null>(null)
   const [lang, setLang] = useState<Lang>("tr")
   const [mode, setMode] = useState<FeedMode>("live")
+  const [backBackOpen, setBackBackOpen] = useState(false)
 
   const loadCollectorStatus = async () => {
     try {
@@ -488,6 +565,11 @@ function Dashboard() {
       setMode("prematch")
     }
   }, [collectorStatus?.engineMode])
+
+  const backLayOpportunities = opportunities.filter(isBackLayOpportunity)
+  const backBackOpportunities = opportunities.filter(
+    (opportunity): opportunity is Opportunity => !isBackLayOpportunity(opportunity)
+  )
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -606,10 +688,59 @@ function Dashboard() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {opportunities.map((opportunity, index) => (
-              <OpportunityCard key={index} opportunity={opportunity} lang={lang} />
-            ))}
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-wide text-slate-400">
+                {t(lang, "backVsLay")}
+              </h2>
+              {backLayOpportunities.length === 0 ? (
+                <div className="text-sm text-slate-500">{t(lang, "noBackLay")}</div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {backLayOpportunities.map((opportunity, index) => (
+                    <BackLayCard
+                      key={`back-lay-${index}`}
+                      opportunity={opportunity}
+                      lang={lang}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {backBackOpportunities.length > 0 ? (
+              <Collapsible
+                open={backBackOpen}
+                onOpenChange={setBackBackOpen}
+                defaultOpen={false}
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    data-testid="back-back-toggle"
+                    className="flex items-center gap-2 text-sm font-semibold tracking-wide text-slate-400 hover:text-slate-200"
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform duration-200 ${
+                        backBackOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                    {t(lang, "backVsBackOpportunities")}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-3">
+                    {backBackOpportunities.map((opportunity, index) => (
+                      <OpportunityCard
+                        key={`back-back-${index}`}
+                        opportunity={opportunity}
+                        lang={lang}
+                      />
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            ) : null}
           </div>
         )}
       </div>
