@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -23,6 +24,7 @@ from parser import (
     extract_1x2,
     inspect_payload,
     parse_event,
+    reject_reason,
     unwrap_events,
     validate_against_raw,
 )
@@ -249,7 +251,11 @@ def football_parse_report(payload) -> dict:
     parsed = []
     checks = []
     failures = 0
+    rejected = Counter()
     for item in events:
+        reason = reject_reason(item)
+        if reason:
+            rejected[reason] += 1
         match = parse_event(item)
         if match is None:
             continue
@@ -273,6 +279,7 @@ def football_parse_report(payload) -> dict:
             failures += 1
     return {
         "inventory": inventory,
+        "rejected": dict(rejected),
         "football_1x2": len(parsed),
         "validation_failures": failures,
         "validation": "FAIL" if failures else ("PASS" if parsed else "FAIL"),
@@ -290,6 +297,8 @@ def print_parser_samples(report: dict) -> None:
     if report["inventory"].get("type_values"):
         log(f"type values: {report['inventory']['type_values']}")
     log(f"Football 1X2 events: {report['football_1x2']}")
+    if report.get("rejected"):
+        log(f"Rejected events: {report['rejected']}")
     for match in report["parsed"][:8]:
         print()
         print(f"[KOLAY90 PARSER]")
@@ -465,6 +474,7 @@ def run() -> dict:
             "football_1x2": parse_report["football_1x2"],
             "validation": parse_report["validation"],
             "validation_failures": parse_report["validation_failures"],
+            "rejected": parse_report.get("rejected"),
             "sample": [
                 {
                     "home": m.home_team,

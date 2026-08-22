@@ -142,6 +142,24 @@ def extract_1x2(item: dict) -> tuple[str, str, str] | None:
     return str(home), str(draw), str(away)
 
 
+def reject_reason(item: dict) -> str | None:
+    """Why this event is not a football prematch 1X2. None if accepted."""
+    if not is_football(item):
+        label = _sport_label(item)
+        if label is None:
+            return "no_explicit_sport_field"
+        return f"not_football:{label}"
+    if not is_prematch(item):
+        return "not_prematch"
+    if extract_1x2(item) is None:
+        return "missing_1x2_keys"
+    if not item.get("ev_sahibi") or not item.get("deplasman"):
+        return "missing_teams"
+    if _start_time(item) is None:
+        return "missing_start_time"
+    return None
+
+
 def parse_event(item: dict, collected_at: datetime | None = None) -> ExperimentMatchOdds | None:
     if not is_football(item):
         return None

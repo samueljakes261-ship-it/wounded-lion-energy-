@@ -91,3 +91,27 @@ def test_payload_list_parse_count():
     parsed = parse_payload([FOOTBALL_EVENT, BASKETBALL_EVENT, AMBIGUOUS_EVENT])
     assert len(parsed) == 1
     assert parsed[0].event_id == "evt-bocholt"
+
+
+def test_ten_events_raw_vs_parsed():
+    events = []
+    for i in range(10):
+        home = f"{1.50 + i * 0.11:.2f}"
+        draw = f"{3.10 + i * 0.07:.2f}"
+        away = f"{4.00 + i * 0.13:.2f}"
+        events.append(
+            {
+                **FOOTBALL_EVENT,
+                "_id": f"evt-{i}",
+                "ev_sahibi": f"Home {i}",
+                "deplasman": f"Away {i}",
+                "oranlar": {"1": home, "0": draw, "2": away},
+            }
+        )
+    parsed = parse_payload(events)
+    assert len(parsed) == 10
+    for item, match in zip(events, parsed):
+        assert validate_against_raw(item, match) == []
+        assert match.home_back == float(item["oranlar"]["1"])
+        assert match.draw_back == float(item["oranlar"]["0"])
+        assert match.away_back == float(item["oranlar"]["2"])

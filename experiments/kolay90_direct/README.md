@@ -27,6 +27,11 @@ A visible Chrome window opens using
 
 Do not bypass Cloudflare. This experiment does not use ZenRows.
 
+A captured browser request used `GET /service/getMaclar` with
+`Accept`, `User-Agent`, and `X-Requested-With: XMLHttpRequest`.
+Cookie **values** from any live session are never stored in this repo.
+The runner reads cookies only from the persistent browser at runtime.
+
 ## Session security
 
 Cookie **names** such as `bet_cms` and `cf_clearance` may be discussed.

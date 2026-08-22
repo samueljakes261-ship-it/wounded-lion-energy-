@@ -97,3 +97,6 @@ experiments/betkanyon_prematch_direct/output/
 # Isolated kolay90 experiment (browser profile + session dumps)
 experiments/kolay90_direct/browser_profile/
 experiments/kolay90_direct/output/
+
+# Isolated OnWin direct-API experiment (may contain session diagnostics)
+experiments/onwin_direct_api/output/
