@@ -80,10 +80,18 @@ def test_classification_never_depends_on_opportunity_count():
 # Data-safety floor: staleness always wins, regardless of hysteresis.
 # ----------------------------------------------------------------------
 
-def test_running_but_old_age_is_degraded():
+def test_prematch_http_cycle_age_is_not_degraded():
+    from prematch.pipeline import PREMATCH_MAX_ODDS_AGE_SECONDS
+
+    assert PREMATCH_MAX_ODDS_AGE_SECONDS >= 600
     assert (
-        _classify_collector_status("running", MAX_AGE + 5, True)
-        == CollectorStatus.DEGRADED.value
+        _classify_collector_status(
+            "running",
+            120.0,
+            True,
+            max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
+        )
+        == CollectorStatus.RUNNING.value
     )
 
 

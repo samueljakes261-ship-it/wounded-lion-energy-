@@ -138,6 +138,10 @@ class OrbitPrematchFeed:
         except Exception:
             if not ws_task.done():
                 ws_task.cancel()
+            try:
+                await ws_task
+            except (asyncio.CancelledError, Exception):
+                pass
             raise
         print("[ORBIT PREMATCH] websocket connected")
         added, _skipped = await self._ingest_markets(first_markets)

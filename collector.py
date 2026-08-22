@@ -31,6 +31,7 @@ from parsers.orbit_prematch.worker import OrbitPrematchWorker
 from prematch.mode import engine_mode_label, is_prematch_only
 from prematch.pipeline import (
     PREMATCH_CACHE_FILE,
+    PREMATCH_MAX_ODDS_AGE_SECONDS,
     build_prematch_opportunities,
     serialize_opportunities,
     _filter_stale as _filter_prematch_stale,
@@ -141,6 +142,7 @@ def _classify_collector_status(
     consecutive_failures: int = 0,
     consecutive_successes: int = 0,
     reconnect_count: int = 0,
+    max_age=None,
 ) -> str:
     """
     Maps one worker's own internal state onto the collector health
@@ -194,7 +196,8 @@ def _classify_collector_status(
     # Data-safety floor: no amount of hysteresis can hide genuinely
     # stale data -- this check is unconditional and always wins,
     # regardless of raw_status or failure/success counts.
-    if age is not None and age > MAX_ODDS_AGE_SECONDS:
+    stale_after = MAX_ODDS_AGE_SECONDS if max_age is None else max_age
+    if age is not None and age > stale_after:
         return CollectorStatus.DEGRADED.value
 
     # Sustained-failure floor: enough CONSECUTIVE failures in a row is
@@ -1694,7 +1697,7 @@ def _split_error(error: str | None) -> tuple[str | None, str | None]:
     return None, error
 
 
-def _collector_snapshot(name, raw_status, age, alive, status_dict, now_dt):
+def _collector_snapshot(name, raw_status, age, alive, status_dict, now_dt, max_age=None):
     consecutive_failures = status_dict.get("consecutive_failures", 0) or 0
     consecutive_successes = status_dict.get("consecutive_successes", 0) or 0
     reconnect_count = status_dict.get("reconnect_count", 0) or 0
@@ -1715,6 +1718,7 @@ def _collector_snapshot(name, raw_status, age, alive, status_dict, now_dt):
             consecutive_failures=consecutive_failures,
             consecutive_successes=consecutive_successes,
             reconnect_count=reconnect_count,
+            max_age=max_age,
         ),
         "rawStatus": raw_status,
         "workerAlive": bool(alive),
@@ -1823,6 +1827,7 @@ def _write_status(
                 ),
                 bk_pm_status,
                 now_dt,
+                max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
             ),
             "orbit_prematch": _collector_snapshot(
                 "Orbit Prematch",
@@ -1835,6 +1840,7 @@ def _write_status(
                 ),
                 orbit_pm_status,
                 now_dt,
+                max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
             ),
         },
     }

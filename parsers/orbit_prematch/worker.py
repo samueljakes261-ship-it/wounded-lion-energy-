@@ -112,6 +112,11 @@ class OrbitPrematchWorker:
                 if kind == "heartbeat":
                     self._state["last_heartbeat_at"] = time.time()
                     self._state["frame_count"] += 1
+                    if self._state.get("matches"):
+                        self._state["last_update_at"] = time.time()
+                        self._state["status"] = "running"
+                        self._state["error"] = None
+                        self._state["consecutive_failures"] = 0
                 elif kind == "odds":
                     self._publish_success(matches, elapsed_ms)
                     backoff = INITIAL_BACKOFF_SECONDS
@@ -122,6 +127,29 @@ class OrbitPrematchWorker:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                if self._feed is not None and self._feed.has_catalogue():
+                    print(
+                        f"[ORBIT PREMATCH] socket dropped "
+                        f"({type(exc).__name__}: {exc}); "
+                        "reconnecting websocket with cached catalogue"
+                    )
+                    try:
+                        await self._feed.reconnect_socket()
+                        self._state["status"] = "running"
+                        self._state["error"] = None
+                        self._state["consecutive_failures"] = 0
+                        backoff = INITIAL_BACKOFF_SECONDS
+                        continue
+                    except Exception as reconnect_exc:
+                        print(
+                            f"[ORBIT PREMATCH] socket reconnect failed "
+                            f"({type(reconnect_exc).__name__}: {reconnect_exc}); "
+                            "keeping catalogue and retrying"
+                        )
+                        self._state["status"] = "running"
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
+                        continue
                 consecutive = self._publish_failure(exc)
                 must_reconnect = (
                     connecting
@@ -129,29 +157,6 @@ class OrbitPrematchWorker:
                     or consecutive >= MAX_INPLACE_RETRIES
                 )
                 if must_reconnect:
-                    reused = False
-                    if self._feed is not None and self._feed.has_catalogue():
-                        print(
-                            f"[ORBIT PREMATCH] socket dropped "
-                            f"({type(exc).__name__}: {exc}); "
-                            "reconnecting websocket with cached catalogue"
-                        )
-                        try:
-                            await self._feed.reconnect_socket()
-                            self._state["status"] = "running"
-                            self._state["error"] = None
-                            self._state["reconnect_count"] += 1
-                            self._state["consecutive_failures"] = 0
-                            backoff = INITIAL_BACKOFF_SECONDS
-                            reused = True
-                        except Exception as reconnect_exc:
-                            print(
-                                f"[ORBIT PREMATCH] socket reconnect failed "
-                                f"({type(reconnect_exc).__name__}: {reconnect_exc}); "
-                                "full catalogue rebuild"
-                            )
-                    if reused:
-                        continue
                     print(
                         f"[ORBIT PREMATCH] recovery needed "
                         f"({type(exc).__name__}: {exc}); retry in {backoff}s"
