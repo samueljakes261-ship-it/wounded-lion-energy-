@@ -5,8 +5,16 @@ modify the production OnWin persistent feed (`parsers/onwin/`).
 
 ## Question
 
-After a normal Playwright Chromium session loads OnWin, can
-`get_main_line.erisgaming` be obtained **without** ZenRows CDP/API?
+After a **normal installed Google Chrome** session loads OnWin (matching the
+captured request *shape*: origin `onwin4511.com`, `get_main_line` URL,
+`content-type: application/json`, plus dynamically minted `x-token` /
+`x-message-metadata`), can that API response be obtained **without**
+ZenRows CDP/API?
+
+The supplied browser cURL is treated as **shape evidence only**.
+
+Captured `x-token` / `x-message-metadata` **values are never** copied into
+source, env files, logs, or git.
 
 A negative result is a valid result.
 
@@ -40,9 +48,13 @@ Optional environment:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ONWIN_EXPERIMENT_PAGE` | production sportsbook soccer URL | First navigation target |
+| `ONWIN_EXPERIMENT_PAGE` | `https://onwin4511.com/sportsbook/live/main-line/soccer` | First navigation target |
 | `ONWIN_EXPERIMENT_HEADLESS` | `0` (headed, a normal window) | Set `1` for headless |
 | `ONWIN_EXPERIMENT_TIMEOUT` | `180` | Seconds to wait for `get_main_line` |
+
+The experiment prefers the system's Google Chrome (`channel="chrome"`) so
+the session matches the capture (Chrome 151). It falls back to Playwright
+Chromium if Chrome is unavailable. It does **not** replay captured tokens.
 
 Output is written under `experiments/onwin_direct_api/output/` (gitignored).
 Logs redact `x-token`, `x-message-metadata`, cookies, and similar values.

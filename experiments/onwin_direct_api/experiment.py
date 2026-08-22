@@ -23,11 +23,50 @@ import requests
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = Path(__file__).resolve().parent / "output"
 
-# Same public sportsbook path the production feed uses. Domain numbers
-# rotate; override with ONWIN_EXPERIMENT_PAGE if this host has moved.
-DEFAULT_PAGE = "https://onwin4505.com/sportsbook/live/main-line/soccer"
+# Same public sportsbook path observed in the user's browser capture.
+# Domain numbers rotate; the capture origin was onwin4511.com.
+DEFAULT_PAGE = "https://onwin4511.com/sportsbook/live/main-line/soccer"
 TARGET = "get_main_line.erisgaming"
 GAP_TARGET = "get_main_line_gap.erisgaming"
+
+# Request SHAPE from a real-browser capture. Token VALUES from that
+# capture are intentionally omitted — they are session-specific and
+# must be minted fresh by this experiment's own browser session.
+CAPTURED_SHAPE = {
+    "url": (
+        "https://api-onwin-tr--prd--sb.538.lol/"
+        "frontserver-erisgaming__api/rpc/"
+        "sumstats.frontserver.command.get_main_line.erisgaming"
+    ),
+    "origin": "https://onwin4511.com",
+    "content_type": "application/json",
+    "accept": "application/json",
+    "accept_language": "en-US,en;q=0.9",
+    "user_agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/151.0.0.0 Safari/537.36"
+    ),
+    "header_names": [
+        "accept",
+        "accept-language",
+        "content-type",
+        "origin",
+        "priority",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "sec-fetch-dest",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "user-agent",
+        "x-message-metadata",
+        "x-token",
+    ],
+    # The supplied cURL had no --data / -d body, so curl's default is GET.
+    "curl_had_body": False,
+    "sensitive_header_names": ["x-token", "x-message-metadata"],
+}
 
 # Diagnostic-only football sport id, copied from public payload shape.
 # Production parser is NOT imported.
@@ -112,7 +151,10 @@ def looks_like_interstitial(title: str | None, host: str | None) -> bool:
 
 
 def looks_like_challenge(status: int | None, content_type: str | None, text: str | None) -> bool:
-    blob = f"{content_type or ''} {(text or '')[:800]}".lower()
+    ct = (content_type or "").lower()
+    blob = f"{ct} {(text or '')[:800]}".lower()
+    if status in (401, 403, 429, 503) and "text/html" in ct:
+        return True
     if status in (401, 403, 429, 503):
         if any(tok in blob for tok in ("cloudflare", "cf-ray", "captcha", "challenge", "attention required")):
             return True
@@ -204,6 +246,11 @@ def classify(report: dict) -> str:
     test_a = report.get("test_a_browser_fetch") or {}
     test_b = report.get("test_b_required_state") or {}
     test_c = report.get("test_c_standalone_http") or {}
+    shape_probes = ((report.get("shape_only_http") or {}).get("probes")) or []
+    shape_ok = any(
+        p.get("status") == 200 and p.get("appears_json") for p in shape_probes
+    )
+    shape_authish = any(p.get("status") in (401, 403) and not p.get("looks_like_challenge") for p in shape_probes)
 
     page_loaded = bool(browser.get("page_loaded"))
     observed_ok = observed.get("observed") is True
@@ -213,12 +260,19 @@ def classify(report: dict) -> str:
     a_ok = a_status == 200 and bool(test_a.get("appears_json"))
     c_ok = c_status == 200 and bool(test_c.get("appears_json"))
 
+    if shape_ok and not observed_ok:
+        return "DIRECT_ACCESS_WORKS"
+
     if not page_loaded and not observed_ok:
+        if shape_authish:
+            return "DIRECT_ACCESS_REQUIRES_SESSION_METADATA"
         if browser.get("error"):
             return "INCONCLUSIVE"
         return "DIRECT_ACCESS_REQUIRES_ZENROWS"
 
     if not observed_ok:
+        if shape_authish:
+            return "DIRECT_ACCESS_REQUIRES_SESSION_METADATA"
         return "DIRECT_ACCESS_REQUIRES_ZENROWS"
 
     if browser_status not in (None, 200) and not a_ok:
@@ -257,11 +311,11 @@ def situation_note(label: str, report: dict | None = None) -> str:
     interstitial = bool(browser.get("cloudflare_interstitial"))
     if label == "DIRECT_ACCESS_REQUIRES_ZENROWS" and interstitial:
         return (
-            "C: a normal local Chromium session was held at a Cloudflare "
+            "C: a normal local Chrome/Chromium session was held at a Cloudflare "
             "'Just a moment...' interstitial. get_main_line was never requested. "
             "This does not prove the API itself only works through ZenRows (B); "
             "it shows this browser did not establish the session the production "
-            "ZenRows path apparently does."
+            "ZenRows path apparently does. Captured cURL token values were not replayed."
         )
     if label == "DIRECT_ACCESS_REQUIRES_ZENROWS" and "never requested" in failure:
         return (
@@ -477,6 +531,99 @@ def slim_fetch_result(raw: dict) -> dict:
     return result
 
 
+def shape_only_headers() -> dict:
+    """Non-secret headers from the captured request shape. No tokens."""
+    return {
+        "accept": CAPTURED_SHAPE["accept"],
+        "accept-language": CAPTURED_SHAPE["accept_language"],
+        "content-type": CAPTURED_SHAPE["content_type"],
+        "origin": CAPTURED_SHAPE["origin"],
+        "user-agent": CAPTURED_SHAPE["user_agent"],
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "cross-site",
+    }
+
+
+def probe_api_without_session() -> dict:
+    """Call the captured URL with shape-only headers (no tokens, no cookies).
+
+    Distinguishes 'API is open' from 'API needs the session metadata the
+    browser minting x-token / x-message-metadata would provide'.
+    """
+    url = CAPTURED_SHAPE["url"]
+    headers = shape_only_headers()
+    results = []
+    for method, body in (("GET", None), ("POST", "{}")):
+        started = time.perf_counter()
+        try:
+            session = requests.Session()
+            session.trust_env = False
+            response = session.request(
+                method,
+                url,
+                headers=headers,
+                data=body,
+                timeout=30,
+            )
+            preview = ""
+            try:
+                preview = (response.content or b"")[:400].decode("utf-8", "replace")
+            except Exception:
+                preview = ""
+            summary = summarize_json_body(response.content)
+            row = {
+                "method": method,
+                "status": response.status_code,
+                "content_type": response.headers.get("content-type"),
+                "response_bytes": len(response.content or b""),
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "looks_like_challenge": looks_like_challenge(
+                    response.status_code, response.headers.get("content-type"), preview
+                ),
+                "used_captured_tokens": False,
+                "used_cookies": False,
+                **summary,
+            }
+        except Exception as exc:
+            row = {
+                "method": method,
+                "status": None,
+                "error": f"{type(exc).__name__}: {exc}",
+                "used_captured_tokens": False,
+                "used_cookies": False,
+            }
+        results.append(row)
+        print(
+            f"  shape-only {method}: status={row.get('status')} "
+            f"bytes={row.get('response_bytes')} "
+            f"challenge={row.get('looks_like_challenge')} "
+            f"error={row.get('error')}"
+        )
+    return {
+        "url_host": urlsplit(url).hostname,
+        "url_path": urlsplit(url).path,
+        "tokens_sent": False,
+        "probes": results,
+    }
+
+
+def launch_browser(playwright, headless: bool):
+    """Prefer the installed Google Chrome (the capture was Chrome 151).
+
+    This is a normal browser launch, not a Cloudflare bypass.
+    """
+    try:
+        browser = playwright.chromium.launch(channel="chrome", headless=headless)
+        return browser, "system_chrome"
+    except Exception as chrome_exc:
+        browser = playwright.chromium.launch(headless=headless)
+        return browser, (
+            "playwright_chromium "
+            f"(system Chrome unavailable: {type(chrome_exc).__name__})"
+        )
+
+
 def standalone_http(url: str, method: str, headers: dict, post_data: str | None, cookies: list[dict]) -> dict:
     session = requests.Session()
     session.trust_env = False
@@ -499,7 +646,7 @@ def standalone_http(url: str, method: str, headers: dict, post_data: str | None,
     started = time.perf_counter()
     try:
         response = session.request(
-            method or "POST",
+            method or "GET",
             url,
             headers=send_headers,
             data=post_data,
@@ -525,7 +672,9 @@ def standalone_http(url: str, method: str, headers: dict, post_data: str | None,
         "response_bytes": len(body),
         "latency_ms": elapsed_ms,
         "cookie_count": len(cookies),
-        "looks_like_challenge": looks_like_challenge(response.status_code, response.headers.get("content-type"), preview),
+        "looks_like_challenge": looks_like_challenge(
+            response.status_code, response.headers.get("content-type"), preview
+        ),
         **summary,
     }
 
@@ -573,11 +722,22 @@ def run() -> dict:
         "zenrows_used": False,
         "proxy_used": False,
         "production_code_imported": False,
+        "captured_tokens_hardcoded": False,
         "page_url": page_url,
         "headless": headless,
         "timeout_s": timeout_s,
+        "captured_shape": {
+            "url_host": urlsplit(CAPTURED_SHAPE["url"]).hostname,
+            "url_path": urlsplit(CAPTURED_SHAPE["url"]).path,
+            "origin": CAPTURED_SHAPE["origin"],
+            "content_type": CAPTURED_SHAPE["content_type"],
+            "header_names": CAPTURED_SHAPE["header_names"],
+            "curl_had_body": CAPTURED_SHAPE["curl_had_body"],
+            "sensitive_headers_named_not_valued": CAPTURED_SHAPE["sensitive_header_names"],
+        },
         "browser": {},
         "observed_request": {"observed": False},
+        "shape_only_http": None,
         "test_a_browser_fetch": None,
         "test_b_required_state": None,
         "test_c_standalone_http": None,
@@ -593,6 +753,10 @@ def run() -> dict:
     print(f"Started {_now()}")
     print(f"Page: {page_url}")
     print(f"Headless: {headless}  timeout={timeout_s}s")
+    print("Captured token values: NOT used (fresh session only)")
+    print()
+    print("SHAPE-ONLY HTTP (no tokens, no cookies, no ZenRows)")
+    report["shape_only_http"] = probe_api_without_session()
     print()
 
     try:
@@ -604,7 +768,7 @@ def run() -> dict:
         report["failure"] = "playwright is not importable in this environment"
         return report
 
-    box = {"req": None, "finished": False}
+    box = {"req": None, "finished": False, "other_api": []}
     browser = None
     context = None
 
@@ -620,24 +784,47 @@ def run() -> dict:
 
     try:
         try:
-            browser = playwright.chromium.launch(headless=headless)
+            browser, launch_mode = launch_browser(playwright, headless)
         except Exception as exc:
             report["browser"] = {
                 "page_loaded": False,
                 "error": f"chromium_launch: {type(exc).__name__}: {exc}",
             }
-            report["failure"] = "could not launch local Chromium"
-            report["classification"] = "INCONCLUSIVE"
-            report["situation"] = situation_note("INCONCLUSIVE", report)
+            report["failure"] = "could not launch local Chrome/Chromium"
+            report["classification"] = classify(report)
+            report["situation"] = situation_note(report["classification"], report)
             return report
+        print(f"Browser launch: {launch_mode}")
 
         context = browser.new_context(
-            locale="tr-TR",
+            locale="en-US",
             viewport={"width": 1400, "height": 900},
+            user_agent=CAPTURED_SHAPE["user_agent"],
+            extra_http_headers={
+                "accept-language": CAPTURED_SHAPE["accept_language"],
+            },
         )
         page = context.new_page()
 
+        def _note_api(request):
+            url = request.url or ""
+            lower = url.lower()
+            if not any(tok in lower for tok in ("erisgaming", "api-onwin", "/rpc/")):
+                return
+            if len(box["other_api"]) >= 40:
+                return
+            parts = urlsplit(url)
+            box["other_api"].append(
+                {
+                    "method": request.method,
+                    "host": parts.hostname,
+                    "path": parts.path,
+                    "is_get_main_line": _is_target_url(url),
+                }
+            )
+
         def on_request(request):
+            _note_api(request)
             if not _is_target_url(request.url):
                 return
             if box["req"] is None:
@@ -671,6 +858,7 @@ def run() -> dict:
         page_loaded = bool(final_url) and not final_url.startswith("chrome-error")
         report["browser"] = {
             "page_loaded": page_loaded,
+            "launch_mode": launch_mode,
             "final_url_host": urlsplit(final_url).hostname,
             "final_url_path": urlsplit(final_url).path,
             "title": title[:120],
@@ -682,15 +870,50 @@ def run() -> dict:
         print(f"Browser page loaded: {'yes' if page_loaded else 'no'}")
         print(f"  host={report['browser']['final_url_host']} title={title[:80]!r}")
         if report["browser"]["cloudflare_interstitial"]:
-            print("  Cloudflare interstitial suspected (page title).")
+            print("  Cloudflare interstitial suspected (page title). Waiting for it to clear...")
 
         print(f"Waiting up to {timeout_s}s for {TARGET} ...")
         deadline = time.time() + timeout_s
+        interstitial_cleared_at = None
         while time.time() < deadline and not box["finished"]:
             page.wait_for_timeout(250)
+            try:
+                current_title = page.title()
+            except Exception:
+                current_title = title
+            if looks_like_interstitial(current_title, None):
+                report["browser"]["cloudflare_interstitial"] = True
+            elif report["browser"].get("cloudflare_interstitial") and interstitial_cleared_at is None:
+                interstitial_cleared_at = _now()
+                report["browser"]["interstitial_cleared"] = True
+                report["browser"]["title"] = current_title[:120]
+                print(f"  Interstitial cleared. title={current_title[:80]!r}")
+
+        if interstitial_cleared_at and not box["finished"]:
+            extra = timeout_s
+            print(f"  Waiting an extra {extra}s after interstitial for the sportsbook app...")
+            extra_deadline = time.time() + extra
+            while time.time() < extra_deadline and not box["finished"]:
+                page.wait_for_timeout(250)
+        report["browser"]["title_after_wait"] = ""
+        try:
+            report["browser"]["title_after_wait"] = page.title()[:120]
+            report["browser"]["final_url_host"] = urlsplit(page.url).hostname
+            report["browser"]["final_url_path"] = urlsplit(page.url).path
+        except Exception:
+            pass
+        report["browser"]["cloudflare_interstitial"] = looks_like_interstitial(
+            report["browser"].get("title_after_wait") or report["browser"].get("title"),
+            report["browser"].get("final_url_host"),
+        ) and interstitial_cleared_at is None
 
         observed_ok = box["finished"] and box["req"] is not None
         print(f"get_main_line observed: {'yes' if observed_ok else 'no'}")
+        report["browser"]["other_api_calls"] = box["other_api"]
+        if box["other_api"]:
+            print(f"  other OnWin API/RPC paths seen: {len(box['other_api'])}")
+            for row in box["other_api"][:12]:
+                print(f"    {row.get('method')} {row.get('host')}{row.get('path')}")
 
         if not observed_ok:
             report["observed_request"] = {
@@ -735,7 +958,7 @@ def run() -> dict:
 
         headers = req.get("headers") or {}
         url = req.get("url")
-        method = req.get("method") or "POST"
+        method = req.get("method") or "GET"
         post_data = req.get("post_data")
         cookies = context.cookies()
         report["browser"]["cookie_count"] = len(cookies)
@@ -859,11 +1082,18 @@ def print_final(report: dict) -> None:
     persist = report.get("persistent_session") or {}
     print()
     print("Evidence")
+    print(f"  browser launch: {browser.get('launch_mode')}")
     print(f"  browser page loaded: {'yes' if browser.get('page_loaded') else 'no'}")
     print(f"  get_main_line observed: {'yes' if observed.get('observed') else 'no'}")
     print(f"  browser request status: {observed.get('response_status')}")
     print(f"  direct browser-context replay status: {test_a.get('status')}")
     print(f"  standalone HTTP replay status: {test_c.get('status')}")
+    probes = ((report.get("shape_only_http") or {}).get("probes")) or []
+    for probe in probes:
+        print(
+            f"  shape-only {probe.get('method')} status: {probe.get('status')} "
+            f"(tokens used: no)"
+        )
     print(f"  response size: {observed.get('response_bytes') or test_a.get('response_bytes')}")
     print(f"  event count: {observed.get('event_count') or test_a.get('event_count')}")
     second = (persist.get("after_short_delay") or {}).get("success")
