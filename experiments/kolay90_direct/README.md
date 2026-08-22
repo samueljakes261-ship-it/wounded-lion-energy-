@@ -10,7 +10,26 @@ Can a legitimate kolay90 browser session be established once and then
 reused for direct HTTP `GET /service/getMaclar` without ZenRows, and can
 football prematch 1X2 be parsed accurately from that JSON?
 
-## Run
+## Attach to your authenticated Chrome
+
+Chrome must already be running with remote debugging. Use a **separate**
+profile so your normal Chrome is not disturbed:
+
+```
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$PWD\experiments\kolay90_direct\chrome_profile"
+```
+
+In that window: open kolay90.com, complete Cloudflare, log in, confirm
+`https://kolay90.com/service/getMaclar` returns JSON. Then:
+
+```
+.\.venv\Scripts\python.exe experiments\kolay90_direct\attach_cdp.py
+```
+
+This attaches with CDP. It does not launch another Chrome, inject cookies,
+or use ZenRows.
+
+## Older persistent-browser runner
 
 From the repo root:
 
