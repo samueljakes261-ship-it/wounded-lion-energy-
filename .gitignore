@@ -93,3 +93,7 @@ Thumbs.db
 
 # Isolated experiment dumps (encrypted betting payloads)
 experiments/betkanyon_prematch_direct/output/
+
+# Isolated kolay90 experiment (browser profile + session dumps)
+experiments/kolay90_direct/browser_profile/
+experiments/kolay90_direct/output/
