@@ -1,7 +1,15 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { resolveApiConfig } from "@/lib/api-config"
 import { t, type FeedMode, type Lang } from "@/lib/i18n"
+import {
+  bookmakersFromOpportunities,
+  bookmakersFromStatus,
+  filterOpportunities,
+  keepLastGoodSnapshot,
+  parseOptionalNumber,
+} from "@/lib/opportunity-filters"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -101,6 +109,7 @@ type CollectorStatusResponse = {
   engineMode?: "live" | "prematch"
   prematchMatchedEvents?: number
   prematchOpportunityCount?: number
+  scheduledRestart?: boolean
   collectors: Record<string, CollectorHealth>
 }
 
@@ -259,7 +268,7 @@ function CollectorStatusPanel({
 
   const order =
     mode === "prematch"
-      ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch"]
+      ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch", "kolay90_prematch"]
       : ["orbit", "betkanyon", "onwin"]
   const collectors = order
     .map((key) => status.collectors[key])
@@ -282,18 +291,27 @@ function CollectorStatusPanel({
           <div className="text-xs font-semibold text-slate-500 tracking-wide">
             {t(lang, "collectors")}
           </div>
-          {collectors.map((collector) => (
+          {collectors.map((collector) => {
+            const shown =
+              status.scheduledRestart &&
+              (collector.collectorStatus === "STARTING" ||
+                collector.collectorStatus === "RECOVERING" ||
+                collector.collectorStatus === "STOPPED")
+                ? "RUNNING"
+                : collector.collectorStatus
+            return (
             <div key={collector.name} className="flex items-center gap-1.5">
               <CircleDot className="w-3 h-3 text-slate-500" />
               <span className="text-sm text-slate-300">{collector.name}</span>
-              <Badge className={COLLECTOR_STATUS_STYLES[collector.collectorStatus]}>
-                {collector.collectorStatus}
+              <Badge className={COLLECTOR_STATUS_STYLES[shown]}>
+                {shown}
               </Badge>
               <span className="text-xs text-slate-500">
                 {formatAge(collector.ageSeconds)}
               </span>
             </div>
-          ))}
+            )
+          })}
           <div className="text-xs text-slate-500 ml-auto">
             {t(lang, "matchedEvents")}: {matched} &middot; {t(lang, "opportunities")}:{" "}
             {opps}
@@ -499,6 +517,11 @@ function Dashboard() {
   const [lang, setLang] = useState<Lang>("tr")
   const [mode, setMode] = useState<FeedMode>("live")
   const [backBackOpen, setBackBackOpen] = useState(false)
+  const [minArb, setMinArb] = useState("")
+  const [maxArb, setMaxArb] = useState("")
+  const [minOdds, setMinOdds] = useState("")
+  const [maxOdds, setMaxOdds] = useState("")
+  const [selectedBooks, setSelectedBooks] = useState<string[]>([])
 
   const loadCollectorStatus = async () => {
     try {
@@ -541,7 +564,9 @@ function Dashboard() {
 
       const data = await response.json()
 
-      setOpportunities(data)
+      setOpportunities((previous) =>
+        keepLastGoodSnapshot(Array.isArray(data) ? data : [], previous)
+      )
       setLastUpdated(new Date())
       setError(null)
     } catch (err) {
@@ -576,8 +601,28 @@ function Dashboard() {
     }
   }, [collectorStatus?.engineMode])
 
-  const backLayOpportunities = opportunities.filter(isBackLayOpportunity)
-  const backBackOpportunities = opportunities.filter(
+  const bookmakerOptions = useMemo(() => {
+    const fromStatus = bookmakersFromStatus(collectorStatus?.collectors, mode)
+    const fromOpps = bookmakersFromOpportunities(opportunities)
+    return [...new Set([...fromStatus, ...fromOpps])].sort((left, right) =>
+      left.localeCompare(right)
+    )
+  }, [collectorStatus, mode, opportunities])
+
+  const visibleOpportunities = useMemo(
+    () =>
+      filterOpportunities(opportunities, {
+        minArb: parseOptionalNumber(minArb),
+        maxArb: parseOptionalNumber(maxArb),
+        minOdds: parseOptionalNumber(minOdds),
+        maxOdds: parseOptionalNumber(maxOdds),
+        bookmakers: selectedBooks,
+      }),
+    [opportunities, minArb, maxArb, minOdds, maxOdds, selectedBooks]
+  )
+
+  const backLayOpportunities = visibleOpportunities.filter(isBackLayOpportunity)
+  const backBackOpportunities = visibleOpportunities.filter(
     (opportunity): opportunity is Opportunity => !isBackLayOpportunity(opportunity)
   )
 
@@ -667,6 +712,97 @@ function Dashboard() {
         ) : null}
 
         <CollectorStatusPanel status={collectorStatus} mode={mode} lang={lang} />
+
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-3 space-y-3">
+            <div className="text-xs font-semibold text-slate-500 tracking-wide">
+              {t(lang, "filters")}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "minArb")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={minArb}
+                  onChange={(event) => setMinArb(event.target.value)}
+                />
+                %
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "maxArb")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={maxArb}
+                  onChange={(event) => setMaxArb(event.target.value)}
+                />
+                %
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "minOdds")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={minOdds}
+                  onChange={(event) => setMinOdds(event.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "maxOdds")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={maxOdds}
+                  onChange={(event) => setMaxOdds(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-500">{t(lang, "bookmakers")}</span>
+              <button
+                type="button"
+                className={`px-2 py-1 text-xs rounded-md border ${
+                  selectedBooks.length === 0
+                    ? "bg-cyan-500 text-black border-cyan-500"
+                    : "bg-slate-950 text-slate-300 border-slate-700"
+                }`}
+                onClick={() => setSelectedBooks([])}
+              >
+                {t(lang, "allBookmakers")}
+              </button>
+              {bookmakerOptions.map((name) => {
+                const active = selectedBooks
+                  .map((item) => item.toLowerCase())
+                  .includes(name.toLowerCase())
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className={`px-2 py-1 text-xs rounded-md border ${
+                      active
+                        ? "bg-cyan-500 text-black border-cyan-500"
+                        : "bg-slate-950 text-slate-300 border-slate-700"
+                    }`}
+                    onClick={() =>
+                      setSelectedBooks((current) =>
+                        current
+                          .map((item) => item.toLowerCase())
+                          .includes(name.toLowerCase())
+                          ? current.filter(
+                              (item) => item.toLowerCase() !== name.toLowerCase()
+                            )
+                          : [...current, name]
+                      )
+                    }
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {loading && opportunities.length === 0 && !error ? (
           <Card className="bg-slate-900 border-slate-800">
