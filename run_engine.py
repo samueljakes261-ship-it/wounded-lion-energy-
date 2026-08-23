@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from collector import (
     ENGINE_TICK_SECONDS,
@@ -8,11 +9,38 @@ from collector import (
     stop_betkanyon_prematch_worker,
     stop_betkanyon_worker,
     stop_kolay90_prematch_worker,
+    stop_onwin_prematch_worker,
     stop_onwin_worker,
     stop_orbit_prematch_worker,
     stop_orbit_worker,
 )
+from engine.recovery import restart_due
 from prematch.mode import is_prematch_only
+
+
+async def restart_workers_gracefully():
+    """Stop then start the existing workers. Does not kill this process.
+
+    Kolay90 close() detaches CDP only; the authenticated Chrome stays open.
+    """
+    from engine.recovery import begin_scheduled_restart, end_scheduled_restart
+
+    begin_scheduled_restart()
+    try:
+        stop_onwin_worker()
+        stop_betkanyon_worker()
+        await stop_orbit_worker()
+        stop_betkanyon_prematch_worker()
+        await stop_orbit_prematch_worker()
+        stop_kolay90_prematch_worker()
+        stop_onwin_prematch_worker()
+        if is_prematch_only():
+            start_prematch_workers()
+        else:
+            start_workers()
+            start_prematch_workers()
+    finally:
+        end_scheduled_restart()
 
 
 async def main():
@@ -34,11 +62,15 @@ async def main():
         start_workers()
         start_prematch_workers()
 
+    cycle_started = time.monotonic()
     try:
         while True:
 
             try:
                 await collect_opportunities()
+                if restart_due(cycle_started):
+                    await restart_workers_gracefully()
+                    cycle_started = time.monotonic()
 
             except Exception as e:
                 print()
@@ -67,6 +99,7 @@ async def main():
         stop_betkanyon_prematch_worker()
         await stop_orbit_prematch_worker()
         stop_kolay90_prematch_worker()
+        stop_onwin_prematch_worker()
         print("Workers stopped. Goodbye.")
 
 

@@ -32,6 +32,13 @@ export const translations = {
     matchLabel: "Maç",
     arbitrageLabel: "Arbitraj",
     noBackLay: "BACK vs LAY fırsatı bulunamadı.",
+    filters: "Filtreler",
+    minArb: "Min Arb",
+    maxArb: "Maks Arb",
+    minOdds: "Min Oran",
+    maxOdds: "Maks Oran",
+    bookmakers: "Bahisçiler",
+    allBookmakers: "Tümü",
   },
   en: {
     title: "Wounded Lion Energy",
@@ -63,6 +70,13 @@ export const translations = {
     matchLabel: "Match",
     arbitrageLabel: "Arbitrage",
     noBackLay: "No BACK vs LAY opportunities detected.",
+    filters: "Filters",
+    minArb: "Min Arb",
+    maxArb: "Max Arb",
+    minOdds: "Min Odds",
+    maxOdds: "Max Odds",
+    bookmakers: "Bookmakers",
+    allBookmakers: "All",
   },
 } as const
 

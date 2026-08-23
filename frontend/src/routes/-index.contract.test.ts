@@ -113,6 +113,14 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     expect(SOURCE).toMatch(/t\(lang, "arbitrageLabel"\)/)
   })
 
+  it("keeps existing BACK vs BACK and BACK vs LAY cards after adding filters", () => {
+    expect(SOURCE).toMatch(/function BackLayCard/)
+    expect(SOURCE).toMatch(/function OpportunityCard/)
+    expect(SOURCE).toMatch(/filterOpportunities\(/)
+    expect(SOURCE).toMatch(/keepLastGoodSnapshot\(/)
+    expect(SOURCE).not.toMatch(/Restarting/)
+  })
+
   it("defines Turkish and English strings for the new labels", () => {
     const i18n = readFileSync(fileURLToPath(new URL("../lib/i18n.ts", import.meta.url)), "utf-8")
     expect(i18n).toMatch(/backVsLay: "BACK vs LAY"/)
