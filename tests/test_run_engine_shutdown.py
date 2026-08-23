@@ -55,6 +55,14 @@ async def test_cancelling_main_stops_all_three_workers_cleanly(monkeypatch):
         return None
 
     monkeypatch.setattr(run_engine, "stop_orbit_prematch_worker", fake_stop_orbit_prematch)
+
+    stop_onwin_prematch = {"n": 0}
+
+    monkeypatch.setattr(
+        run_engine,
+        "stop_onwin_prematch_worker",
+        lambda: stop_onwin_prematch.__setitem__("n", stop_onwin_prematch["n"] + 1),
+    )
     monkeypatch.setattr(run_engine, "collect_opportunities", fake_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 
@@ -79,6 +87,7 @@ async def test_cancelling_main_stops_all_three_workers_cleanly(monkeypatch):
     assert calls["stop_onwin"] == 1
     assert calls["stop_betkanyon"] == 1
     assert calls["stop_orbit"] == 1
+    assert stop_onwin_prematch["n"] == 1
     assert task.cancelled() is False  # main() caught it and returned normally
 
 
@@ -115,6 +124,7 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
         return None
 
     monkeypatch.setattr(run_engine, "stop_orbit_prematch_worker", fake_stop_orbit_prematch)
+    monkeypatch.setattr(run_engine, "stop_onwin_prematch_worker", lambda: None)
     monkeypatch.setattr(run_engine, "collect_opportunities", flaky_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 

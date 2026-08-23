@@ -90,6 +90,33 @@ def test_back_higher_than_lay_is_opportunity():
     assert opp.profit_percentage == pytest.approx((3.70 - 3.50) / (3.70 + 3.50) * 100)
 
 
+def test_onwin_1x2_aliases_match_odds_against_orbit_lay():
+    matches = [
+        _odds(
+            "OnWin",
+            "Al Ittihad Kalba",
+            "Al Wasl Dubai",
+            3.70,
+            3.20,
+            2.10,
+            market="1X2",
+        ),
+        _odds(
+            "Orbit",
+            "Al Ittihad Kalba",
+            "Al Wasl Dubai",
+            3.50,
+            3.40,
+            2.20,
+            side="LAY",
+        ),
+    ]
+    home = [item for item in _detect(matches) if item.outcome == "HOME"]
+    assert len(home) == 1
+    assert home[0].back_bookmaker == "OnWin"
+    assert home[0].lay_bookmaker == "Orbit"
+
+
 def test_away_opportunity_uses_away_team_name():
     matches = [
         _odds("Betkanyon", "Team A", "Team B", 2.10, 3.20, 3.70),

@@ -259,7 +259,7 @@ function CollectorStatusPanel({
 
   const order =
     mode === "prematch"
-      ? ["orbit_prematch", "betkanyon_prematch"]
+      ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch"]
       : ["orbit", "betkanyon", "onwin"]
   const collectors = order
     .map((key) => status.collectors[key])

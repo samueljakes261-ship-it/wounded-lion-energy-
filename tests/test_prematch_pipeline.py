@@ -103,6 +103,35 @@ def test_known_prematch_arbitrage_and_stakes():
     ) < 0.01
 
 
+def test_onwin_joins_betkanyon_and_orbit_prematch_arb():
+    matches = [
+        _odds("Betkanyon", "Alpha FC", "Beta FC", 1.5, 3.1, 4.8),
+        _odds("Orbit", "Alpha FC", "Beta FC", 1.9, 3.6, 2.0, side="BACK"),
+        MatchOdds(
+            bookmaker="OnWin",
+            competition="Test League",
+            sport="football",
+            market="1X2",
+            home_team="Alpha FC",
+            away_team="Beta FC",
+            home_odds=2.2,
+            draw_odds=3.1,
+            away_odds=3.4,
+            start_time=NOW,
+            collected_at=NOW,
+            feed_type="prematch",
+        ),
+    ]
+    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    assert len(opportunities) == 1
+    books = {
+        opportunities[0].result.best_odds.home_match.bookmaker,
+        opportunities[0].result.best_odds.draw_match.bookmaker,
+        opportunities[0].result.best_odds.away_match.bookmaker,
+    }
+    assert books == {"OnWin", "Orbit", "Betkanyon"}
+
+
 def test_incomplete_bk_cycle_keeps_missing_tournament_odds():
     from parsers.betkanyon_prematch.feed import merge_incomplete_prematch_snapshot
 
@@ -145,6 +174,7 @@ def test_zero_arb_reason_distinguishes_feed_gap_from_no_prices():
     assert _prematch_zero_reason(8, 0, 0, 0, 0) == "orbit_empty"
     assert _prematch_zero_reason(8, 8, 0, 0, 0) == "matcher_no_pairs"
     assert _prematch_zero_reason(8, 8, 4, 0, 0) == "no_qualifying_prices"
+    assert _prematch_zero_reason(8, 8, 0, 0, 0, onwin_n=0) == "onwin_empty"
 
 
 def test_prematch_snapshot_stale_window_keeps_fresh_cycle():

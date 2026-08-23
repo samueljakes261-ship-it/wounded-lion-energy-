@@ -26,6 +26,7 @@ from models.arbitrage_opportunity import ArbitrageOpportunity
 from parsers.betkanyon.worker import BetkanyonWorker
 from parsers.betkanyon_prematch.worker import BetkanyonPrematchWorker
 from parsers.onwin.feed import OnwinFeed
+from parsers.onwin_prematch.worker import OnwinPrematchWorker
 from parsers.orbit.worker import OrbitWorker
 from parsers.orbit_prematch.worker import OrbitPrematchWorker
 from prematch.mode import engine_mode_label, is_prematch_only
@@ -685,6 +686,7 @@ async def stop_orbit_worker():
 
 _betkanyon_prematch_worker: BetkanyonPrematchWorker | None = None
 _orbit_prematch_worker: OrbitPrematchWorker | None = None
+_onwin_prematch_worker: OnwinPrematchWorker | None = None
 _prematch_last_matched = 0
 _prematch_last_opportunities = 0
 _prematch_last_back_lay = 0
@@ -708,6 +710,14 @@ def _get_orbit_prematch_worker() -> OrbitPrematchWorker:
     return _orbit_prematch_worker
 
 
+def _get_onwin_prematch_worker() -> OnwinPrematchWorker:
+    global _onwin_prematch_worker
+    if _onwin_prematch_worker is None:
+        _onwin_prematch_worker = OnwinPrematchWorker()
+        _onwin_prematch_worker.start()
+    return _onwin_prematch_worker
+
+
 def stop_betkanyon_prematch_worker():
     global _betkanyon_prematch_worker
     if _betkanyon_prematch_worker is not None:
@@ -722,11 +732,19 @@ async def stop_orbit_prematch_worker():
         _orbit_prematch_worker = None
 
 
+def stop_onwin_prematch_worker():
+    global _onwin_prematch_worker
+    if _onwin_prematch_worker is not None:
+        _onwin_prematch_worker.stop()
+        _onwin_prematch_worker = None
+
+
 def start_prematch_workers():
     """Start prematch workers independently of live start_workers()."""
     for name, starter in (
         ("BetKanyon prematch", _get_betkanyon_prematch_worker),
         ("Orbit prematch", _get_orbit_prematch_worker),
+        ("OnWin prematch", _get_onwin_prematch_worker),
     ):
         try:
             starter()
@@ -775,6 +793,7 @@ _worker_restart_at = {
     "orbit": 0.0,
     "betkanyon_prematch": 0.0,
     "orbit_prematch": 0.0,
+    "onwin_prematch": 0.0,
 }
 
 
@@ -817,7 +836,7 @@ async def _restart_worker(name: str, stopper, starter) -> None:
 async def _ensure_workers_alive():
     """
     Supervisor: if a previously-started worker's process/thread/task
-    has died, restart ONLY that worker. The other two keep collecting.
+    has died, restart ONLY that worker. The others keep collecting.
 
     Called once per engine tick so a crash cannot leave a collector
     permanently IDLE/STOPPED with no recovery attempt.
@@ -850,6 +869,16 @@ async def _ensure_workers_alive():
             "orbit_prematch",
             stop_orbit_prematch_worker,
             _get_orbit_prematch_worker,
+        )
+
+    if (
+        _onwin_prematch_worker is not None
+        and not _worker_alive(_onwin_prematch_worker._thread)
+    ):
+        await _restart_worker(
+            "onwin_prematch",
+            stop_onwin_prematch_worker,
+            _get_onwin_prematch_worker,
         )
 
 
@@ -1584,6 +1613,11 @@ def _maybe_print_prematch_panel():
         if _orbit_prematch_worker is not None
         else {}
     )
+    onwin = (
+        _onwin_prematch_worker.get_status()
+        if _onwin_prematch_worker is not None
+        else {}
+    )
     orbit_feed_stats = {}
     if _orbit_prematch_worker is not None and getattr(
         _orbit_prematch_worker, "_feed", None
@@ -1633,6 +1667,16 @@ def _maybe_print_prematch_panel():
         f"| age={orbit_age:.0f}s" if orbit_age is not None
         else f"ORBIT PREMATCH: {str(orbit.get('status', 'stopped')).upper()} | events={orbit.get('last_event_count', 0)} | 1X2={orbit.get('back_count', 0) + orbit.get('lay_count', 0)} | age=?"
     )
+    onwin_age = None
+    if onwin.get("last_update_at"):
+        onwin_age = time.time() - onwin["last_update_at"]
+    print(
+        f"ONWIN PREMATCH: {str(onwin.get('status', 'stopped')).upper()} "
+        f"| events={onwin.get('last_event_count', 0)} "
+        f"| 1X2={onwin.get('last_odds_count', 0)} "
+        f"| age={onwin_age:.0f}s" if onwin_age is not None
+        else f"ONWIN PREMATCH: {str(onwin.get('status', 'stopped')).upper()} | events={onwin.get('last_event_count', 0)} | 1X2={onwin.get('last_odds_count', 0)} | age=?"
+    )
     print(f"MATCHED: {_prematch_last_matched}")
     print(f"BACK/LAY ARBS: {_prematch_last_back_lay}")
     print(f"BACK/BACK ARBS: {_prematch_last_opportunities}")
@@ -1643,7 +1687,7 @@ def _maybe_print_prematch_panel():
     print()
 
 
-def _prematch_zero_reason(bk_n, orbit_n, matched_n, stale_n, total_arbs):
+def _prematch_zero_reason(bk_n, orbit_n, matched_n, stale_n, total_arbs, onwin_n=None):
     if total_arbs > 0:
         return "qualifying_arbs"
     if bk_n == 0 and orbit_n == 0:
@@ -1652,6 +1696,10 @@ def _prematch_zero_reason(bk_n, orbit_n, matched_n, stale_n, total_arbs):
         return "betkanyon_empty"
     if orbit_n == 0:
         return "orbit_empty"
+    # onwin_n is None unless the OnWin prematch worker is running, so
+    # existing BK+Orbit reason tests stay unchanged.
+    if onwin_n == 0:
+        return "onwin_empty"
     if matched_n == 0:
         return "matcher_no_pairs"
     if stale_n:
@@ -1665,7 +1713,11 @@ def _run_prematch_tick(bankroll, now_dt):
     global _prematch_last_back_lay, _prematch_back_lay_sig
     global _prematch_last_cache_n
 
-    if _betkanyon_prematch_worker is None and _orbit_prematch_worker is None:
+    if (
+        _betkanyon_prematch_worker is None
+        and _orbit_prematch_worker is None
+        and _onwin_prematch_worker is None
+    ):
         return
 
     matches = []
@@ -1673,6 +1725,8 @@ def _run_prematch_tick(bankroll, now_dt):
         matches.extend(_betkanyon_prematch_worker.get_matches())
     if _orbit_prematch_worker is not None:
         matches.extend(_orbit_prematch_worker.get_matches())
+    if _onwin_prematch_worker is not None:
+        matches.extend(_onwin_prematch_worker.get_matches())
     matches = [
         match
         for match in matches
@@ -1681,6 +1735,7 @@ def _run_prematch_tick(bankroll, now_dt):
     matches, stale_dropped = _filter_prematch_stale(matches, now_dt)
     bk_matches = [m for m in matches if m.bookmaker.lower() == "betkanyon"]
     orbit_matches = [m for m in matches if m.bookmaker.lower() == "orbit"]
+    onwin_matches = [m for m in matches if m.bookmaker.lower() == "onwin"]
     orbit_back = sum(1 for m in orbit_matches if (m.side or "").upper() == "BACK")
     orbit_lay = sum(1 for m in orbit_matches if (m.side or "").upper() == "LAY")
     try:
@@ -1708,7 +1763,14 @@ def _run_prematch_tick(bankroll, now_dt):
     back_lay_n = len(back_lay)
     total_arbs = arb_n + back_lay_n
     reason = _prematch_zero_reason(
-        len(bk_matches), len(orbit_matches), matched_n, stale_dropped, total_arbs
+        len(bk_matches),
+        len(orbit_matches),
+        matched_n,
+        stale_dropped,
+        total_arbs,
+        onwin_n=(
+            len(onwin_matches) if _onwin_prematch_worker is not None else None
+        ),
     )
     if (
         matched_n != _prematch_last_matched
@@ -1726,8 +1788,13 @@ def _run_prematch_tick(bankroll, now_dt):
             f"unique={len({(m.home_team, m.away_team) for m in orbit_matches})}"
         )
         print(
+            f"[ONWIN PREMATCH] cycle matches={len(onwin_matches)} "
+            f"unique={len({(m.home_team, m.away_team) for m in onwin_matches})}"
+        )
+        print(
             f"[MATCHER] matched={matched_n} stale_rejected={stale_dropped} "
-            f"bk={len(bk_matches)} orbit={len(orbit_matches)}"
+            f"bk={len(bk_matches)} orbit={len(orbit_matches)} "
+            f"onwin={len(onwin_matches)}"
         )
         print(
             f"[ARB] BACK/LAY={back_lay_n} BACK/BACK={arb_n} "
@@ -1762,6 +1829,7 @@ def _run_prematch_tick(bankroll, now_dt):
         "both_feeds_empty",
         "betkanyon_empty",
         "orbit_empty",
+        "onwin_empty",
     }
     if feed_gap and not cache and _prematch_last_cache_n > 0:
         print(
@@ -1899,10 +1967,17 @@ def _write_status(
         if _orbit_prematch_worker is not None
         else {"status": "stopped", "error": None, "last_update_at": None}
     )
+    onwin_pm_status = (
+        _onwin_prematch_worker.get_status()
+        if _onwin_prematch_worker is not None
+        else {"status": "stopped", "error": None, "last_update_at": None}
+    )
     bk_pm_last = bk_pm_status.get("last_update_at")
     orbit_pm_last = orbit_pm_status.get("last_update_at")
+    onwin_pm_last = onwin_pm_status.get("last_update_at")
     bk_pm_age = (now - bk_pm_last) if bk_pm_last else None
     orbit_pm_age = (now - orbit_pm_last) if orbit_pm_last else None
+    onwin_pm_age = (now - onwin_pm_last) if onwin_pm_last else None
 
     payload = {
         "generatedAt": _iso_dt(now_dt),
@@ -1947,6 +2022,19 @@ def _write_status(
                     else None
                 ),
                 orbit_pm_status,
+                now_dt,
+                max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
+            ),
+            "onwin_prematch": _collector_snapshot(
+                "OnWin Prematch",
+                onwin_pm_status.get("status"),
+                onwin_pm_age,
+                _worker_alive(
+                    _onwin_prematch_worker._thread
+                    if _onwin_prematch_worker
+                    else None
+                ),
+                onwin_pm_status,
                 now_dt,
                 max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
             ),
@@ -2015,6 +2103,7 @@ def get_collector_status():
                     ("orbit", "Orbit"),
                     ("betkanyon_prematch", "BetKanyon Prematch"),
                     ("orbit_prematch", "Orbit Prematch"),
+                    ("onwin_prematch", "OnWin Prematch"),
                 )
             },
         }
