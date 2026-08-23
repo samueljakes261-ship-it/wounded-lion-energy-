@@ -20,7 +20,11 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env", override=True)
 load_dotenv(ROOT / ".env.local", override=True)
 
-from parsers.kolay90_prematch.agreement import classify_agreement_buttons, is_agreement_page
+from parsers.kolay90_prematch.agreement import (
+    accept_agreement_page,
+    collect_visible_buttons,
+    is_agreement_page,
+)
 from parsers.kolay90_prematch.browser import Kolay90PrematchBrowser
 from parsers.kolay90_prematch.fetch import fetch_getmaclar
 from parsers.kolay90_prematch.login import (
@@ -45,22 +49,7 @@ def failure(code: str, **extra) -> dict:
 
 
 def visible_buttons(page) -> list[dict]:
-    try:
-        return page.evaluate(
-            """() => {
-                const visible = (el) => !!(el && (el.offsetWidth || el.offsetHeight));
-                return [...document.querySelectorAll(
-                    'button, a, input[type=button], input[type=submit], [role=button]'
-                )].map((el, index) => ({
-                    index,
-                    text: (el.innerText || el.value || el.getAttribute('aria-label') || '')
-                        .trim().slice(0, 80),
-                    visible: visible(el),
-                })).filter((item) => item.visible && item.text);
-            }"""
-        )
-    except Exception:
-        return []
+    return collect_visible_buttons(page)
 
 
 def page_text(page) -> str:
@@ -93,53 +82,40 @@ def wait_for_progress(page, timeout_s: int = CF_WAIT_S) -> dict:
     deadline = time.time() + timeout_s
     last = current_state(page)
     log(f"observe url={last['url']} title={last['title']!r} cf={last['cloudflare']} agreement={last['agreement']}")
+    cleared_at = None
     while time.time() < deadline:
         last = current_state(page)
-        if last["agreement"] or last["login_form"] or not last["cloudflare"]:
+        if last["agreement"] or last["login_form"]:
             return last
+        if not last["cloudflare"]:
+            if cleared_at is None:
+                cleared_at = time.time()
+            elif time.time() - cleared_at >= 12:
+                return last
         page.wait_for_timeout(2000)
     return last
 
 
 def accept_agreement(page) -> dict:
-    buttons = visible_buttons(page)
-    classified = classify_agreement_buttons(buttons)
-    chosen = classified.get("chosen")
+    result = accept_agreement_page(page)
     log(
-        f"agreement_buttons accept={classified['accept_candidates']} "
-        f"reject={classified['reject_candidates']}"
+        f"AGREEMENT_ACCEPT_BUTTON_FOUND={'YES' if result.get('found') else 'NO'} "
+        f"accept={result.get('accept_candidates')} reject={result.get('reject_candidates')}"
     )
-    if chosen is None:
+    if not result.get("found"):
         return {
-            "reached": True,
-            "found": False,
-            "clicked": False,
-            "reason": "ambiguous_or_missing_accept",
+            **result,
             "url": safe_url(page.url),
             "title": (page.title() or "")[:120],
         }
-    try:
-        page.get_by_text(str(chosen.get("text") or ""), exact=False).first.click(timeout=5000)
-        clicked = True
-    except Exception:
-        clicked = False
-        try:
-            locator = page.locator("button, a, input[type=button], input[type=submit], [role=button]")
-            locator.nth(int(chosen["index"])).click(timeout=5000)
-            clicked = True
-        except Exception:
-            clicked = False
     page.wait_for_timeout(2500)
     after = current_state(page)
     return {
-        "reached": True,
-        "found": True,
-        "clicked": clicked,
+        **result,
         "url": after["url"],
         "title": after["title"],
         "now_login": after["login_form"],
         "now_cf": after["cloudflare"],
-        "chosen_label_len": len(str(chosen.get("text") or "")),
     }
 
 
@@ -230,7 +206,16 @@ def main() -> int:
         log("ZENROWS_BROWSER_WS is not set")
         return 2
     browser = Kolay90PrematchBrowser()
-    page = browser.page()
+    try:
+        page = browser.page()
+    except Exception:
+        log("ZENROWS_BROWSER=FAILED persistent=NO source=ZENROWS_BROWSER_WS")
+        log("boundary=A ZenRows browser failed to establish")
+        try:
+            browser.close()
+        except Exception:
+            pass
+        return 3
     log("ZENROWS_BROWSER=SUCCESS persistent=YES source=ZENROWS_BROWSER_WS")
     try:
         page.goto(HOME, wait_until="domcontentloaded", timeout=120000)
@@ -247,8 +232,10 @@ def main() -> int:
         if state["agreement"]:
             agreement = accept_agreement(page)
             log(
-                f"AGREEMENT_PAGE=REACHED accept_found={agreement['found']} "
-                f"clicked={agreement['clicked']} url={agreement.get('url')} title={agreement.get('title')!r}"
+                f"AGREEMENT_PAGE_REACHED=YES AGREEMENT_ACCEPT_BUTTON_FOUND="
+                f"{'YES' if agreement['found'] else 'NO'} "
+                f"AGREEMENT_ACCEPTED={'YES' if agreement['clicked'] else 'NO'} "
+                f"POST_AGREEMENT_URL={agreement.get('url')}"
             )
             if not agreement["clicked"]:
                 log("boundary=D Agreement appeared but accept action failed")

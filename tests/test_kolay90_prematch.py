@@ -309,6 +309,22 @@ def test_agreement_page_and_accept_button():
     assert ambiguous["chosen"] is None
 
 
+def test_accept_agreement_page_does_not_click_reject():
+    from parsers.kolay90_prematch.agreement import accept_agreement_page
+
+    class FakePage:
+        def evaluate(self, _js):
+            return [{"index": 0, "text": "Reddet"}]
+
+        def get_by_text(self, *_args, **_kwargs):
+            raise AssertionError("must not click reject")
+
+    result = accept_agreement_page(FakePage())
+    assert result["found"] is False
+    assert result["clicked"] is False
+    assert result["reject_candidates"] == ["Reddet"]
+
+
 def test_session_probe_log_ascii_safe(capsys):
     from parsers.kolay90_prematch.session_probe import log
 

@@ -5,6 +5,11 @@ from __future__ import annotations
 import os
 import time
 
+from parsers.kolay90_prematch.agreement import (
+    accept_agreement_page,
+    is_agreement_page,
+)
+
 HOME = "https://kolay90.com/"
 APP_MARKERS = (
     "giriş",
@@ -233,7 +238,37 @@ def establish_session(page, timeout_s: int = 180) -> dict:
     while time.time() < deadline and _looks_like_challenge(page):
         page.wait_for_timeout(2000)
 
+    settle = min(deadline, time.time() + 12)
     snapshot = inspect_page(page)
+    while time.time() < settle:
+        snapshot = inspect_page(page)
+        if is_agreement_page(
+            page.url or "", snapshot.get("title") or "", snapshot.get("text") or ""
+        ) or snapshot.get("has_password"):
+            break
+        page.wait_for_timeout(1500)
+
+    snapshot = inspect_page(page)
+    agreement_url = page.url or ""
+    if is_agreement_page(agreement_url, snapshot.get("title") or "", snapshot.get("text") or ""):
+        accepted = accept_agreement_page(page)
+        snapshot["agreement"] = accepted
+        if not accepted.get("clicked"):
+            return {
+                "ok": False,
+                "reason": "agreement_accept_failed",
+                "cloudflare": False,
+                "logged_in": False,
+                "login_form_found": False,
+                "login_form_submitted": False,
+                "page_title": snapshot["title"],
+                "page_path": snapshot["path"],
+                "inspect": snapshot,
+            }
+        page.wait_for_timeout(5000)
+        snapshot = inspect_page(page)
+        snapshot["agreement"] = accepted
+
     if snapshot["cloudflare"] or not snapshot["application"]:
         return {
             "ok": False,

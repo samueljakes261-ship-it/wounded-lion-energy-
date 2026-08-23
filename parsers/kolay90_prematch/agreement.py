@@ -90,3 +90,63 @@ def classify_agreement_buttons(buttons: list[dict]) -> dict:
         "chosen": chosen,
         "ambiguous": chosen is None and len(accepts) != 1,
     }
+
+
+VISIBLE_BUTTON_JS = """() => {
+    const visible = (el) => !!(el && (el.offsetWidth || el.offsetHeight));
+    return [...document.querySelectorAll(
+        'button, a, input[type=button], input[type=submit], [role=button]'
+    )].map((el, index) => ({
+        index,
+        text: (el.innerText || el.value || el.getAttribute('aria-label') || '')
+            .trim().slice(0, 80),
+        name: el.getAttribute('name') || '',
+        id: el.id || '',
+        visible: visible(el),
+    })).filter((item) => item.visible && item.text);
+}"""
+
+
+def collect_visible_buttons(page) -> list[dict]:
+    try:
+        return page.evaluate(VISIBLE_BUTTON_JS) or []
+    except Exception:
+        return []
+
+
+def accept_agreement_page(page) -> dict:
+    """Click the single ACCEPT control. Never clicks reject."""
+    buttons = collect_visible_buttons(page)
+    classified = classify_agreement_buttons(buttons)
+    chosen = classified.get("chosen")
+    if chosen is None:
+        return {
+            "reached": True,
+            "found": False,
+            "clicked": False,
+            "reason": "ambiguous_or_missing_accept",
+            "accept_candidates": classified["accept_candidates"],
+            "reject_candidates": classified["reject_candidates"],
+        }
+    clicked = False
+    label = str(chosen.get("text") or "")
+    try:
+        page.get_by_text(label, exact=False).first.click(timeout=5000)
+        clicked = True
+    except Exception:
+        try:
+            locator = page.locator(
+                "button, a, input[type=button], input[type=submit], [role=button]"
+            )
+            locator.nth(int(chosen["index"])).click(timeout=5000)
+            clicked = True
+        except Exception:
+            clicked = False
+    return {
+        "reached": True,
+        "found": True,
+        "clicked": clicked,
+        "chosen_label_len": len(label),
+        "accept_candidates": classified["accept_candidates"],
+        "reject_candidates": classified["reject_candidates"],
+    }
