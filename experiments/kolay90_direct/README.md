@@ -10,17 +10,37 @@ Can a legitimate kolay90 browser session be established once and then
 reused for direct HTTP `GET /service/getMaclar` without ZenRows, and can
 football prematch 1X2 be parsed accurately from that JSON?
 
-## Attach to your authenticated Chrome
+## Manual Chrome session (current experiment)
 
-Chrome must already be running with remote debugging. Use a **separate**
-profile so your normal Chrome is not disturbed:
+Uses a dedicated profile and the **same** local Chrome process you log into.
+Does not use ZenRows, cookie replay, or a second browser.
 
 ```
-& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$PWD\experiments\kolay90_direct\chrome_profile"
+.\.venv\Scripts\python.exe experiments\kolay90_direct\manual_session.py
 ```
 
-In that window: open kolay90.com, complete Cloudflare, log in, confirm
-`https://kolay90.com/service/getMaclar` returns JSON. Then:
+Or launch Chrome only, then attach after you have logged in:
+
+```
+.\.venv\Scripts\python.exe experiments\kolay90_direct\manual_session.py --launch
+.\.venv\Scripts\python.exe experiments\kolay90_direct\manual_session.py --attach
+```
+
+Chrome command if you start it yourself:
+
+```
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir="$PWD\experiments\kolay90_direct\chrome_profile" `
+  https://kolay90.com/
+```
+
+Complete Cloudflare, accept the agreement, and log in in that window.
+Do not close Chrome. Press ENTER in the terminal (or run `--attach`).
+
+getMaclar is called with `page.evaluate(fetch(...))` from the attached tab.
+
+## Older CDP attach helper
 
 ```
 .\.venv\Scripts\python.exe experiments\kolay90_direct\attach_cdp.py
