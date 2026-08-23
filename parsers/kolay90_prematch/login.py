@@ -31,7 +31,19 @@ def _looks_like_challenge(page) -> bool:
         url = (page.url or "").lower()
     except Exception:
         return True
-    if "just a moment" in title or "attention required" in title:
+    if any(
+        token in title
+        for token in (
+            "just a moment",
+            "un momento",
+            "un moment",
+            "einen moment",
+            "bitte warten",
+            "attention required",
+            "checking your browser",
+            "verify you are human",
+        )
+    ):
         return True
     if "__cf_chl" in url or "challenge-platform" in url:
         return True
@@ -84,7 +96,10 @@ def inspect_page(page) -> dict:
     inputs = snapshot.get("inputs") or []
     buttons = snapshot.get("buttons") or []
     blob = f"{title} {href} {text}".lower()
-    challenge = _looks_like_challenge(page) or "just a moment" in blob
+    challenge = _looks_like_challenge(page) or any(
+        token in blob
+        for token in ("just a moment", "un momento", "un moment", "einen moment")
+    )
     has_password = any(item.get("type") == "password" for item in inputs)
     has_login_control = has_password or any(
         "giriş" in str(btn).lower() or "giris" in str(btn).lower() or "login" in str(btn).lower()

@@ -268,6 +268,47 @@ def test_run_logs_mask_password(monkeypatch, capsys):
     assert "ZENROWS_BROWSER_WS" in out
 
 
+def test_cloudflare_title_includes_localized_moment():
+    class FakePage:
+        def title(self):
+            return "Un momento?"
+
+        @property
+        def url(self):
+            return "https://kolay90.com/"
+
+    from parsers.kolay90_prematch.login import _looks_like_challenge
+
+    assert _looks_like_challenge(FakePage()) is True
+
+
+def test_agreement_page_and_accept_button():
+    from parsers.kolay90_prematch.agreement import (
+        classify_agreement_buttons,
+        is_agreement_page,
+    )
+
+    assert is_agreement_page("https://kolay90.com/sozlesme.html", "User Agreement", "") is True
+    assert is_agreement_page(
+        "https://kolay90.com/",
+        "Sözleşme",
+        "bu sitedeki tüm içerikler bilgilendirme ve eğlence amaçlı olduğunu kabul ediyormusunuz",
+    ) is True
+    assert is_agreement_page("https://kolay90.com/", "Just a moment...", "Cloudflare Privacy") is False
+    classified = classify_agreement_buttons(
+        [
+            {"index": 0, "text": "Reddet"},
+            {"index": 1, "text": "Kabul Et"},
+        ]
+    )
+    assert classified["chosen"]["index"] == 1
+    assert classified["chosen"]["role"] == "accept"
+    ambiguous = classify_agreement_buttons(
+        [{"index": 0, "text": "Cloudflare"}, {"index": 1, "text": "Privacy"}]
+    )
+    assert ambiguous["chosen"] is None
+
+
 def test_session_probe_log_ascii_safe(capsys):
     from parsers.kolay90_prematch.session_probe import log
 
