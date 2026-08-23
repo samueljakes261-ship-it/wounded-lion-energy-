@@ -7,6 +7,7 @@ from collector import (
     start_workers,
     stop_betkanyon_prematch_worker,
     stop_betkanyon_worker,
+    stop_kolay90_prematch_worker,
     stop_onwin_worker,
     stop_orbit_prematch_worker,
     stop_orbit_worker,
@@ -65,6 +66,7 @@ async def main():
         await stop_orbit_worker()
         stop_betkanyon_prematch_worker()
         await stop_orbit_prematch_worker()
+        stop_kolay90_prematch_worker()
         print("Workers stopped. Goodbye.")
 
 

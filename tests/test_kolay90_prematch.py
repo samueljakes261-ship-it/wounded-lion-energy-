@@ -4,17 +4,22 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from parsers.kolay90_prematch.cdp import find_kolay90_page
 from parsers.kolay90_prematch.feed import Kolay90PrematchFeed
 from parsers.kolay90_prematch.parser import (
     count_oranlar,
     extract_1x2,
+    is_prematch_event,
     is_unauthenticated,
     parse_event,
     parse_payload,
     start_time_from_event,
+    to_match_odds,
     unwrap_events,
     validate_against_raw,
 )
+from parsers.kolay90_prematch.session_state import classify_session_state
+from parsers.kolay90_prematch.worker import Kolay90PrematchWorker
 
 BOCHOLT = {
     "_id": "evt-bocholt",
@@ -23,7 +28,7 @@ BOCHOLT = {
     "lig_id": 245759,
     "code": 598,
     "mbs": 1,
-    "zaman": {"sec": 1787400000},
+    "zaman": {"sec": 1893456000},
     "oranlar": {"1": "2.38", "0": "3.45", "2": "2.50"},
     "type": 1,
     "zs": "Cmt 15:00",
@@ -105,7 +110,7 @@ def test_maclar_dict_with_ligler_wrapper():
 
 def test_timestamp_conversion():
     start = start_time_from_event(BOCHOLT)
-    assert start == datetime.fromtimestamp(1787400000, tz=timezone.utc)
+    assert start == datetime.fromtimestamp(1893456000, tz=timezone.utc)
     parsed = parse_event(BOCHOLT)
     assert parsed is not None
     assert parsed.match.start_time == start
@@ -386,4 +391,175 @@ def test_diagnose_redacts_apikey_and_cf_token():
     assert "supersecretkey" not in text
     assert "tokensecret" not in text
     assert "wss://***" in text
+
+
+def test_missing_home_or_away_rejected():
+    assert parse_event({**BOCHOLT, "ev_sahibi": ""}) is None
+    assert parse_event({**BOCHOLT, "deplasman": ""}) is None
+
+
+def test_missing_home_draw_or_away_odds_rejected():
+    assert parse_event({**BOCHOLT, "oranlar": {"0": "3.45", "2": "2.50"}}) is None
+    assert parse_event({**BOCHOLT, "oranlar": {"1": "2.38", "2": "2.50"}}) is None
+    assert parse_event({**BOCHOLT, "oranlar": {"1": "2.38", "0": "3.45"}}) is None
+
+
+def test_live_or_started_event_rejected():
+    live = {**BOCHOLT, "zaman": {"sec": 1_000_000_000}, "zs": "Canli 12'"}
+    assert is_prematch_event(live, now=datetime(2026, 1, 1, tzinfo=timezone.utc)) is False
+    assert parse_event(live, now=datetime(2026, 1, 1, tzinfo=timezone.utc)) is None
+
+
+def test_non_football_league_name_rejected():
+    payload = {
+        "ligler": {"9": {"ad": "NBA Basketball"}},
+        "maclar": {"hoops": {**BOCHOLT, "_id": "hoops", "lig_id": 9}},
+    }
+    assert parse_payload(payload) == []
+
+
+def test_malformed_and_cloudflare_keep_last_good():
+    feed = Kolay90PrematchFeed()
+    feed._apply_fetch(
+        {
+            "status": 200,
+            "content_type": "application/json",
+            "bytes": 100,
+            "json": True,
+            "payload": [BOCHOLT],
+            "looks_html": False,
+            "unauthenticated": False,
+            "error": None,
+            "cloudflare": False,
+        }
+    )
+    malformed = feed._apply_fetch(
+        {
+            "status": 200,
+            "content_type": "text/plain",
+            "bytes": 3,
+            "json": False,
+            "payload": None,
+            "looks_html": False,
+            "unauthenticated": False,
+            "error": None,
+            "cloudflare": False,
+        }
+    )
+    assert malformed["kept_last_good"] is True
+    empty = feed._apply_fetch(
+        {
+            "status": 200,
+            "content_type": "application/json",
+            "bytes": 2,
+            "json": True,
+            "payload": [],
+            "looks_html": False,
+            "unauthenticated": False,
+            "error": None,
+            "cloudflare": False,
+        }
+    )
+    assert empty["kept_last_good"] is True
+    assert empty["failure"] == "empty_or_unparsed"
+    assert len(feed.last_good()) == 1
+
+
+def test_authentication_loss_sets_required_flag():
+    feed = Kolay90PrematchFeed()
+    feed._apply_fetch(
+        {
+            "status": 200,
+            "content_type": "application/json",
+            "bytes": 100,
+            "json": True,
+            "payload": [BOCHOLT],
+            "looks_html": False,
+            "unauthenticated": False,
+            "error": None,
+            "cloudflare": False,
+        }
+    )
+    lost = feed._apply_fetch(
+        {
+            "status": 200,
+            "content_type": "application/json",
+            "bytes": 40,
+            "json": True,
+            "payload": {"hata": True},
+            "looks_html": False,
+            "unauthenticated": True,
+            "error": None,
+            "cloudflare": False,
+        }
+    )
+    assert lost["auth_required"] is True
+    assert lost["auth_state"] == "KOLAY90_AUTHENTICATION_REQUIRED"
+    assert lost["kept_last_good"] is True
+    assert classify_session_state(cloudflare=True) == "CLOUDFLARE"
+    assert classify_session_state(url="https://kolay90.com/sozlesme.html") == "AGREEMENT"
+    assert classify_session_state(has_password=True) == "LOGIN"
+
+
+def test_find_kolay90_page_and_cdp_reconnect_does_not_launch_chrome(monkeypatch):
+    from parsers.kolay90_prematch import cdp
+
+    launches = []
+
+    def fake_connect(url=None):
+        launches.append(url)
+        raise RuntimeError("no chrome")
+
+    monkeypatch.setattr(cdp, "connect_existing_chrome", fake_connect)
+    rows = [
+        {"url": "https://example.com/", "title": "x"},
+        {"url": "https://kolay90.com/#!/maclar/1", "title": "Kolay90"},
+    ]
+    found = find_kolay90_page(rows)
+    assert found["title"] == "Kolay90"
+    feed = Kolay90PrematchFeed()
+    result = feed.attach()
+    assert result["ok"] is False
+    assert result["failure"] == "cdp_attach_failed"
+    assert len(launches) == 1
+
+
+def test_persistent_page_reuse_and_repeated_polling():
+    class FakeFeed:
+        def __init__(self):
+            self.polls = 0
+            self.closed = False
+
+        def poll(self):
+            self.polls += 1
+            matches = to_match_odds(parse_payload([BOCHOLT]))
+            return {
+                "ok": True,
+                "authenticated": True,
+                "auth_state": "AUTHENTICATED_APP",
+                "status": 200,
+                "total_events": 1,
+                "one_x_two": 1,
+                "matches": matches,
+                "kept_last_good": False,
+            }
+
+        def close(self):
+            self.closed = True
+
+    fake = FakeFeed()
+    worker = Kolay90PrematchWorker(poll_interval=0.01, feed=fake)
+    worker._owns_feed = False
+    worker._feed = fake
+    worker._publish(fake.poll(), 5.0)
+    worker._publish(fake.poll(), 6.0)
+    worker._publish(fake.poll(), 7.0)
+    status = worker.get_status()
+    assert fake.polls == 3
+    assert status["success_count"] == 3
+    assert status["last_odds_count"] == 1
+    assert worker.get_matches()[0].bookmaker == "kolay90"
+    assert worker.get_matches()[0].feed_type == "prematch"
+    fake.close()
+    assert fake.closed is True
 

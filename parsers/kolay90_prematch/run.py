@@ -1,8 +1,7 @@
-"""Isolated Kolay90 prematch acquisition run.
+"""Standalone Kolay90 prematch attach/poll helper.
 
-Uses one persistent ZenRows browser via ZENROWS_BROWSER_WS.
-Does not use CredentialManager. Does not close the browser between polls.
-Does not touch collector, run_engine, or other bookmakers.
+Attaches to the existing authenticated Chrome on 127.0.0.1:9222.
+Does not use ZenRows or CredentialManager. Does not close Chrome.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ load_dotenv(ROOT / ".env", override=True)
 load_dotenv(ROOT / ".env.local", override=True)
 
 from parsers.kolay90_prematch.feed import Kolay90PrematchFeed
-from parsers.kolay90_prematch.login import credentials_configured
 
 
 def log(message: str) -> None:
@@ -63,43 +61,22 @@ def mapping_samples(matches, limit: int = 3) -> None:
     for index, row in enumerate(matches[:limit], start=1):
         print(
             f"  Event {index}: {row.home_team} vs {row.away_team} | "
-            f"HOME={row.raw_home} DRAW={row.raw_draw} AWAY={row.raw_away}",
+            f"HOME={row.home_odds} DRAW={row.draw_odds} AWAY={row.away_odds}",
             flush=True,
         )
 
 
 def main() -> int:
-    if not credentials_configured():
-        log("KOLAY90_USERNAME / KOLAY90_PASSWORD are not set")
-        return 2
-    if not (os.environ.get("ZENROWS_BROWSER_WS") or "").strip():
-        log("ZENROWS_BROWSER_WS is not set")
-        return 2
-
-    log("Starting one persistent ZenRows browser")
-    log(mask_ws_source())
+    log("Attaching to existing Chrome on 127.0.0.1:9222")
     feed = Kolay90PrematchFeed()
-    started = feed.start()
-    inspect = started.get("inspect") or {}
-    log(f"title={started.get('page_title')}")
-    log(f"path={started.get('page_path')}")
-    log(f"cloudflare={started.get('cloudflare')} application={inspect.get('application')}")
-    log(f"login_form_found={started.get('login_form_found')} submitted={started.get('login_form_submitted')}")
-    log(f"input_types={inspect.get('input_types')} buttons={inspect.get('button_labels')}")
-
-    if started.get("reason") == "KOLAY90_CLOUDFLARE_SESSION_FAILED" or started.get("cloudflare"):
-        log("KOLAY90_CLOUDFLARE_SESSION_FAILED")
-        return 4
+    started = feed.attach()
+    log(f"title={started.get('title')} url={started.get('url')}")
     if not started.get("ok"):
-        log(f"AUTHENTICATION_FAILED reason={started.get('reason')}")
-        getmaclar = started.get("getmaclar") or {}
-        cycle_line(1, getmaclar)
+        log(f"ATTACH_FAILED failure={started.get('failure')}")
         return 1
 
     results = []
-    first = started.get("getmaclar") or {}
-    first.setdefault("matches", feed.last_good())
-    first.setdefault("ok", bool(first.get("authenticated")))
+    first = feed.poll()
     results.append(first)
     cycle_line(1, first)
 

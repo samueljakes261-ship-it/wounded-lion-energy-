@@ -27,7 +27,39 @@ FEED = "prematch"
 UNAUTH_MARKER = "Lütfen Tekrar Giriş Yapınız"
 SPORT_KEYS = ("spor", "sport", "brans", "dal", "sport_name", "sportName", "sportId")
 FOOTBALL_NAMES = {"futbol", "football", "soccer"}
-NON_FOOTBALL = {"basketbol", "basketball", "tenis", "tennis", "voleybol", "voleyball"}
+NON_FOOTBALL = {
+    "basketbol",
+    "basketball",
+    "tenis",
+    "tennis",
+    "voleybol",
+    "voleyball",
+    "espor",
+    "esports",
+    "virtual",
+    "casino",
+    "hokey",
+    "hockey",
+    "baseball",
+    "handball",
+    "mma",
+}
+NON_FOOTBALL_NAME_TOKENS = (
+    "basket",
+    "tennis",
+    "tenis",
+    "voley",
+    "esport",
+    "virtual",
+    "casino",
+    "hockey",
+    "hokey",
+    "baseball",
+    "handball",
+    "mma",
+    "ufc",
+    "masa tenisi",
+)
 
 
 @dataclass(frozen=True)
@@ -164,22 +196,64 @@ def _sport_label(item: dict) -> str | None:
     return None
 
 
-def is_football_event(item: dict) -> bool:
+def league_catalog(payload: Any) -> dict:
+    if isinstance(payload, dict) and isinstance(payload.get("ligler"), dict):
+        return payload["ligler"]
+    return {}
+
+
+def _league_name(item: dict, leagues: dict | None) -> str:
+    if not leagues:
+        return ""
+    lig_id = item.get("lig_id")
+    entry = leagues.get(lig_id)
+    if entry is None:
+        entry = leagues.get(str(lig_id))
+    if not isinstance(entry, dict):
+        return ""
+    return str(entry.get("ad") or "")
+
+
+def is_football_event(item: dict, leagues: dict | None = None) -> bool:
     label = _sport_label(item)
-    if label is None:
-        return True
-    if label in NON_FOOTBALL:
+    if label is not None:
+        if label in NON_FOOTBALL:
+            return False
+        if label not in FOOTBALL_NAMES:
+            return False
+    league = _league_name(item, leagues).casefold()
+    if league and any(token in league for token in NON_FOOTBALL_NAME_TOKENS):
         return False
-    return label in FOOTBALL_NAMES
+    return True
 
 
-def parse_event(item: Any, collected_at: datetime | None = None) -> Kolay90PrematchOdds | None:
+def is_prematch_event(item: dict, now: datetime | None = None) -> bool:
+    current = now or datetime.now(timezone.utc)
+    start = start_time_from_event(item)
+    if start is None:
+        return False
+    if start <= current:
+        return False
+    marker = str(item.get("zs") or "").casefold()
+    if any(token in marker for token in ("canlı", "canli", "live", "inplay")):
+        return False
+    return True
+
+
+def parse_event(
+    item: Any,
+    collected_at: datetime | None = None,
+    leagues: dict | None = None,
+    now: datetime | None = None,
+) -> Kolay90PrematchOdds | None:
     if not isinstance(item, dict):
         return None
     event_id = item.get("_id")
     if event_id in (None, ""):
         return None
-    if not is_football_event(item):
+    if not is_football_event(item, leagues):
+        return None
+    if not is_prematch_event(item, now):
         return None
     home_team = item.get("ev_sahibi")
     away_team = item.get("deplasman")
@@ -200,9 +274,10 @@ def parse_event(item: Any, collected_at: datetime | None = None) -> Kolay90Prema
     collected = collected_at or datetime.now(timezone.utc)
     lig_id = item.get("lig_id")
     code = item.get("code")
+    competition = _league_name(item, leagues) or (str(lig_id) if lig_id is not None else "")
     match = MatchOdds(
         bookmaker=BOOKMAKER,
-        competition=str(lig_id) if lig_id is not None else "",
+        competition=competition,
         sport=SPORT,
         market=MARKET,
         home_team=str(home_team),
@@ -226,13 +301,18 @@ def parse_event(item: Any, collected_at: datetime | None = None) -> Kolay90Prema
 
 
 def parse_payload(payload: Any, collected_at: datetime | None = None) -> list[Kolay90PrematchOdds]:
+    leagues = league_catalog(payload)
     by_id: dict[str, Kolay90PrematchOdds] = {}
     for item in unwrap_events(payload):
-        parsed = parse_event(item, collected_at)
+        parsed = parse_event(item, collected_at, leagues=leagues)
         if parsed is None:
             continue
         by_id[parsed.event_id] = parsed
     return list(by_id.values())
+
+
+def to_match_odds(parsed: list[Kolay90PrematchOdds]) -> list[MatchOdds]:
+    return [item.match for item in parsed]
 
 
 def validate_against_raw(item: dict, parsed: Kolay90PrematchOdds) -> list[str]:

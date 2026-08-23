@@ -28,6 +28,7 @@ from parsers.betkanyon_prematch.worker import BetkanyonPrematchWorker
 from parsers.onwin.feed import OnwinFeed
 from parsers.orbit.worker import OrbitWorker
 from parsers.orbit_prematch.worker import OrbitPrematchWorker
+from parsers.kolay90_prematch.worker import Kolay90PrematchWorker
 from prematch.mode import engine_mode_label, is_prematch_only
 from prematch.pipeline import (
     PREMATCH_CACHE_FILE,
@@ -685,6 +686,7 @@ async def stop_orbit_worker():
 
 _betkanyon_prematch_worker: BetkanyonPrematchWorker | None = None
 _orbit_prematch_worker: OrbitPrematchWorker | None = None
+_kolay90_prematch_worker: Kolay90PrematchWorker | None = None
 _prematch_last_matched = 0
 _prematch_last_opportunities = 0
 _prematch_last_back_lay = 0
@@ -722,11 +724,27 @@ async def stop_orbit_prematch_worker():
         _orbit_prematch_worker = None
 
 
+def _get_kolay90_prematch_worker() -> Kolay90PrematchWorker:
+    global _kolay90_prematch_worker
+    if _kolay90_prematch_worker is None:
+        _kolay90_prematch_worker = Kolay90PrematchWorker()
+        _kolay90_prematch_worker.start()
+    return _kolay90_prematch_worker
+
+
+def stop_kolay90_prematch_worker():
+    global _kolay90_prematch_worker
+    if _kolay90_prematch_worker is not None:
+        _kolay90_prematch_worker.stop()
+        _kolay90_prematch_worker = None
+
+
 def start_prematch_workers():
     """Start prematch workers independently of live start_workers()."""
     for name, starter in (
         ("BetKanyon prematch", _get_betkanyon_prematch_worker),
         ("Orbit prematch", _get_orbit_prematch_worker),
+        ("Kolay90 prematch", _get_kolay90_prematch_worker),
     ):
         try:
             starter()
@@ -775,6 +793,7 @@ _worker_restart_at = {
     "orbit": 0.0,
     "betkanyon_prematch": 0.0,
     "orbit_prematch": 0.0,
+    "kolay90_prematch": 0.0,
 }
 
 
@@ -850,6 +869,16 @@ async def _ensure_workers_alive():
             "orbit_prematch",
             stop_orbit_prematch_worker,
             _get_orbit_prematch_worker,
+        )
+
+    if (
+        _kolay90_prematch_worker is not None
+        and not _worker_alive(_kolay90_prematch_worker._thread)
+    ):
+        await _restart_worker(
+            "kolay90_prematch",
+            stop_kolay90_prematch_worker,
+            _get_kolay90_prematch_worker,
         )
 
 
@@ -1584,6 +1613,11 @@ def _maybe_print_prematch_panel():
         if _orbit_prematch_worker is not None
         else {}
     )
+    k90 = (
+        _kolay90_prematch_worker.get_status()
+        if _kolay90_prematch_worker is not None
+        else {}
+    )
     orbit_feed_stats = {}
     if _orbit_prematch_worker is not None and getattr(
         _orbit_prematch_worker, "_feed", None
@@ -1633,6 +1667,16 @@ def _maybe_print_prematch_panel():
         f"| age={orbit_age:.0f}s" if orbit_age is not None
         else f"ORBIT PREMATCH: {str(orbit.get('status', 'stopped')).upper()} | events={orbit.get('last_event_count', 0)} | 1X2={orbit.get('back_count', 0) + orbit.get('lay_count', 0)} | age=?"
     )
+    k90_age = None
+    if k90.get("last_update_at"):
+        k90_age = time.time() - k90["last_update_at"]
+    print(
+        f"KOLAY90 PREMATCH: {str(k90.get('status', 'stopped')).upper()} "
+        f"| events={k90.get('last_event_count', 0)} "
+        f"| 1X2={k90.get('last_odds_count', 0)} "
+        f"| age={k90_age:.0f}s" if k90_age is not None
+        else f"KOLAY90 PREMATCH: {str(k90.get('status', 'stopped')).upper()} | events={k90.get('last_event_count', 0)} | 1X2={k90.get('last_odds_count', 0)} | age=?"
+    )
     print(f"MATCHED: {_prematch_last_matched}")
     print(f"BACK/LAY ARBS: {_prematch_last_back_lay}")
     print(f"BACK/BACK ARBS: {_prematch_last_opportunities}")
@@ -1643,14 +1687,14 @@ def _maybe_print_prematch_panel():
     print()
 
 
-def _prematch_zero_reason(bk_n, orbit_n, matched_n, stale_n, total_arbs):
+def _prematch_zero_reason(bk_n, orbit_n, matched_n, stale_n, total_arbs, kolay90_n=0):
     if total_arbs > 0:
         return "qualifying_arbs"
-    if bk_n == 0 and orbit_n == 0:
+    if bk_n == 0 and orbit_n == 0 and kolay90_n == 0:
         return "both_feeds_empty"
-    if bk_n == 0:
+    if bk_n == 0 and kolay90_n == 0:
         return "betkanyon_empty"
-    if orbit_n == 0:
+    if orbit_n == 0 and kolay90_n == 0:
         return "orbit_empty"
     if matched_n == 0:
         return "matcher_no_pairs"
@@ -1665,7 +1709,11 @@ def _run_prematch_tick(bankroll, now_dt):
     global _prematch_last_back_lay, _prematch_back_lay_sig
     global _prematch_last_cache_n
 
-    if _betkanyon_prematch_worker is None and _orbit_prematch_worker is None:
+    if (
+        _betkanyon_prematch_worker is None
+        and _orbit_prematch_worker is None
+        and _kolay90_prematch_worker is None
+    ):
         return
 
     matches = []
@@ -1673,6 +1721,8 @@ def _run_prematch_tick(bankroll, now_dt):
         matches.extend(_betkanyon_prematch_worker.get_matches())
     if _orbit_prematch_worker is not None:
         matches.extend(_orbit_prematch_worker.get_matches())
+    if _kolay90_prematch_worker is not None:
+        matches.extend(_kolay90_prematch_worker.get_matches())
     matches = [
         match
         for match in matches
@@ -1681,6 +1731,7 @@ def _run_prematch_tick(bankroll, now_dt):
     matches, stale_dropped = _filter_prematch_stale(matches, now_dt)
     bk_matches = [m for m in matches if m.bookmaker.lower() == "betkanyon"]
     orbit_matches = [m for m in matches if m.bookmaker.lower() == "orbit"]
+    kolay90_matches = [m for m in matches if m.bookmaker.lower() == "kolay90"]
     orbit_back = sum(1 for m in orbit_matches if (m.side or "").upper() == "BACK")
     orbit_lay = sum(1 for m in orbit_matches if (m.side or "").upper() == "LAY")
     try:
@@ -1708,7 +1759,12 @@ def _run_prematch_tick(bankroll, now_dt):
     back_lay_n = len(back_lay)
     total_arbs = arb_n + back_lay_n
     reason = _prematch_zero_reason(
-        len(bk_matches), len(orbit_matches), matched_n, stale_dropped, total_arbs
+        len(bk_matches),
+        len(orbit_matches),
+        matched_n,
+        stale_dropped,
+        total_arbs,
+        len(kolay90_matches),
     )
     if (
         matched_n != _prematch_last_matched
@@ -1727,7 +1783,8 @@ def _run_prematch_tick(bankroll, now_dt):
         )
         print(
             f"[MATCHER] matched={matched_n} stale_rejected={stale_dropped} "
-            f"bk={len(bk_matches)} orbit={len(orbit_matches)}"
+            f"bk={len(bk_matches)} orbit={len(orbit_matches)} "
+            f"kolay90={len(kolay90_matches)}"
         )
         print(
             f"[ARB] BACK/LAY={back_lay_n} BACK/BACK={arb_n} "
@@ -1899,10 +1956,17 @@ def _write_status(
         if _orbit_prematch_worker is not None
         else {"status": "stopped", "error": None, "last_update_at": None}
     )
+    k90_pm_status = (
+        _kolay90_prematch_worker.get_status()
+        if _kolay90_prematch_worker is not None
+        else {"status": "stopped", "error": None, "last_update_at": None}
+    )
     bk_pm_last = bk_pm_status.get("last_update_at")
     orbit_pm_last = orbit_pm_status.get("last_update_at")
+    k90_pm_last = k90_pm_status.get("last_update_at")
     bk_pm_age = (now - bk_pm_last) if bk_pm_last else None
     orbit_pm_age = (now - orbit_pm_last) if orbit_pm_last else None
+    k90_pm_age = (now - k90_pm_last) if k90_pm_last else None
 
     payload = {
         "generatedAt": _iso_dt(now_dt),
@@ -1947,6 +2011,19 @@ def _write_status(
                     else None
                 ),
                 orbit_pm_status,
+                now_dt,
+                max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
+            ),
+            "kolay90_prematch": _collector_snapshot(
+                "Kolay90 Prematch",
+                k90_pm_status.get("status"),
+                k90_pm_age,
+                _worker_alive(
+                    _kolay90_prematch_worker._thread
+                    if _kolay90_prematch_worker
+                    else None
+                ),
+                k90_pm_status,
                 now_dt,
                 max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
             ),
@@ -2015,6 +2092,7 @@ def get_collector_status():
                     ("orbit", "Orbit"),
                     ("betkanyon_prematch", "BetKanyon Prematch"),
                     ("orbit_prematch", "Orbit Prematch"),
+                    ("kolay90_prematch", "Kolay90 Prematch"),
                 )
             },
         }

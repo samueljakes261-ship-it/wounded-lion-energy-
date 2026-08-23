@@ -52,6 +52,21 @@ def _looks_like_challenge(page) -> bool:
         return True
     if "__cf_chl" in url or "challenge-platform" in url:
         return True
+    try:
+        html = (page.content() or "")[:4000].lower()
+    except Exception:
+        html = ""
+    if any(
+        token in html
+        for token in (
+            "cloudflare",
+            "cf-browser-verification",
+            "just a moment",
+            "un momento",
+            "checking your browser",
+        )
+    ):
+        return True
     return False
 
 

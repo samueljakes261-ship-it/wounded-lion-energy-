@@ -30,7 +30,7 @@ BOCHOLT = {
     "ev_sahibi": "Bocholt",
     "deplasman": "Rodinghausen",
     "lig_id": 245759,
-    "zaman": {"sec": 1787400000},
+    "zaman": {"sec": 1893456000},
     "oranlar": {"1": "2.38", "0": "3.45", "2": "2.50"},
 }
 

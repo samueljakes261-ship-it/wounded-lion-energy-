@@ -73,6 +73,29 @@ def test_live_and_prematch_same_teams_do_not_match():
     assert matcher.is_same_event(live, prematch) is False
 
 
+def test_kolay90_enters_same_prematch_pipeline():
+    finder = MatchFinder()
+    matches = [
+        _odds("Betkanyon", "Alpha FC", "Beta FC", 2.2, 3.1, 3.4),
+        _odds("Orbit", "Alpha FC", "Beta FC", 1.9, 3.6, 4.8, side="BACK"),
+        _odds("kolay90", "Alpha FC", "Beta FC", 2.0, 3.2, 3.5),
+    ]
+    events = finder.find(matches)
+    assert len(events) == 1
+    books = {item.bookmaker.lower() for item in events[0].matches}
+    assert books == {"betkanyon", "orbit", "kolay90"}
+    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    assert len(opportunities) == 1
+    assert opportunities[0].result.arbitrage_exists is True
+    legs = {
+        opportunities[0].result.best_odds.home_match.bookmaker.lower(),
+        opportunities[0].result.best_odds.draw_match.bookmaker.lower(),
+        opportunities[0].result.best_odds.away_match.bookmaker.lower(),
+    }
+    assert "kolay90" in books
+    assert len(legs) >= 2
+
+
 def test_prematch_events_do_match_across_bookmakers():
     finder = MatchFinder()
     matches = [
