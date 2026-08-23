@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from parsers.kolay90_prematch.feed import Kolay90PrematchFeed
 from parsers.kolay90_prematch.parser import (
+    count_oranlar,
     extract_1x2,
     is_unauthenticated,
     parse_event,
@@ -176,3 +177,105 @@ def test_feed_keeps_last_good_on_cloudflare_html():
     assert blocked["kept_last_good"] is True
     assert blocked["failure"] == "cloudflare_html"
     assert len(feed.last_good()) == 1
+
+
+def test_kolay90_browser_uses_env_ws_not_credential_failover(monkeypatch):
+    from parsers.kolay90_prematch.browser import Kolay90PrematchBrowser
+
+    failover_calls = []
+
+    def fake_failover(*_args, **_kwargs):
+        failover_calls.append(True)
+        raise AssertionError("Kolay90 must not use connect_with_failover")
+
+    class FakeBrowser:
+        contexts = []
+
+        def new_context(self):
+            return object()
+
+        def close(self):
+            pass
+
+    class FakePlaywright:
+        class chromium:
+            @staticmethod
+            def connect_over_cdp(_url):
+                return FakeBrowser()
+
+        def start(self):
+            return self
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(
+        "parsers.kolay90_prematch.browser.sync_playwright",
+        lambda: FakePlaywright(),
+    )
+    monkeypatch.setattr(
+        "credentials.zenrows_provider.connect_with_failover",
+        fake_failover,
+    )
+    monkeypatch.setenv("ZENROWS_BROWSER_WS", "wss://browser.zenrows.com?apikey=testkey1234")
+    browser = Kolay90PrematchBrowser()
+    browser.connect()
+    assert failover_calls == []
+    assert browser.credential_id == "kolay90-env-zenrows"
+    assert browser.browser is not None
+    browser.close()
+
+
+def test_count_oranlar_partial_and_complete():
+    events = [
+        BOCHOLT,
+        {**BOCHOLT, "_id": "draw-only", "oranlar": {"0": "8.75"}},
+        {**BOCHOLT, "_id": "none", "oranlar": {}},
+    ]
+    counts = count_oranlar(events)
+    assert counts["with_any_1x2"] == 2
+    assert counts["with_all_1x2"] == 1
+
+
+def test_repeated_apply_fetch_stays_authenticated():
+    feed = Kolay90PrematchFeed()
+    payload = {
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 100,
+        "json": True,
+        "payload": [BOCHOLT],
+        "looks_html": False,
+        "unauthenticated": False,
+        "error": None,
+        "cloudflare": False,
+    }
+    rows = [feed._apply_fetch(payload) for _ in range(3)]
+    assert all(row["authenticated"] for row in rows)
+    assert all(row["one_x_two"] == 1 for row in rows)
+
+
+def test_run_logs_mask_password(monkeypatch, capsys):
+    from parsers.kolay90_prematch.run import log, mask_ws_source
+
+    monkeypatch.setenv("KOLAY90_PASSWORD", "secret-pass-xyz")
+    monkeypatch.setenv("ZENROWS_BROWSER_WS", "wss://browser.zenrows.com?apikey=abcd1234efgh")
+    log(mask_ws_source())
+    out = capsys.readouterr().out
+    assert "secret-pass-xyz" not in out
+    assert "abcd1234efgh" not in out
+    assert "********efgh" in out
+    assert "ZENROWS_BROWSER_WS" in out
+
+
+def test_diagnose_redacts_apikey_and_cf_token():
+    from parsers.kolay90_prematch.diagnose_zenrows import redact_error
+
+    text = redact_error(
+        "connect failed wss://browser.zenrows.com/?apikey=supersecretkey "
+        "https://kolay90.com/?__cf_chl_rt_tk=tokensecret"
+    )
+    assert "supersecretkey" not in text
+    assert "tokensecret" not in text
+    assert "wss://***" in text
+

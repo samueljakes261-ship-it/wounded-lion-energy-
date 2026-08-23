@@ -89,6 +89,33 @@ def unwrap_events(payload: Any) -> list[dict]:
     return []
 
 
+def oranlar_keys(item: dict) -> set[str]:
+    oranlar = item.get("oranlar")
+    if not isinstance(oranlar, dict):
+        return set()
+    present = set()
+    for key in ("1", "0", "2"):
+        value = oranlar.get(key)
+        if value not in (None, ""):
+            present.add(key)
+    return present
+
+
+def count_oranlar(events: list[dict]) -> dict[str, int]:
+    any_price = 0
+    all_three = 0
+    for item in events:
+        keys = oranlar_keys(item)
+        if keys:
+            any_price += 1
+        if keys >= {"1", "0", "2"}:
+            all_three += 1
+    return {
+        "with_any_1x2": any_price,
+        "with_all_1x2": all_three,
+    }
+
+
 def extract_1x2(item: dict) -> tuple[str, str, str] | None:
     oranlar = item.get("oranlar")
     if not isinstance(oranlar, dict):

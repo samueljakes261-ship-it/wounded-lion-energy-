@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from parsers.kolay90_prematch.browser import Kolay90PrematchBrowser
 from parsers.kolay90_prematch.fetch import fetch_getmaclar
 from parsers.kolay90_prematch.login import establish_session
-from parsers.kolay90_prematch.parser import parse_payload, unwrap_events
+from parsers.kolay90_prematch.parser import count_oranlar, parse_payload, unwrap_events
 
 
 class Kolay90PrematchFeed:
@@ -77,6 +77,7 @@ class Kolay90PrematchFeed:
         else:
             events = unwrap_events(payload)
             matches = parse_payload(payload)
+            counts = count_oranlar(events)
             if events or matches:
                 authenticated = True
                 self._last_good = matches
@@ -89,6 +90,8 @@ class Kolay90PrematchFeed:
                     "bytes": raw.get("bytes"),
                     "total_events": len(events),
                     "one_x_two": len(matches),
+                    "with_any_1x2": counts["with_any_1x2"],
+                    "with_all_1x2": counts["with_all_1x2"],
                     "matches": matches,
                     "kept_last_good": False,
                     "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -104,6 +107,8 @@ class Kolay90PrematchFeed:
             "bytes": raw.get("bytes"),
             "total_events": 0,
             "one_x_two": len(self._last_good),
+            "with_any_1x2": 0,
+            "with_all_1x2": 0,
             "matches": list(self._last_good),
             "kept_last_good": bool(self._last_good),
         }

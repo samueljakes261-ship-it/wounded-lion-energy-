@@ -1,6 +1,7 @@
 """Isolated Kolay90 prematch acquisition run.
 
-Uses one persistent ZenRows browser. Does not close it.
+Uses one persistent ZenRows browser via ZENROWS_BROWSER_WS.
+Does not use CredentialManager. Does not close the browser between polls.
 Does not touch collector, run_engine, or other bookmakers.
 """
 
@@ -10,6 +11,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -18,14 +20,27 @@ if str(ROOT) not in sys.path:
 from dotenv import load_dotenv
 
 load_dotenv(ROOT / ".env", override=True)
+load_dotenv(ROOT / ".env.local", override=True)
 
-from credentials.errors import AllCredentialsUnavailableError
 from parsers.kolay90_prematch.feed import Kolay90PrematchFeed
 from parsers.kolay90_prematch.login import credentials_configured
 
 
 def log(message: str) -> None:
-    print(f"[KOLAY90 PREMATCH] {message}")
+    print(f"[KOLAY90 PREMATCH] {message}", flush=True)
+
+
+def mask_ws_source() -> str:
+    raw = (os.environ.get("ZENROWS_BROWSER_WS") or "").strip()
+    if not raw:
+        return "source=ZENROWS_BROWSER_WS credential=(missing)"
+    pairs = parse_qsl(urlsplit(raw).query, keep_blank_values=True)
+    tail = "????"
+    for key, value in pairs:
+        if key.lower() in ("apikey", "api_key") and value:
+            tail = value[-4:]
+            break
+    return f"source=ZENROWS_BROWSER_WS credential=********{tail}"
 
 
 def cycle_line(n: int, result: dict) -> None:
@@ -34,37 +49,22 @@ def cycle_line(n: int, result: dict) -> None:
         f"content_type={result.get('content_type')} "
         f"bytes={result.get('bytes')} "
         f"total_events={result.get('total_events')} "
-        f"1X2={result.get('one_x_two')} "
+        f"any_1x2={result.get('with_any_1x2')} "
+        f"all_1x2={result.get('with_all_1x2')} "
         f"parsed={result.get('one_x_two')} "
+        f"authenticated={result.get('authenticated')} "
         f"ok={result.get('ok')} "
         f"failure={result.get('failure')}"
     )
 
 
-def _safe_close(feed: Kolay90PrematchFeed) -> None:
-    try:
-        feed.browser.close()
-    except Exception:
-        pass
-
-
-def _start_fresh_feed() -> tuple[Kolay90PrematchFeed, dict]:
-    feed = Kolay90PrematchFeed()
-    try:
-        return feed, feed.start()
-    except Exception:
-        _safe_close(feed)
-        raise
-
-
-def mapping_samples(matches, limit: int = 6) -> None:
+def mapping_samples(matches, limit: int = 3) -> None:
     log("Odds mapping 1=HOME 0=DRAW 2=AWAY")
-    for row in matches[:limit]:
+    for index, row in enumerate(matches[:limit], start=1):
         print(
-            f"  {row.home_team} vs {row.away_team} | "
-            f"1/HOME={row.raw_home} ({row.home_odds}) "
-            f"0/DRAW={row.raw_draw} ({row.draw_odds}) "
-            f"2/AWAY={row.raw_away} ({row.away_odds})"
+            f"  Event {index}: {row.home_team} vs {row.away_team} | "
+            f"HOME={row.raw_home} DRAW={row.raw_draw} AWAY={row.raw_away}",
+            flush=True,
         )
 
 
@@ -72,28 +72,28 @@ def main() -> int:
     if not credentials_configured():
         log("KOLAY90_USERNAME / KOLAY90_PASSWORD are not set")
         return 2
-    log("Starting persistent ZenRows browser (will not close it after success)")
-    try:
-        feed, started = _start_fresh_feed()
-    except AllCredentialsUnavailableError as exc:
-        wait = float(exc.retry_after_seconds or 0)
-        log(
-            "STOP: existing ZenRows credential pool unavailable. "
-            f"retry_after={int(wait)}s. Not resetting credential rotation. "
-            "Not waiting out a quota cooldown in this isolated run."
-        )
-        return 3
-    log(f"Cloudflare: {'CLEARED' if not started.get('cloudflare') else 'PRESENT'}")
-    log(f"Login form submitted: {bool(started.get('login_form_submitted'))}")
+    if not (os.environ.get("ZENROWS_BROWSER_WS") or "").strip():
+        log("ZENROWS_BROWSER_WS is not set")
+        return 2
+
+    log("Starting one persistent ZenRows browser")
+    log(mask_ws_source())
+    feed = Kolay90PrematchFeed()
+    started = feed.start()
+    inspect = started.get("inspect") or {}
+    log(f"title={started.get('page_title')}")
+    log(f"path={started.get('page_path')}")
+    log(f"cloudflare={started.get('cloudflare')} application={inspect.get('application')}")
+    log(f"login_form_found={started.get('login_form_found')} submitted={started.get('login_form_submitted')}")
+    log(f"input_types={inspect.get('input_types')} buttons={inspect.get('button_labels')}")
+
+    if started.get("reason") == "KOLAY90_CLOUDFLARE_SESSION_FAILED" or started.get("cloudflare"):
+        log("KOLAY90_CLOUDFLARE_SESSION_FAILED")
+        return 4
     if not started.get("ok"):
-        log(f"STOP: {started.get('reason')}")
+        log(f"AUTHENTICATION_FAILED reason={started.get('reason')}")
         getmaclar = started.get("getmaclar") or {}
-        log(f"getMaclar status={getmaclar.get('status')} unauth={getmaclar.get('unauthenticated')}")
-        log("Leaving ZenRows browser open (not calling close())")
-        if os.environ.get("KOLAY90_KEEP_ALIVE", "1").strip() not in ("0", "false", "no"):
-            log("Idle keep-alive: session stays open; no further login attempts")
-            while True:
-                time.sleep(300)
+        cycle_line(1, getmaclar)
         return 1
 
     results = []
@@ -109,7 +109,7 @@ def main() -> int:
         results.append(row)
         cycle_line(n, row)
 
-    log("Waiting 90 seconds before follow-up poll (session stays open)")
+    log("Waiting 90 seconds before follow-up poll (same browser, no re-login)")
     time.sleep(90)
     fourth = feed.poll()
     results.append(fourth)
@@ -119,23 +119,19 @@ def main() -> int:
     if matches:
         mapping_samples(matches)
 
-    success = all(r.get("ok") and r.get("authenticated", r.get("ok")) for r in results)
-    if success and matches:
-        log("KOLAY90_PERSISTENT_PREMATCH_ACCESS = SUCCESS")
-        log("ZenRows finding: session establishment only; polling used browser-context fetch")
+    expired = any(r.get("failure") == "login_expired" for r in results)
+    if expired:
+        log("KOLAY90_SESSION_EXPIRED")
+
+    success = all(r.get("ok") and r.get("authenticated") for r in results) and bool(matches)
+    if success:
+        log("PERSISTENT_AUTHENTICATED_BROWSER_ACCESS = SUCCESS")
+        log("ZENROWS_PER_POLL_REQUIRED = NO")
     else:
-        log("KOLAY90_PERSISTENT_PREMATCH_ACCESS = FAILED")
+        log("PERSISTENT_AUTHENTICATED_BROWSER_ACCESS = FAILED")
         log(f"degraded={feed.degraded()}")
 
-    log("Leaving ZenRows browser open (not calling close())")
-    if os.environ.get("KOLAY90_KEEP_ALIVE", "1").strip() not in ("0", "false", "no"):
-        n = 5
-        log("Keep-alive polling every 90s from the same browser context")
-        while True:
-            time.sleep(90)
-            row = feed.poll()
-            cycle_line(n, row)
-            n += 1
+    log("Browser restarted=NO login_repeated=NO zenrows_recreated=NO")
     return 0 if success else 1
 
 

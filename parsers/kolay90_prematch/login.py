@@ -6,6 +6,17 @@ import os
 import time
 
 HOME = "https://kolay90.com/"
+APP_MARKERS = (
+    "giriş",
+    "giris",
+    "kolay90",
+    "canlı",
+    "canli",
+    "maçlar",
+    "maclar",
+    "bahis",
+    "spor",
+)
 
 
 def credentials_configured() -> bool:
@@ -17,9 +28,85 @@ def credentials_configured() -> bool:
 def _looks_like_challenge(page) -> bool:
     try:
         title = (page.title() or "").lower()
+        url = (page.url or "").lower()
     except Exception:
-        title = ""
-    return "just a moment" in title or "attention required" in title
+        return True
+    if "just a moment" in title or "attention required" in title:
+        return True
+    if "__cf_chl" in url or "challenge-platform" in url:
+        return True
+    return False
+
+
+def inspect_page(page) -> dict:
+    try:
+        snapshot = page.evaluate(
+            """() => {
+                const visible = (el) => !!(el && (el.offsetWidth || el.offsetHeight));
+                const inputs = [...document.querySelectorAll('input')]
+                    .filter(visible)
+                    .map((el) => ({
+                        type: el.type || '',
+                        name: el.name || '',
+                        id: el.id || '',
+                        placeholder: (el.placeholder || '').slice(0, 40),
+                    }));
+                const buttons = [...document.querySelectorAll(
+                    'button, input[type=submit], [role=button], a'
+                )]
+                    .filter(visible)
+                    .map((el) => (el.innerText || el.value || el.getAttribute('aria-label') || '')
+                        .trim().slice(0, 40))
+                    .filter(Boolean)
+                    .slice(0, 25);
+                const text = ((document.body && document.body.innerText) || '')
+                    .toLowerCase().slice(0, 500);
+                return {
+                    title: document.title || '',
+                    href: location.pathname + location.search,
+                    inputs,
+                    buttons,
+                    text,
+                };
+            }"""
+        )
+    except Exception:
+        snapshot = {
+            "title": "",
+            "href": "",
+            "inputs": [],
+            "buttons": [],
+            "text": "",
+        }
+    title = str(snapshot.get("title") or "")
+    href = str(snapshot.get("href") or "")
+    text = str(snapshot.get("text") or "")
+    inputs = snapshot.get("inputs") or []
+    buttons = snapshot.get("buttons") or []
+    blob = f"{title} {href} {text}".lower()
+    challenge = _looks_like_challenge(page) or "just a moment" in blob
+    has_password = any(item.get("type") == "password" for item in inputs)
+    has_login_control = has_password or any(
+        "giriş" in str(btn).lower() or "giris" in str(btn).lower() or "login" in str(btn).lower()
+        for btn in buttons
+    )
+    has_app_marker = any(marker in blob for marker in APP_MARKERS)
+    has_account = any(
+        token in blob
+        for token in ("çıkış", "cikis", "logout", "hesabım", "hesabim", "bakiye")
+    )
+    return {
+        "title": title[:120],
+        "path": href[:160],
+        "cloudflare": challenge,
+        "application": (not challenge) and (has_app_marker or has_login_control),
+        "has_password": has_password,
+        "has_login_control": has_login_control,
+        "has_account": has_account,
+        "input_types": [item.get("type") for item in inputs][:12],
+        "input_names": [item.get("name") for item in inputs if item.get("name")][:8],
+        "button_labels": buttons[:12],
+    }
 
 
 def _login_scope(page):
@@ -37,6 +124,25 @@ def _login_scope(page):
     return page
 
 
+def _open_login(page) -> None:
+    for opener in (
+        page.get_by_role("button", name="Giriş"),
+        page.get_by_role("link", name="Giriş"),
+        page.get_by_text("Giriş Yap", exact=False),
+        page.get_by_text("Üye Girişi", exact=False),
+        page.get_by_text("Giriş", exact=True),
+    ):
+        try:
+            if opener.count() == 0:
+                continue
+            opener.first.click(timeout=4000)
+            page.wait_for_timeout(1500)
+            if _login_scope(page).locator('input[type="password"]').count() > 0:
+                return
+        except Exception:
+            continue
+
+
 def _fill_login(page, username: str, password: str) -> bool:
     scope = _login_scope(page)
     user_locators = [
@@ -44,6 +150,7 @@ def _fill_login(page, username: str, password: str) -> bool:
         scope.locator('input[name*="user" i]'),
         scope.locator('input[name*="email" i]'),
         scope.locator('input[id*="user" i]'),
+        scope.locator('input[autocomplete="username"]'),
         scope.locator('input[type="text"]'),
         scope.locator('input[type="email"]'),
         scope.get_by_placeholder("Kullanıcı", exact=False),
@@ -95,7 +202,7 @@ def _fill_login(page, username: str, password: str) -> bool:
     return submitted
 
 
-def establish_session(page, timeout_s: int = 90) -> dict:
+def establish_session(page, timeout_s: int = 180) -> dict:
     username = (os.environ.get("KOLAY90_USERNAME") or "").strip()
     password = (os.environ.get("KOLAY90_PASSWORD") or "").strip()
     if not username or not password:
@@ -109,50 +216,42 @@ def establish_session(page, timeout_s: int = 90) -> dict:
     page.goto(HOME, wait_until="domcontentloaded", timeout=timeout_s * 1000)
     deadline = time.time() + timeout_s
     while time.time() < deadline and _looks_like_challenge(page):
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
 
-    if _looks_like_challenge(page):
+    snapshot = inspect_page(page)
+    if snapshot["cloudflare"] or not snapshot["application"]:
         return {
             "ok": False,
-            "reason": "Cloudflare interstitial still present after wait",
+            "reason": "KOLAY90_CLOUDFLARE_SESSION_FAILED",
             "cloudflare": True,
             "logged_in": False,
+            "login_form_found": False,
+            "login_form_submitted": False,
+            "page_title": snapshot["title"],
+            "page_path": snapshot["path"],
+            "inspect": snapshot,
         }
 
-    page.wait_for_timeout(2000)
-    if _login_scope(page).locator('input[type="password"]').count() == 0:
-        for opener in (
-            page.get_by_role("button", name="Giriş"),
-            page.get_by_role("link", name="Giriş"),
-            page.get_by_text("Giriş Yap", exact=False),
-            page.get_by_text("Üye Girişi", exact=False),
-        ):
-            try:
-                if opener.count() == 0:
-                    continue
-                opener.first.click(timeout=4000)
-                page.wait_for_timeout(1500)
-                if _login_scope(page).locator('input[type="password"]').count() > 0:
-                    break
-            except Exception:
-                continue
+    if not snapshot["has_password"]:
+        _open_login(page)
+        snapshot = inspect_page(page)
 
     submitted = False
-    if _login_scope(page).locator('input[type="password"]').count() > 0:
+    form_found = snapshot["has_password"]
+    if form_found:
         submitted = _fill_login(page, username, password)
         if submitted:
-            page.wait_for_timeout(4000)
-    title = ""
-    try:
-        title = page.title()
-    except Exception:
-        title = ""
+            page.wait_for_timeout(5000)
+            snapshot = inspect_page(page)
+
     return {
         "ok": True,
         "reason": None,
         "cloudflare": False,
+        "login_form_found": form_found,
         "login_form_submitted": submitted,
-        "logged_in": submitted,
-        "page_title": title[:120],
-        "page_path": page.url,
+        "logged_in": submitted and not snapshot["has_password"],
+        "page_title": snapshot["title"],
+        "page_path": snapshot["path"],
+        "inspect": snapshot,
     }
