@@ -88,6 +88,21 @@ def test_valid_authenticated_list():
     assert parsed[0].home_team == "Bocholt"
 
 
+def test_maclar_dict_with_ligler_wrapper():
+    payload = {
+        "ligler": {"245759": {"ad": "Regionalliga"}},
+        "maclar": {BOCHOLT["_id"]: BOCHOLT},
+    }
+    events = unwrap_events(payload)
+    assert len(events) == 1
+    assert events[0]["_id"] == "evt-bocholt"
+    parsed = parse_payload(payload)
+    assert len(parsed) == 1
+    assert parsed[0].home_odds == 2.38
+    assert parsed[0].draw_odds == 3.45
+    assert parsed[0].away_odds == 2.50
+
+
 def test_timestamp_conversion():
     start = start_time_from_event(BOCHOLT)
     assert start == datetime.fromtimestamp(1787400000, tz=timezone.utc)

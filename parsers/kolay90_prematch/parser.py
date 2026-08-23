@@ -71,6 +71,18 @@ def is_unauthenticated(payload: Any) -> bool:
     return UNAUTH_MARKER in message
 
 
+def _events_from_container(value: Any) -> list[dict] | None:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict) and value:
+        sample = next(iter(value.values()))
+        if isinstance(sample, dict) and (
+            "ev_sahibi" in sample or "oranlar" in sample or "_id" in sample
+        ):
+            return [item for item in value.values() if isinstance(item, dict)]
+    return None
+
+
 def unwrap_events(payload: Any) -> list[dict]:
     if is_unauthenticated(payload):
         return []
@@ -79,14 +91,11 @@ def unwrap_events(payload: Any) -> list[dict]:
     if not isinstance(payload, dict):
         return []
     for key in ("maclar", "matches", "data", "result", "items"):
-        value = payload.get(key)
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-    if payload and all(isinstance(v, dict) for v in payload.values()):
-        sample = next(iter(payload.values()))
-        if "ev_sahibi" in sample or "oranlar" in sample:
-            return [v for v in payload.values() if isinstance(v, dict)]
-    return []
+        found = _events_from_container(payload.get(key))
+        if found is not None:
+            return found
+    found = _events_from_container(payload)
+    return found if found is not None else []
 
 
 def oranlar_keys(item: dict) -> set[str]:
