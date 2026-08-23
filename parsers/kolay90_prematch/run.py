@@ -41,6 +41,22 @@ def cycle_line(n: int, result: dict) -> None:
     )
 
 
+def _safe_close(feed: Kolay90PrematchFeed) -> None:
+    try:
+        feed.browser.close()
+    except Exception:
+        pass
+
+
+def _start_fresh_feed() -> tuple[Kolay90PrematchFeed, dict]:
+    feed = Kolay90PrematchFeed()
+    try:
+        return feed, feed.start()
+    except Exception:
+        _safe_close(feed)
+        raise
+
+
 def mapping_samples(matches, limit: int = 6) -> None:
     log("Odds mapping 1=HOME 0=DRAW 2=AWAY")
     for row in matches[:limit]:
@@ -56,20 +72,17 @@ def main() -> int:
     if not credentials_configured():
         log("KOLAY90_USERNAME / KOLAY90_PASSWORD are not set")
         return 2
-    log("Starting persistent ZenRows browser (will not close it)")
-    feed = Kolay90PrematchFeed()
+    log("Starting persistent ZenRows browser (will not close it after success)")
     try:
-        started = feed.start()
+        feed, started = _start_fresh_feed()
     except AllCredentialsUnavailableError as exc:
         wait = float(exc.retry_after_seconds or 0)
         log(
-            "ZenRows credential pool unavailable "
-            f"(retry_after={int(wait)}s). Waiting for existing cooldown; "
-            "not resetting credential rotation."
+            "STOP: existing ZenRows credential pool unavailable. "
+            f"retry_after={int(wait)}s. Not resetting credential rotation. "
+            "Not waiting out a quota cooldown in this isolated run."
         )
-        if wait > 0:
-            time.sleep(wait + 5)
-        started = feed.start()
+        return 3
     log(f"Cloudflare: {'CLEARED' if not started.get('cloudflare') else 'PRESENT'}")
     log(f"Login form submitted: {bool(started.get('login_form_submitted'))}")
     if not started.get("ok"):
