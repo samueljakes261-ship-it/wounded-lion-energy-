@@ -7,12 +7,16 @@ Does not touch collector, run_engine, or other bookmakers.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env", override=True)
 
 from credentials.errors import AllCredentialsUnavailableError
