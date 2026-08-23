@@ -268,6 +268,42 @@ def test_run_logs_mask_password(monkeypatch, capsys):
     assert "ZENROWS_BROWSER_WS" in out
 
 
+def test_session_probe_log_ascii_safe(capsys):
+    from parsers.kolay90_prematch.session_probe import log
+
+    log("giriş yap")
+    out = capsys.readouterr().out
+    assert "KOLAY90 SESSION PROBE" in out
+    assert "\u015f" not in out
+
+
+def test_session_probe_redacts_query_and_detects_challenge():
+    from parsers.kolay90_prematch.session_probe import (
+        app_reached,
+        marker_flags,
+        safe_url,
+    )
+
+    assert safe_url("https://kolay90.com/?__cf_chl_rt_tk=secret") == "https://kolay90.com/"
+    flags = marker_flags("Just a moment... Cloudflare Privacy")
+    assert flags["just a moment"] is True
+    assert flags["cloudflare"] is True
+    blocked = {
+        "cloudflare": True,
+        "login_form": False,
+        "application": False,
+        "markers": flags,
+    }
+    assert app_reached(blocked) is False
+    ready = {
+        "cloudflare": False,
+        "login_form": True,
+        "application": True,
+        "markers": marker_flags("Giriş Yap"),
+    }
+    assert app_reached(ready) is True
+
+
 def test_diagnose_redacts_apikey_and_cf_token():
     from parsers.kolay90_prematch.diagnose_zenrows import redact_error
 
