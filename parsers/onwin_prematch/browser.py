@@ -14,9 +14,8 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright
-
 from credentials.zenrows_provider import apply_persistent_session_ttl
+from engine.sync_playwright_thread import start_sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,7 +38,7 @@ class OnwinPrematchBrowser:
             "[ONWIN PREMATCH] connecting via ZENROWS_BROWSER_WS "
             "(.env, no credential cooldown)"
         )
-        self.playwright = sync_playwright().start()
+        self.playwright = start_sync_playwright()
         self.browser = self.playwright.chromium.connect_over_cdp(
             apply_persistent_session_ttl(browser_ws)
         )

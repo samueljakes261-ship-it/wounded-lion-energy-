@@ -10,6 +10,39 @@ ENDPOINT = "https://kolay90.com/service/getMaclar"
 UNAUTH_MARKER = "Lütfen Tekrar Giriş Yapınız"
 
 
+def _fetch_via_context(page) -> dict | None:
+    """Retry getMaclar with the Playwright context cookie jar."""
+    request = getattr(page, "request", None)
+    if request is None:
+        return None
+    try:
+        response = request.get(
+            ENDPOINT,
+            headers={
+                "accept": "application/json, text/plain, */*",
+                "x-requested-with": "XMLHttpRequest",
+            },
+        )
+        text = response.text()
+        return {
+            "status": response.status,
+            "content_type": response.headers.get("content-type"),
+            "bytes": len(text.encode("utf-8", errors="replace")),
+            "text": text,
+            "error": None,
+            "latency_ms": None,
+        }
+    except Exception as exc:
+        return {
+            "status": None,
+            "content_type": None,
+            "bytes": 0,
+            "text": "",
+            "error": type(exc).__name__,
+            "latency_ms": None,
+        }
+
+
 def fetch_getmaclar(page) -> dict:
     result = page.evaluate(
         """async (url) => {
@@ -46,6 +79,10 @@ def fetch_getmaclar(page) -> dict:
         }""",
         ENDPOINT,
     )
+    if result.get("status") in (401, 403):
+        fallback = _fetch_via_context(page)
+        if fallback is not None:
+            result = fallback
     text = result.get("text") or ""
     payload = None
     json_ok = False

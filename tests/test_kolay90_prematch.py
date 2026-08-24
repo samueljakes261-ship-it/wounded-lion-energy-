@@ -501,6 +501,39 @@ def test_authentication_loss_sets_required_flag():
     assert classify_session_state(has_password=True) == "LOGIN"
 
 
+def test_getmaclar_context_fallback_on_403():
+    from parsers.kolay90_prematch.fetch import fetch_getmaclar
+
+    class FakeResponse:
+        status = 200
+        headers = {"content-type": "application/json"}
+
+        def text(self):
+            return '{"maclar": {"evt-bocholt": {"_id": "evt-bocholt"}}}'
+
+    class FakeRequest:
+        def get(self, url, headers=None):
+            assert "getMaclar" in url
+            return FakeResponse()
+
+    class FakePage:
+        request = FakeRequest()
+
+        def evaluate(self, script, url):
+            return {
+                "status": 403,
+                "content_type": "text/html",
+                "bytes": 12,
+                "text": "<html></html>",
+                "error": None,
+                "latency_ms": 1,
+            }
+
+    raw = fetch_getmaclar(FakePage())
+    assert raw["status"] == 200
+    assert raw["json"] is True
+
+
 def test_find_kolay90_page_and_cdp_reconnect_does_not_launch_chrome(monkeypatch):
     from parsers.kolay90_prematch import cdp
 

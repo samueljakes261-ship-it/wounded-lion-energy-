@@ -202,7 +202,8 @@ def test_browser_uses_env_ws_and_skips_credential_manager(monkeypatch):
 
     monkeypatch.setenv("ZENROWS_BROWSER_WS", "wss://browser.zenrows.com/?apikey=TESTKEY")
     monkeypatch.setattr(
-        "parsers.onwin_prematch.browser.sync_playwright", lambda: FakeSync()
+        "parsers.onwin_prematch.browser.start_sync_playwright",
+        lambda: FakePlaywright(),
     )
     monkeypatch.setattr(
         "parsers.onwin_prematch.browser.load_dotenv", lambda *args, **kwargs: None

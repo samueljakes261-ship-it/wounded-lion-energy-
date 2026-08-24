@@ -134,6 +134,15 @@ class Kolay90PrematchFeed:
             failure = "cloudflare_html"
         elif status in (401, 403):
             failure = f"http_{status}"
+            prefix = ""
+            if isinstance(raw.get("payload"), dict):
+                prefix = "json"
+            elif raw.get("looks_html"):
+                prefix = "html"
+            print(
+                f"[KOLAY90 PREMATCH] getMaclar {status} "
+                f"ctype={raw.get('content_type')} body={prefix or 'other'}"
+            )
         elif raw.get("unauthenticated"):
             failure = "login_expired"
         elif not raw.get("json"):

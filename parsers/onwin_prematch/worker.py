@@ -73,6 +73,9 @@ class OnwinPrematchWorker:
             return dict(self._state)
 
     def _run(self):
+        from engine.sync_playwright_thread import isolate_from_running_asyncio_loop
+
+        isolate_from_running_asyncio_loop()
         try:
             self._run_loop()
         except Exception as exc:
@@ -115,6 +118,10 @@ class OnwinPrematchWorker:
                 print(f"[ONWIN PREMATCH] next refresh in {remaining:.0f}s")
                 backoff = INITIAL_BACKOFF_SECONDS
             except Exception as exc:
+                message = str(exc).replace("\n", " ")[:160]
+                if "apikey=" in message.lower() or "wss://" in message.lower():
+                    message = type(exc).__name__
+                print(f"[ONWIN PREMATCH] cycle error ({type(exc).__name__}: {message})")
                 consecutive = self._publish_failure(exc)
                 if is_connection_dead_error(exc) or consecutive >= MAX_INPLACE_RETRIES:
                     print(

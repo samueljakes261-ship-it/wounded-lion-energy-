@@ -13,9 +13,9 @@ def cdp_url() -> str:
 
 
 def connect_existing_chrome(url: str | None = None):
-    from playwright.sync_api import sync_playwright
+    from engine.sync_playwright_thread import start_sync_playwright
 
-    playwright = sync_playwright().start()
+    playwright = start_sync_playwright()
     browser = playwright.chromium.connect_over_cdp(url or cdp_url())
     return playwright, browser
 
