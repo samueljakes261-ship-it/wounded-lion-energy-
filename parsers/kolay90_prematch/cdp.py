@@ -24,15 +24,12 @@ def list_pages(browser) -> list[dict]:
     rows = []
     for context in browser.contexts:
         for page in context.pages:
-            title = ""
-            try:
-                title = page.title() or ""
-            except Exception:
-                title = ""
+            # URL is enough to find the Kolay90 tab. page.title() waits on
+            # chrome:// targets and can stall CDP attach for tens of seconds.
             rows.append(
                 {
                     "url": (page.url or "").split("?")[0],
-                    "title": title[:120],
+                    "title": "",
                     "page": page,
                 }
             )

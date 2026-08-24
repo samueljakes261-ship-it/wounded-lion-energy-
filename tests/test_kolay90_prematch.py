@@ -534,6 +534,36 @@ def test_getmaclar_context_fallback_on_403():
     assert raw["json"] is True
 
 
+def test_in_page_getmaclar_is_bare_fetch():
+    from parsers.kolay90_prematch import fetch as fetch_mod
+
+    source = fetch_mod.fetch_getmaclar.__code__.co_consts
+    joined = " ".join(str(item) for item in source if isinstance(item, str))
+    assert "await fetch(url)" in joined
+    assert "x-requested-with" not in joined.lower()
+
+
+def test_list_pages_does_not_wait_on_title():
+    from parsers.kolay90_prematch.cdp import find_kolay90_page, list_pages
+
+    class FakePage:
+        url = "https://kolay90.com/#!/maclar/1"
+
+        def title(self):
+            raise AssertionError("page.title() must not be called during attach")
+
+    class FakeContext:
+        pages = [FakePage()]
+
+    class FakeBrowser:
+        contexts = [FakeContext()]
+
+    rows = list_pages(FakeBrowser())
+    found = find_kolay90_page(rows)
+    assert found is not None
+    assert "kolay90.com" in found["url"]
+
+
 def test_find_kolay90_page_and_cdp_reconnect_does_not_launch_chrome(monkeypatch):
     from parsers.kolay90_prematch import cdp
 

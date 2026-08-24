@@ -5,9 +5,11 @@ Separate thread and ZenRows session from live OnWin. Target refresh
 """
 
 import os
+import re
 import threading
 import time
 
+from credentials.failures import FailureType, classify_zenrows_error
 from engine.collector_health import (
     INPLACE_RETRY_PAUSE_SECONDS,
     MAX_INPLACE_RETRIES,
@@ -18,6 +20,22 @@ from parsers.onwin_prematch.feed import OnwinPrematchFeed
 POLL_INTERVAL = float(os.getenv("ONWIN_PREMATCH_POLL_INTERVAL", "90"))
 INITIAL_BACKOFF_SECONDS = 5
 MAX_BACKOFF_SECONDS = 60
+QUOTA_BACKOFF_SECONDS = 600
+_NO_RAPID_RECONNECT = {
+    FailureType.QUOTA_EXHAUSTED,
+    FailureType.INVALID_CREDENTIAL,
+    FailureType.AUTHENTICATION_FAILURE,
+}
+
+
+def _safe_cycle_error(exc: BaseException) -> tuple[str, str]:
+    """Classify and redact a cycle exception. Never logs the WS URL/key."""
+    failure = classify_zenrows_error(exc)
+    message = str(exc).replace("\n", " ")
+    message = re.sub(r"(?i)apikey=[^&\s]+", "apikey=[redacted]", message)
+    message = re.sub(r"wss://[^\s]+", "wss://[redacted]", message)
+    message = re.sub(r"https://[^\s]+", "https://[redacted]", message)
+    return failure.value, message[:220]
 
 
 class OnwinPrematchWorker:
@@ -118,12 +136,28 @@ class OnwinPrematchWorker:
                 print(f"[ONWIN PREMATCH] next refresh in {remaining:.0f}s")
                 backoff = INITIAL_BACKOFF_SECONDS
             except Exception as exc:
-                message = str(exc).replace("\n", " ")[:160]
-                if "apikey=" in message.lower() or "wss://" in message.lower():
-                    message = type(exc).__name__
-                print(f"[ONWIN PREMATCH] cycle error ({type(exc).__name__}: {message})")
-                consecutive = self._publish_failure(exc)
-                if is_connection_dead_error(exc) or consecutive >= MAX_INPLACE_RETRIES:
+                failure_type, message = _safe_cycle_error(exc)
+                print(
+                    f"[ONWIN PREMATCH] cycle error "
+                    f"({type(exc).__name__}: {failure_type}: {message})"
+                )
+                consecutive = self._publish_failure(exc, failure_type)
+                classified = FailureType(failure_type)
+                if classified in _NO_RAPID_RECONNECT:
+                    wait = (
+                        QUOTA_BACKOFF_SECONDS
+                        if classified is FailureType.QUOTA_EXHAUSTED
+                        else MAX_BACKOFF_SECONDS
+                    )
+                    print(
+                        f"[ONWIN PREMATCH] {failure_type}; "
+                        f"holding {wait}s (not a transport reconnect)"
+                    )
+                    self._close_feed()
+                    if self._stop_event.wait(timeout=wait):
+                        break
+                    backoff = MAX_BACKOFF_SECONDS
+                elif is_connection_dead_error(exc) or consecutive >= MAX_INPLACE_RETRIES:
                     print(
                         f"[ONWIN PREMATCH] cycle failed "
                         f"({type(exc).__name__}); reconnecting in {backoff}s"
@@ -169,10 +203,11 @@ class OnwinPrematchWorker:
                 else prev_avg + (elapsed_ms - prev_avg) / n
             )
 
-    def _publish_failure(self, exc) -> int:
+    def _publish_failure(self, exc, failure_type: str | None = None) -> int:
         with self._lock:
             state = self._state
-            state["error"] = type(exc).__name__
+            state["error"] = failure_type or type(exc).__name__
+            state["status"] = "degraded"
             state["poll_count"] += 1
             state["failed_count"] += 1
             state["consecutive_successes"] = 0

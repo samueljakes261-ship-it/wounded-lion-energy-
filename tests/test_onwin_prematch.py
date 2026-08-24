@@ -220,3 +220,22 @@ def test_browser_uses_env_ws_and_skips_credential_manager(monkeypatch):
     assert calls["cdp"] == 1
     assert page is page_holder
     browser.close()
+
+
+def test_quota_exhausted_is_redacted_and_marks_degraded():
+    from parsers.onwin_prematch.worker import OnwinPrematchWorker, _safe_cycle_error
+
+    exc = RuntimeError(
+        'BrowserType.connect_over_cdp: WebSocket error: '
+        'wss://browser.zenrows.com/?apikey=SECRETKEY 402 Payment Required '
+        '{"code":"AUTH004","detail":"This account has reached its usage limit."}'
+    )
+    kind, message = _safe_cycle_error(exc)
+    assert kind == "QUOTA_EXHAUSTED"
+    assert "SECRETKEY" not in message
+    assert "wss://[redacted]" in message
+    worker = OnwinPrematchWorker()
+    worker._publish_failure(exc, kind)
+    status = worker.get_status()
+    assert status["status"] == "degraded"
+    assert status["error"] == "QUOTA_EXHAUSTED"

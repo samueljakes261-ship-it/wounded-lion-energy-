@@ -16,13 +16,9 @@ def _fetch_via_context(page) -> dict | None:
     if request is None:
         return None
     try:
-        response = request.get(
-            ENDPOINT,
-            headers={
-                "accept": "application/json, text/plain, */*",
-                "x-requested-with": "XMLHttpRequest",
-            },
-        )
+        # Same-origin GET only. Extra XHR headers triggered Cloudflare 403
+        # on the live authenticated tab; the proven poll is a bare fetch.
+        response = request.get(ENDPOINT)
         text = response.text()
         return {
             "status": response.status,
@@ -48,15 +44,7 @@ def fetch_getmaclar(page) -> dict:
         """async (url) => {
             const started = Date.now();
             try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    credentials: 'include',
-                    headers: {
-                        'accept': 'application/json, text/plain, */*',
-                        'x-requested-with': 'XMLHttpRequest',
-                    },
-                    cache: 'no-store',
-                });
+                const response = await fetch(url);
                 const text = await response.text();
                 return {
                     status: response.status,
@@ -81,7 +69,7 @@ def fetch_getmaclar(page) -> dict:
     )
     if result.get("status") in (401, 403):
         fallback = _fetch_via_context(page)
-        if fallback is not None:
+        if fallback is not None and fallback.get("status") == 200:
             result = fallback
     text = result.get("text") or ""
     payload = None

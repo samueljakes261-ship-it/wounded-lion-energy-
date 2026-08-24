@@ -119,6 +119,7 @@ class Kolay90PrematchFeed:
             return self._keep_last_good("browser_page_closed")
         state = classify_page(self._page)
         self._auth_state = state
+        print(f"[KOLAY90 PREMATCH] tab_session={state}")
         if is_auth_required_state(state):
             return self._keep_last_good(failure_for_state(state), session_state=state)
         raw = fetch_getmaclar(self._page)
@@ -128,21 +129,26 @@ class Kolay90PrematchFeed:
         status = raw.get("status")
         payload = raw.get("payload")
         failure = None
+        payload_keys = (
+            ",".join(list(payload.keys())[:8])
+            if isinstance(payload, dict) else ""
+        )
+        hata = payload.get("hata") if isinstance(payload, dict) else None
+        print(
+            f"[KOLAY90 PREMATCH] getMaclar status={status} "
+            f"ctype={raw.get('content_type')} "
+            f"json={str(bool(raw.get('json'))).lower()} "
+            f"html={str(bool(raw.get('looks_html'))).lower()} "
+            f"cf={str(bool(raw.get('cloudflare'))).lower()} "
+            f"unauth={str(bool(raw.get('unauthenticated'))).lower()} "
+            f"keys={payload_keys or '-'} hata={hata}"
+        )
         if raw.get("error"):
             failure = f"network:{raw.get('error')}"
         elif raw.get("cloudflare") or (raw.get("looks_html") and not raw.get("json")):
             failure = "cloudflare_html"
         elif status in (401, 403):
             failure = f"http_{status}"
-            prefix = ""
-            if isinstance(raw.get("payload"), dict):
-                prefix = "json"
-            elif raw.get("looks_html"):
-                prefix = "html"
-            print(
-                f"[KOLAY90 PREMATCH] getMaclar {status} "
-                f"ctype={raw.get('content_type')} body={prefix or 'other'}"
-            )
         elif raw.get("unauthenticated"):
             failure = "login_expired"
         elif not raw.get("json"):

@@ -116,8 +116,9 @@ class Kolay90PrematchWorker:
                     wait = AUTH_WAIT_SECONDS
                     print("[KOLAY90 PREMATCH] KOLAY90_AUTHENTICATION_REQUIRED")
                     print(
-                        "[KOLAY90 PREMATCH] last-good snapshot kept; "
-                        "manually solve Cloudflare / agreement / login in the open Chrome"
+                        f"[KOLAY90 PREMATCH] failure={result.get('failure')} "
+                        "Chrome/CDP 127.0.0.1:9222 is still alive. "
+                        "Complete Cloudflare/login in that same open window; do not relaunch Chrome"
                     )
                 remaining = max(0.0, wait - (elapsed_ms / 1000.0))
                 if self._stop_event.wait(timeout=remaining):
@@ -168,6 +169,7 @@ class Kolay90PrematchWorker:
             f"[KOLAY90 PREMATCH] status={result.get('status')} "
             f"events={result.get('total_events')} "
             f"valid_football_1x2={result.get('one_x_two')} "
+            f"session={result.get('auth_state')} "
             f"authenticated={str(bool(result.get('authenticated'))).lower()} "
             f"kept_last_good={result.get('kept_last_good')}"
         )
