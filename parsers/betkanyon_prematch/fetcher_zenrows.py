@@ -11,7 +11,7 @@ from parsers.betkanyon.browser import BetkanyonBrowser
 from parsers.betkanyon_prematch.fetcher import (
     FETCH_BATCH_SIZE,
     PATHS,
-    PREMATCH_PAGE,
+    SPORT_PAGE,
     build_prematch_url,
 )
 
@@ -58,7 +58,8 @@ class BetkanyonPrematchZenrowsFetcher:
         self.browser = BetkanyonBrowser()
         self.browser.open()
         self.page = self.browser.page
-        self.browser.goto(PREMATCH_PAGE)
+        # Same-origin RequestHelper. The rotating frontend host is unused.
+        self.browser.goto(SPORT_PAGE)
         self.browser.wait(5000)
         self.initialized = True
 

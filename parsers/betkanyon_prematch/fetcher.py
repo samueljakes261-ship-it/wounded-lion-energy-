@@ -1,11 +1,15 @@
 """BetKanyon prematch acquisition.
 
-Default: direct HTTP (no ZenRows, no browser). Proven by
-experiments/betkanyon_prematch_direct/run.py.
+Default (auto): try direct HTTP first. sport.bksp3.com is Cloudflare
+protected, so a 403 challenge used to silently yield zero payloads and
+BetKanyon never relayed data. Auto then attaches to the operator
+Chrome on 127.0.0.1:9222 (same process as Kolay90) and in-page fetch
+relays the encrypted payloads through.
 
-Fallback: set BETKANYON_PREMATCH_FETCH=zenrows to use the previous
-Playwright/ZenRows path in fetcher_zenrows.py. That file is kept on
-purpose and is not deleted.
+Fallback env:
+  BETKANYON_PREMATCH_FETCH=http      HTTP only
+  BETKANYON_PREMATCH_FETCH=cdp       local Chrome only
+  BETKANYON_PREMATCH_FETCH=zenrows   Playwright/ZenRows (fetcher_zenrows.py)
 
 Live parsers.betkanyon.browser is not imported on the default path.
 """
@@ -18,8 +22,12 @@ from urllib.parse import urlencode
 
 import requests
 
+SPORT_ORIGIN = "https://sport.bksp3.com"
 SPORT_HOST = "https://sport.bksp3.com/0587cccf-5a4f-430c-a2b4-b1b98af7e3ad"
-PREMATCH_PAGE = "https://betkanyon1617.com/tr/sport/prematchevents/4520"
+# Same-origin RequestHelper. The old frontend host betkanyon1617.com no
+# longer resolves; in-page fetch from this page still hits the API.
+SPORT_PAGE = SPORT_HOST + "/Tools/RequestHelper"
+PREMATCH_PAGE = SPORT_PAGE
 STAKE_TYPES = [1, 702, 37, 3, 2533, 313639, 2, 2532, 313638]
 PATHS = (
     "/common/getmixedsportandeventslistwithoutright",
@@ -35,8 +43,8 @@ HEADERS = {
     ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Origin": "https://betkanyon1617.com",
-    "Referer": PREMATCH_PAGE,
+    "Origin": SPORT_ORIGIN,
+    "Referer": SPORT_PAGE,
 }
 
 
@@ -92,11 +100,30 @@ def _looks_like_html(text: str) -> bool:
     return head.startswith("<!doctype") or "<html" in head
 
 
+def looks_like_cloudflare(status=None, text: str = "", content_type: str = "") -> bool:
+    """True when sport.bksp3.com returned a Cloudflare challenge instead of JSON."""
+    head = (text or "").lstrip()[:800].lower()
+    ctype = (content_type or "").lower()
+    challenge = (
+        "just a moment" in head
+        or "cf-browser-verification" in head
+        or "challenge-platform" in head
+        or "cdn-cgi/challenge" in head
+        or ("cloudflare" in head and _looks_like_html(text or ""))
+    )
+    if not challenge:
+        return False
+    if status in (403, 503, 429, 200) or status is None:
+        return True
+    return "text/html" in ctype or _looks_like_html(text or "")
+
+
+def _fetch_mode() -> str:
+    return os.getenv("BETKANYON_PREMATCH_FETCH", "auto").strip().lower()
+
+
 def _use_zenrows_fallback() -> bool:
-    return os.getenv("BETKANYON_PREMATCH_FETCH", "http").strip().lower() in {
-        "zenrows",
-        "browser",
-    }
+    return _fetch_mode() in {"zenrows", "browser"}
 
 
 class BetkanyonPrematchHttpFetcher:
@@ -107,6 +134,7 @@ class BetkanyonPrematchHttpFetcher:
         self.session.headers.update(HEADERS)
         self.initialized = False
         self._working_path = PATHS[0]
+        self.cloudflare_blocked = False
 
     def _connect(self):
         if self.initialized:
@@ -119,6 +147,20 @@ class BetkanyonPrematchHttpFetcher:
             response = self.session.get(url, timeout=REQUEST_TIMEOUT)
         except Exception:
             return None
+        text = response.text or ""
+        headers = getattr(response, "headers", None) or {}
+        content_type = ""
+        if hasattr(headers, "get"):
+            content_type = headers.get("Content-Type") or headers.get("content-type") or ""
+        if looks_like_cloudflare(response.status_code, text, content_type):
+            if not self.cloudflare_blocked:
+                print(
+                    "[BETKANYON PREMATCH] Cloudflare blocked direct HTTP "
+                    f"(status={response.status_code}); payloads will not relay "
+                    "until Chrome CDP failover"
+                )
+            self.cloudflare_blocked = True
+            return None
         if response.status_code >= 400:
             return None
         body = None
@@ -126,7 +168,7 @@ class BetkanyonPrematchHttpFetcher:
             body = response.json()
         except Exception:
             body = None
-        return extract_encrypted_payload(body, response.text)
+        return extract_encrypted_payload(body, text)
 
     def _fetch_chunk(self, urls):
         return [self._get_payload(url) for url in urls]
@@ -151,9 +193,17 @@ class BetkanyonPrematchHttpFetcher:
             for path in paths_to_try:
                 urls = [build_prematch_url(tid, path=path) for tid in chunk]
                 payloads = self._fetch_chunk(urls)
+                if self.cloudflare_blocked:
+                    break
                 if any(payloads):
                     self._working_path = path
                     break
+            if self.cloudflare_blocked:
+                print(
+                    "[BETKANYON PREMATCH] stopping HTTP sweep after Cloudflare "
+                    f"(payloads={len(results)}/{total})"
+                )
+                break
             for tid, payload in zip(chunk, payloads or []):
                 if payload:
                     results[tid] = payload
@@ -174,25 +224,66 @@ class BetkanyonPrematchHttpFetcher:
 
 
 def create_prematch_fetcher():
-    if _use_zenrows_fallback():
-        from parsers.betkanyon_prematch.fetcher_zenrows import (
-            BetkanyonPrematchZenrowsFetcher,
-        )
-
-        print("[BETKANYON PREMATCH] BETKANYON_PREMATCH_FETCH=zenrows")
-        return BetkanyonPrematchZenrowsFetcher()
-    return BetkanyonPrematchHttpFetcher()
+    return BetkanyonPrematchFetcher()
 
 
-class BetkanyonPrematchFetcher(BetkanyonPrematchHttpFetcher):
-    """Default name used by feed.py. HTTP unless env selects ZenRows."""
+class BetkanyonPrematchFetcher:
+    """Default name used by feed.py. auto = HTTP then local Chrome CDP."""
 
-    def __new__(cls, *args, **kwargs):
-        if cls is BetkanyonPrematchFetcher and _use_zenrows_fallback():
+    def __init__(self):
+        self._mode = _fetch_mode()
+        self._impl = None
+        if self._mode in {"zenrows", "browser"}:
             from parsers.betkanyon_prematch.fetcher_zenrows import (
                 BetkanyonPrematchZenrowsFetcher,
             )
 
             print("[BETKANYON PREMATCH] BETKANYON_PREMATCH_FETCH=zenrows")
-            return BetkanyonPrematchZenrowsFetcher(*args, **kwargs)
-        return super().__new__(cls)
+            self._impl = BetkanyonPrematchZenrowsFetcher()
+        elif self._mode in {"cdp", "chrome", "local"}:
+            from parsers.betkanyon_prematch.fetcher_cdp import (
+                BetkanyonPrematchCdpFetcher,
+            )
+
+            print("[BETKANYON PREMATCH] BETKANYON_PREMATCH_FETCH=cdp (local Chrome)")
+            self._impl = BetkanyonPrematchCdpFetcher()
+        else:
+            self._impl = BetkanyonPrematchHttpFetcher()
+
+    def fetch_tournament(self, tournament_id):
+        payloads = self.fetch_all([tournament_id])
+        return payloads.get(str(tournament_id))
+
+    def fetch_all(self, tournament_ids):
+        payloads = self._impl.fetch_all(tournament_ids)
+        if self._should_failover_to_cdp(payloads):
+            from parsers.betkanyon_prematch.fetcher_cdp import (
+                BetkanyonPrematchCdpFetcher,
+            )
+
+            print(
+                "[BETKANYON PREMATCH] Cloudflare blocked direct HTTP; "
+                "relaying payloads through local Chrome CDP"
+            )
+            try:
+                self._impl.close()
+            except Exception:
+                pass
+            self._impl = BetkanyonPrematchCdpFetcher()
+            payloads = self._impl.fetch_all(tournament_ids)
+        return payloads
+
+    def _should_failover_to_cdp(self, payloads) -> bool:
+        if self._mode not in {"auto", ""}:
+            return False
+        if not isinstance(self._impl, BetkanyonPrematchHttpFetcher):
+            return False
+        return bool(getattr(self._impl, "cloudflare_blocked", False))
+
+    def close(self):
+        if self._impl is not None:
+            try:
+                self._impl.close()
+            except Exception:
+                pass
+            self._impl = None
