@@ -136,7 +136,45 @@ def test_auto_failover_uses_cdp_when_http_is_cloudflare(monkeypatch):
     assert fake_cdp.ids == ["4520", "4486"]
 
 
-def test_find_sport_page_prefers_bksp3():
+    def test_api_ready_probe_retries_until_payload(monkeypatch):
+        from parsers.betkanyon_prematch import fetcher_cdp as mod
+
+        class FakePage:
+            def __init__(self):
+                self.calls = 0
+
+            def evaluate(self, _js, _url):
+                self.calls += 1
+                return 0 if self.calls < 2 else 11013
+
+        monkeypatch.setattr(mod, "API_READY_WAIT_SECONDS", 20)
+        monkeypatch.setattr(mod, "CLOUDFLARE_POLL_SECONDS", 0.01)
+        fetcher = mod.BetkanyonPrematchCdpFetcher()
+        fetcher.page = FakePage()
+        fetcher._wait_for_api_ready()
+        assert fetcher.page.calls >= 2
+    from parsers.betkanyon_prematch.cdp import looks_like_cloudflare_page
+
+    class PassedPage:
+        def title(self):
+            return "RequestHelper"
+
+        def content(self):
+            return (
+                "<html><head><title>RequestHelper</title></head><body>"
+                "<script>a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'</script>"
+                "</body></html>"
+            )
+
+    class ChallengePage:
+        def title(self):
+            return "Just a moment..."
+
+        def content(self):
+            return "<html><head><title>Just a moment...</title></head></html>"
+
+    assert looks_like_cloudflare_page(PassedPage()) is False
+    assert looks_like_cloudflare_page(ChallengePage()) is True
     rows = [
         {"url": "https://kolay90.com/", "title": "Kolay90", "page": object()},
         {

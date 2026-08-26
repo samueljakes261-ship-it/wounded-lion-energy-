@@ -38,8 +38,22 @@ async (urls) => {
 }
 """
 
+_PROBE_JS = """
+async (url) => {
+    try {
+        const response = await fetch(url, { credentials: "include" });
+        const json = await response.json();
+        const payload = json.payload || json.Payload || null;
+        return typeof payload === "string" && payload.length > 20 ? payload.length : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+"""
+
 CLOUDFLARE_WAIT_SECONDS = float(os.getenv("BETKANYON_CF_WAIT_SECONDS", "180"))
 CLOUDFLARE_POLL_SECONDS = 3.0
+API_READY_WAIT_SECONDS = float(os.getenv("BETKANYON_API_READY_SECONDS", "90"))
 
 
 class BetkanyonPrematchCdpFetcher:
@@ -76,7 +90,42 @@ class BetkanyonPrematchCdpFetcher:
         if attached.get("opened_tab"):
             print(f"[BETKANYON PREMATCH] opened {SPORT_PAGE} in existing Chrome")
         self._wait_for_cloudflare()
+        self._wait_for_api_ready()
         self.initialized = True
+
+    def _wait_for_api_ready(self):
+        """Retry in-page fetch until Cloudflare JS detection lets payloads through.
+
+        The RequestHelper HTML can load while API fetch still returns a
+        403 challenge. Live BetKanyon waits for cookies/JS; we probe
+        tournament 4520 until an encrypted payload appears.
+        """
+        probe_url = build_prematch_url("4520")
+        deadline = time.monotonic() + API_READY_WAIT_SECONDS
+        announced = False
+        while time.monotonic() < deadline:
+            try:
+                n = int(self.page.evaluate(_PROBE_JS, probe_url) or 0)
+            except Exception:
+                n = 0
+            if n > 0:
+                print(
+                    f"[BETKANYON PREMATCH] in-page API ready "
+                    f"(probe payload {n} bytes)"
+                )
+                return
+            remaining = deadline - time.monotonic()
+            if not announced:
+                print(
+                    "[BETKANYON PREMATCH] waiting for sport.bksp3.com API "
+                    "to accept in-page fetch (Cloudflare JS)"
+                )
+                announced = True
+            time.sleep(min(CLOUDFLARE_POLL_SECONDS, max(remaining, 0.5)))
+        raise RuntimeError(
+            "BetKanyon Chrome tab loaded but API fetch is still challenged. "
+            "Complete Cloudflare in the open sport.bksp3.com window; do not close Chrome."
+        )
 
     def _wait_for_cloudflare(self):
         deadline = time.monotonic() + CLOUDFLARE_WAIT_SECONDS
@@ -107,44 +156,6 @@ class BetkanyonPrematchCdpFetcher:
             self._wait_for_cloudflare()
         return self.page.evaluate(_BATCH_JS, urls)
 
-    def _try_cookie_http(self, tournament_ids):
-        """If Chrome cookies satisfy Cloudflare, fall back to faster HTTP."""
-        try:
-            from parsers.betkanyon_prematch.fetcher import BetkanyonPrematchHttpFetcher
-
-            cookies = []
-            if self.context is not None:
-                cookies = self.context.cookies()
-            elif self.page is not None:
-                cookies = self.page.context.cookies()
-            if not cookies:
-                return None
-            http = BetkanyonPrematchHttpFetcher()
-            for cookie in cookies:
-                name = cookie.get("name")
-                value = cookie.get("value")
-                if not name:
-                    continue
-                http.session.cookies.set(
-                    name,
-                    value or "",
-                    domain=cookie.get("domain") or None,
-                    path=cookie.get("path") or "/",
-                )
-            probe_ids = list(tournament_ids[:1])
-            payloads = http.fetch_all(probe_ids)
-            if getattr(http, "cloudflare_blocked", False) or not payloads:
-                http.close()
-                return None
-            print("[BETKANYON PREMATCH] Chrome cookies unlocked direct HTTP")
-            return http
-        except Exception as exc:
-            print(
-                f"[BETKANYON PREMATCH] cookie HTTP skipped "
-                f"({type(exc).__name__}: {exc})"
-            )
-            return None
-
     def fetch_tournament(self, tournament_id):
         payloads = self.fetch_all([tournament_id])
         return payloads.get(str(tournament_id))
@@ -152,13 +163,6 @@ class BetkanyonPrematchCdpFetcher:
     def fetch_all(self, tournament_ids):
         self._connect()
         ids = [str(tid) for tid in tournament_ids]
-        cookie_http = self._try_cookie_http(ids)
-        if cookie_http is not None:
-            try:
-                return cookie_http.fetch_all(ids)
-            finally:
-                cookie_http.close()
-
         results = {}
         total = len(ids)
         paths_to_try = (

@@ -56,21 +56,26 @@ def find_sport_page(rows: list[dict]):
 
 
 def looks_like_cloudflare_page(page) -> bool:
+    """True only for an interstitial challenge, not Cloudflare's jsd beacon.
+
+    Passed pages still inject /cdn-cgi/challenge-platform/scripts/jsd/main.js.
+    Treating that as a wall blocked BetKanyon payload relay for 180s.
+    """
     try:
         title = (page.title() or "").lower()
     except Exception:
         title = ""
+    if "just a moment" in title:
+        return True
     try:
-        content = (page.content() or "")[:4000].lower()
+        content = (page.content() or "")[:2500].lower()
     except Exception:
         content = ""
-    blob = f"{title}\n{content}"
-    return (
-        "just a moment" in blob
-        or "cf-browser-verification" in blob
-        or "challenge-platform" in blob
-        or "cdn-cgi/challenge" in blob
-    )
+    if "just a moment" in content:
+        return True
+    if "cf-browser-verification" in content:
+        return True
+    return False
 
 
 def attach_sport_page(url: str | None = None, sport_page: str | None = None) -> dict:
