@@ -73,7 +73,7 @@ def build_prematch_url(tournament_id, path=PATHS[0]):
             ("isTournament", "false"),
             ("eventFilterType", "false"),
             ("includeLiveEvents", "false"),
-            ("langId", "4"),
+            ("langId", "2"),
             ("partnerId", "107"),
             ("countryCode", "KE"),
         ]

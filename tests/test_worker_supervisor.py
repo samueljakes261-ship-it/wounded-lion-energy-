@@ -30,6 +30,7 @@ def anyio_backend():
 
 def test_start_workers_continues_when_onwin_constructor_raises(monkeypatch):
     started = {"betkanyon": False, "orbit": False}
+    monkeypatch.setenv("ONWIN_LIVE", "1")
 
     def boom():
         raise RuntimeError("onwin constructor failed")
@@ -52,8 +53,51 @@ def test_start_workers_continues_when_onwin_constructor_raises(monkeypatch):
     assert started["orbit"] is True
 
 
+def test_start_workers_does_not_start_onwin_live_by_default(monkeypatch):
+    started = {"onwin": False, "betkanyon": False, "orbit": False}
+    monkeypatch.delenv("ONWIN_LIVE", raising=False)
+    monkeypatch.setattr(
+        collector, "_get_onwin_handle",
+        lambda: started.__setitem__("onwin", True) or FakeOnwinHandle(),
+    )
+    monkeypatch.setattr(
+        collector, "_get_betkanyon_worker",
+        lambda: started.__setitem__("betkanyon", True) or FakeBetkanyonWorker(),
+    )
+    monkeypatch.setattr(
+        collector, "_get_orbit_worker",
+        lambda: started.__setitem__("orbit", True) or FakeOrbitWorker(),
+    )
+    collector.start_workers()
+    assert started["onwin"] is False
+    assert started["betkanyon"] is True
+    assert started["orbit"] is True
+
+
+def test_start_workers_starts_onwin_live_when_enabled(monkeypatch):
+    started = {"onwin": False, "betkanyon": False, "orbit": False}
+    monkeypatch.setenv("ONWIN_LIVE", "1")
+    monkeypatch.setattr(
+        collector, "_get_onwin_handle",
+        lambda: started.__setitem__("onwin", True) or FakeOnwinHandle(),
+    )
+    monkeypatch.setattr(
+        collector, "_get_betkanyon_worker",
+        lambda: started.__setitem__("betkanyon", True) or FakeBetkanyonWorker(),
+    )
+    monkeypatch.setattr(
+        collector, "_get_orbit_worker",
+        lambda: started.__setitem__("orbit", True) or FakeOrbitWorker(),
+    )
+    collector.start_workers()
+    assert started["onwin"] is True
+    assert started["betkanyon"] is True
+    assert started["orbit"] is True
+
+
 def test_start_workers_continues_when_betkanyon_constructor_raises(monkeypatch):
     started = {"onwin": False, "orbit": False}
+    monkeypatch.setenv("ONWIN_LIVE", "1")
 
     monkeypatch.setattr(
         collector, "_get_onwin_handle", lambda: started.__setitem__("onwin", True) or FakeOnwinHandle()
@@ -73,6 +117,7 @@ def test_start_workers_continues_when_betkanyon_constructor_raises(monkeypatch):
 
 def test_start_workers_continues_when_orbit_constructor_raises(monkeypatch):
     started = {"onwin": False, "betkanyon": False}
+    monkeypatch.setenv("ONWIN_LIVE", "1")
 
     monkeypatch.setattr(
         collector, "_get_onwin_handle", lambda: started.__setitem__("onwin", True) or FakeOnwinHandle()
@@ -90,6 +135,44 @@ def test_start_workers_continues_when_orbit_constructor_raises(monkeypatch):
 
     assert started["onwin"] is True
     assert started["betkanyon"] is True
+
+
+def test_start_prematch_workers_starts_onwin_prematch_not_live(monkeypatch):
+    started = {}
+    monkeypatch.delenv("ONWIN_LIVE", raising=False)
+
+    monkeypatch.setattr(
+        collector,
+        "_get_betkanyon_prematch_worker",
+        lambda: started.__setitem__("bk_pm", True) or object(),
+    )
+    monkeypatch.setattr(
+        collector,
+        "_get_orbit_prematch_worker",
+        lambda: started.__setitem__("orbit_pm", True) or object(),
+    )
+    monkeypatch.setattr(
+        collector,
+        "_get_onwin_prematch_worker",
+        lambda: started.__setitem__("onwin_pm", True) or object(),
+    )
+    monkeypatch.setattr(
+        collector,
+        "_get_kolay90_prematch_worker",
+        lambda: started.__setitem__("kolay90_pm", True) or object(),
+    )
+    monkeypatch.setattr(
+        collector,
+        "_get_onwin_handle",
+        lambda: started.__setitem__("onwin_live", True) or FakeOnwinHandle(),
+    )
+    collector.start_prematch_workers()
+    assert started == {
+        "bk_pm": True,
+        "orbit_pm": True,
+        "onwin_pm": True,
+        "kolay90_pm": True,
+    }
 
 
 @pytest.mark.anyio

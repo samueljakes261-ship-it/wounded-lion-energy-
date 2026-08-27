@@ -57,7 +57,8 @@ async def main():
         start_prematch_workers()
     else:
         print("Starting persistent bookmaker workers (live + prematch)...")
-        print("Live BetKanyon/Orbit/OnWin continue independently of prematch.")
+        print("Live BetKanyon/Orbit continue independently of prematch.")
+        print("OnWin LIVE is frozen unless ONWIN_LIVE=1; OnWin PREMATCH still starts.")
         print()
         start_workers()
         start_prematch_workers()

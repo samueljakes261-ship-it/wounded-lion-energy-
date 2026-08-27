@@ -29,6 +29,9 @@ def test_sport_page_is_same_origin_request_helper():
     url = build_prematch_url("4520")
     assert url.startswith(SPORT_HOST)
     assert "betkanyon1617.com" not in url
+    assert "tournamentId=4520" in url
+    assert "includeLiveEvents=false" in url
+    assert "langId=2" in url
 
 
 def test_looks_like_cloudflare_challenge_html():
@@ -125,7 +128,6 @@ def test_auto_failover_uses_cdp_when_http_is_cloudflare(monkeypatch):
         fake_cdp_ctor,
         raising=False,
     )
-    # Import happens inside fetch_all; patch the module attribute once loaded.
     import parsers.betkanyon_prematch.fetcher_cdp as cdp_fetch
 
     monkeypatch.setattr(cdp_fetch, "BetkanyonPrematchCdpFetcher", fake_cdp_ctor)
@@ -136,23 +138,26 @@ def test_auto_failover_uses_cdp_when_http_is_cloudflare(monkeypatch):
     assert fake_cdp.ids == ["4520", "4486"]
 
 
-    def test_api_ready_probe_retries_until_payload(monkeypatch):
-        from parsers.betkanyon_prematch import fetcher_cdp as mod
+def test_api_ready_probe_retries_until_payload(monkeypatch):
+    from parsers.betkanyon_prematch import fetcher_cdp as mod
 
-        class FakePage:
-            def __init__(self):
-                self.calls = 0
+    class FakePage:
+        def __init__(self):
+            self.calls = 0
 
-            def evaluate(self, _js, _url):
-                self.calls += 1
-                return 0 if self.calls < 2 else 11013
+        def evaluate(self, _js, _url):
+            self.calls += 1
+            return 0 if self.calls < 2 else 11013
 
-        monkeypatch.setattr(mod, "API_READY_WAIT_SECONDS", 20)
-        monkeypatch.setattr(mod, "CLOUDFLARE_POLL_SECONDS", 0.01)
-        fetcher = mod.BetkanyonPrematchCdpFetcher()
-        fetcher.page = FakePage()
-        fetcher._wait_for_api_ready()
-        assert fetcher.page.calls >= 2
+    monkeypatch.setattr(mod, "API_READY_WAIT_SECONDS", 20)
+    monkeypatch.setattr(mod, "CLOUDFLARE_POLL_SECONDS", 0.01)
+    fetcher = mod.BetkanyonPrematchCdpFetcher()
+    fetcher.page = FakePage()
+    fetcher._wait_for_api_ready()
+    assert fetcher.page.calls >= 2
+
+
+def test_passed_requesthelper_is_not_treated_as_cloudflare_wall():
     from parsers.betkanyon_prematch.cdp import looks_like_cloudflare_page
 
     class PassedPage:
