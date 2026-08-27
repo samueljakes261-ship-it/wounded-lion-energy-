@@ -24,6 +24,12 @@ fi
 
 echo "[prematch-chrome] starting $CHROME on port ${PORT}"
 echo "[prematch-chrome] tabs: https://kolay90.com/  $SPORT_PAGE"
+# Intentionally no --no-sandbox / --disable-gpu: this host supports the real
+# Chrome sandbox and a virtual display, and those two flags (a) trigger
+# Chrome's "unsupported command-line flag" banner and (b) force software
+# rendering (SwiftShader), which is a known automation fingerprint that can
+# make Cloudflare's challenge harder to clear. Keep the browser as close to a
+# normal desktop Chrome launch as possible.
 exec "$CHROME" \
   --remote-debugging-port="$PORT" \
   --remote-debugging-address=127.0.0.1 \
@@ -31,8 +37,6 @@ exec "$CHROME" \
   --no-first-run \
   --no-default-browser-check \
   --disable-dev-shm-usage \
-  --no-sandbox \
-  --disable-gpu \
   --window-size=1280,900 \
   "https://kolay90.com/" \
   "$SPORT_PAGE"
