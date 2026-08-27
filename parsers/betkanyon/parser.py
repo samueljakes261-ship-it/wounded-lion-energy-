@@ -36,13 +36,13 @@ def parse_json(data) -> List[dict]:
                         selection = stake.get("SN")
                         price = stake.get("F")
 
-                        if selection == "1":
+                        if selection in ("1", "W1", "Win1"):
                             home_price = price
 
                         elif selection == "X":
                             draw_price = price
 
-                        elif selection in ("2", "Kazanan2"):
+                        elif selection in ("2", "Kazanan2", "W2", "Win2"):
                             away_price = price
 
                 if (

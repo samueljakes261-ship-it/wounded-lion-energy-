@@ -86,6 +86,24 @@ def test_live_parser_extracts_football_1x2():
     assert match.home_odds == 2.10
 
 
+def test_live_parser_accepts_w1_x_w2_selection_names():
+    payload = _payload()
+    stakes = payload["CNT"][0]["CL"][0]["E"][0]["StakeTypes"][0]["Stakes"]
+    stakes[0]["SN"] = "W1"
+    stakes[0]["N"] = "Win1"
+    stakes[0]["SC"] = 1
+    stakes[1]["SN"] = "X"
+    stakes[1]["SC"] = 2
+    stakes[2]["SN"] = "W2"
+    stakes[2]["N"] = "Win2"
+    stakes[2]["SC"] = 3
+    parsed = parse_json(payload)
+    assert len(parsed) == 1
+    assert parsed[0]["home_odds"] == 2.10
+    assert parsed[0]["draw_odds"] == 3.40
+    assert parsed[0]["away_odds"] == 3.10
+
+
 def test_live_parser_empty_payload():
     assert parse_json({}) == []
     assert parse_json({"CNT": []}) == []
