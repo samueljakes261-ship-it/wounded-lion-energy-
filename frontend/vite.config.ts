@@ -29,6 +29,13 @@ export default defineConfig({
   // server there) or when VITE_API_URL is explicitly set.
   vite: {
     server: {
+      // Allows this dev server to be reached through a temporary
+      // public tunnel (e.g. serveo.net/ngrok) for manual testing from
+      // outside this VM -- Vite's Host-header check otherwise blocks
+      // any hostname not explicitly listed (anti DNS-rebinding
+      // protection). Dev-only; has no effect on a production build or
+      // on the existing Turkish/client-facing behavior.
+      allowedHosts: true,
       proxy: {
         // Matches the Kenyan backend's actual sub-routes
         // (/kenyan/auth, /kenyan/opportunities, /kenyan/status) but
