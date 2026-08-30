@@ -6,6 +6,7 @@ from collector import (
     get_cached_prematch_opportunities,
     get_collector_status,
 )
+from kenyan.api_router import include_kenyan_routes
 
 
 app = FastAPI(
@@ -74,3 +75,16 @@ def status():
     """
 
     return get_collector_status()
+
+
+# ------------------------------------------------------------------
+# Kenyan Bookmakers section -- fully isolated addition.
+#
+# Adds /kenyan/auth, /kenyan/opportunities, /kenyan/status. Does not
+# alter any of the routes above, their behavior, or their CORS
+# configuration (the Kenyan routes share the same CORS middleware,
+# which is the one deliberately-shared piece of existing config -- see
+# kenyan/api_router.py for the routes themselves and kenyan/access.py
+# for the access-code/session gate they sit behind).
+# ------------------------------------------------------------------
+include_kenyan_routes(app)
