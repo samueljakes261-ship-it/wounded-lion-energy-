@@ -32,6 +32,16 @@ browser/process per poll.
 `collector.start_workers()` (imported, not modified) so a future
 "run everything" mode is available without ever having silently made
 that the default.
+
+NOTE: `api.py` also starts its OWN copy of the same 8 Kenyan workers
+on boot (see its `_start_kenyan_workers` startup hook), since
+/kenyan/opportunities and /kenyan/status need real data to serve and
+there is no shared file-cache between this script and the API process
+(unlike the Turkish side's run_engine.py <-> cached_opportunities.json
+pairing). Running this script AND `uvicorn api:app` at the same time
+against the same bookmakers therefore polls each external API twice
+as often as necessary -- prefer running only one of the two unless you
+specifically want this console view alongside the API.
 """
 import argparse
 import asyncio

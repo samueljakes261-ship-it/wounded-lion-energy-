@@ -7,6 +7,7 @@ from collector import (
     get_collector_status,
 )
 from kenyan.api_router import include_kenyan_routes
+from kenyan.runner import get_runner
 
 
 app = FastAPI(
@@ -88,3 +89,21 @@ def status():
 # for the access-code/session gate they sit behind).
 # ------------------------------------------------------------------
 include_kenyan_routes(app)
+
+
+@app.on_event("startup")
+def _start_kenyan_workers():
+    """
+    Starts the 8 persistent Kenyan workers (SportPesa/Betika/1xBet/
+    22Bet x LIVE/PREMATCH) once, when this API process boots.
+
+    Unlike the Turkish/client-facing collectors (which are started
+    exclusively by run_engine.py and read here only from a file
+    cache -- see get_cached_opportunities()/get_collector_status()
+    above), the Kenyan workers have no separate always-running engine
+    process assumption in this deployment, so /kenyan/opportunities
+    and /kenyan/status would otherwise never have any real data to
+    serve. This call is idempotent (KenyanEngineRunner.start() no-ops
+    if already started) and touches nothing outside kenyan/*.
+    """
+    get_runner().start()
