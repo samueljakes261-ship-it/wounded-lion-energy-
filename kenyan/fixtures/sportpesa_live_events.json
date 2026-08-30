@@ -1,0 +1,158 @@
+{
+  "events": [
+    {
+      "id": 1702585,
+      "legacyId": 0,
+      "externalId": 72221216,
+      "marketCount": 17,
+      "kickoffTimeUTC": "2026-08-30T13:00:00Z",
+      "sport": {
+        "id": 1,
+        "name": "Soccer"
+      },
+      "country": {
+        "id": 213,
+        "name": "England",
+        "iso": "ENG"
+      },
+      "tournament": {
+        "id": 1419,
+        "name": "Premier League"
+      },
+      "competitors": [
+        {
+          "id": 24219,
+          "name": "Chelsea FC"
+        },
+        {
+          "id": 22883,
+          "name": "Brighton & Hove Albion"
+        }
+      ],
+      "status": "Started",
+      "state": {
+        "currentEventPhase": "SecondHalf",
+        "periodStartTime": "2026-08-30T14:04:50Z",
+        "matchTime": "82:58",
+        "matchScore": {
+          "home": "4",
+          "away": "2"
+        },
+        "score": {
+          "home": "",
+          "away": ""
+        },
+        "subScore": {
+          "home": "",
+          "away": ""
+        },
+        "currentServer": null,
+        "extra": []
+      },
+      "isPaused": false
+    },
+    {
+      "id": 1702591,
+      "legacyId": 0,
+      "externalId": 72221222,
+      "marketCount": 17,
+      "kickoffTimeUTC": "2026-08-30T13:00:00Z",
+      "sport": {
+        "id": 1,
+        "name": "Soccer"
+      },
+      "country": {
+        "id": 213,
+        "name": "England",
+        "iso": "ENG"
+      },
+      "tournament": {
+        "id": 1419,
+        "name": "Premier League"
+      },
+      "competitors": [
+        {
+          "id": 22895,
+          "name": "Leeds United"
+        },
+        {
+          "id": 24217,
+          "name": "Brentford FC"
+        }
+      ],
+      "status": "Started",
+      "state": {
+        "currentEventPhase": "SecondHalf",
+        "periodStartTime": "2026-08-30T14:06:02Z",
+        "matchTime": "81:48",
+        "matchScore": {
+          "home": "1",
+          "away": "1"
+        },
+        "score": {
+          "home": "",
+          "away": ""
+        },
+        "subScore": {
+          "home": "",
+          "away": ""
+        },
+        "currentServer": null,
+        "extra": []
+      },
+      "isPaused": false
+    },
+    {
+      "id": 1702597,
+      "legacyId": 0,
+      "externalId": 72221228,
+      "marketCount": 20,
+      "kickoffTimeUTC": "2026-08-30T13:00:00Z",
+      "sport": {
+        "id": 1,
+        "name": "Soccer"
+      },
+      "country": {
+        "id": 213,
+        "name": "England",
+        "iso": "ENG"
+      },
+      "tournament": {
+        "id": 1419,
+        "name": "Premier League"
+      },
+      "competitors": [
+        {
+          "id": 22887,
+          "name": "Sunderland AFC"
+        },
+        {
+          "id": 22893,
+          "name": "Fulham FC"
+        }
+      ],
+      "status": "Started",
+      "state": {
+        "currentEventPhase": "SecondHalf",
+        "periodStartTime": "2026-08-30T14:01:45Z",
+        "matchTime": "86:03",
+        "matchScore": {
+          "home": "1",
+          "away": "0"
+        },
+        "score": {
+          "home": "",
+          "away": ""
+        },
+        "subScore": {
+          "home": "",
+          "away": ""
+        },
+        "currentServer": null,
+        "extra": []
+      },
+      "isPaused": false
+    }
+  ],
+  "loadMore": true
+}
