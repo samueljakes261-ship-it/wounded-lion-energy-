@@ -31,8 +31,16 @@ def _match(bookmaker, home_odds, draw_odds, away_odds, home_team="Team A", away_
 
 
 def test_no_lay_field_exists_on_kenyan_match_odds():
+    """
+    `side` exists only for duck-typing compatibility with whatever
+    shape `models.match.MatchOdds` currently has on the branch this
+    module is merged into (some branches added BACK/LAY exchange
+    support there) -- this module itself never sets it to anything
+    other than its default, so it can never be mistaken for a LAY
+    price by the reused engine/best_odds_selector.py.
+    """
     match = _match(SPORTPESA, 2.4, 3.3, 3.1)
-    assert not hasattr(match, "side")
+    assert getattr(match, "side", None) is None
     assert not hasattr(match, "lay_odds")
 
 

@@ -27,6 +27,7 @@ presence does not affect reuse.
 """
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 
 @dataclass
@@ -34,8 +35,17 @@ class KenyanMatchOdds:
     """
     One BACK-only 1X2 market from one Kenyan bookmaker.
 
-    There is deliberately no `side` field: the Kenyan module is
-    BACK-vs-BACK only (no exchange, no LAY leg), by design.
+    `side` always stays None: the Kenyan module is BACK-vs-BACK only
+    (no exchange, no LAY leg), by design. The field itself still has
+    to exist because `engine/best_odds_selector.py` and
+    `debug/odds_trace.py` read `match.side` unconditionally (they were
+    extended, on top of the branch this module was merged into, to
+    support Orbit's BACK/LAY exchange semantics) -- `side=None` reads
+    there as "an ordinary backable price", which is exactly what every
+    Kenyan bookmaker price is. This is duck-typing the CURRENT shape of
+    `models.match.MatchOdds` on whichever branch this lands on, not a
+    reintroduction of LAY support: nothing in this module ever sets
+    `side` to anything other than its default.
     """
 
     bookmaker: str
@@ -57,6 +67,21 @@ class KenyanMatchOdds:
     event_id: str = ""
     status: str = "PREMATCH"  # "LIVE" or "PREMATCH" -- see kenyan/config.py
     source: str = ""  # e.g. "sportpesa_live", "betika_prematch"
+
+    # Duck-typed to match models.match.MatchOdds's own fields (see the
+    # class docstring above) -- always None/live-derived for Kenyan.
+    side: Optional[str] = None
+    tournament_id: Optional[str] = None
+
+    @property
+    def feed_type(self) -> str:
+        """
+        Read by engine/matcher.py (`getattr(match, "feed_type", "live")`)
+        to keep LIVE and PREMATCH events from ever matching each other.
+        Derived from `status` rather than stored separately so it is
+        never possible for the two to disagree.
+        """
+        return "live" if self.status == "LIVE" else "prematch"
 
     def __str__(self):
         return (
