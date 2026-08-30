@@ -24,7 +24,7 @@ and failure classifications are safe to log.
 """
 from dotenv import load_dotenv
 
-# Loaded once here so that every module in this package (and every
-# caller that merely imports something from `credentials`) can rely on
-# .env already being read, regardless of import order.
-load_dotenv()
+# override=True so a newly edited .env wins over a stale process
+# environment (Cursor/shell leftover ZENROWS_BROWSER_WS). Without this,
+# changing .env cannot clear a false quota cooldown tied to the old key.
+load_dotenv(override=True)

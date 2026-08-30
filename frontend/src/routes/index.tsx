@@ -1,6 +1,15 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { resolveApiConfig } from "@/lib/api-config"
+import { t, type FeedMode, type Lang } from "@/lib/i18n"
+import {
+  bookmakersFromOpportunities,
+  bookmakersFromStatus,
+  filterOpportunities,
+  keepLastGoodSnapshot,
+  parseOptionalNumber,
+} from "@/lib/opportunity-filters"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,7 +21,6 @@ import {
 import {
   RefreshCw,
   TrendingUp,
-  Activity,
   ChevronDown,
   AlertTriangle,
   CircleDot,
@@ -40,6 +48,7 @@ type Leg = {
 }
 
 type Opportunity = {
+  opportunityType?: "BACK_BACK" | string
   competition: string
   homeTeam: string
   awayTeam: string
@@ -52,6 +61,31 @@ type Opportunity = {
   home: Leg
   draw: Leg
   away: Leg
+}
+
+type BackLayPrice = {
+  bookmaker: string
+  side: string
+  odds: number
+}
+
+type BackLayOpportunity = {
+  opportunityType: "BACK_LAY"
+  homeTeam: string
+  awayTeam: string
+  outcome: string
+  arbitrageTeam: string
+  profitPercentage?: number
+  back: BackLayPrice
+  lay: BackLayPrice
+}
+
+type ApiOpportunity = Opportunity | BackLayOpportunity
+
+function isBackLayOpportunity(
+  opportunity: ApiOpportunity
+): opportunity is BackLayOpportunity {
+  return opportunity.opportunityType === "BACK_LAY"
 }
 
 // One collector's health, independent of opportunity count -- see
@@ -72,6 +106,10 @@ type CollectorStatusResponse = {
   generatedAt: string | null
   matchedEvents: number
   opportunityCount: number
+  engineMode?: "live" | "prematch"
+  prematchMatchedEvents?: number
+  prematchOpportunityCount?: number
+  scheduledRestart?: boolean
   collectors: Record<string, CollectorHealth>
 }
 
@@ -136,10 +174,15 @@ function traceDisplayedOdds(opportunity: Opportunity) {
 // wherever a leg's bookmaker name is displayed, per the requirement
 // that an Orbit price must never appear without its BACK/LAY side.
 function bookmakerLabel(leg: Leg): string {
+  const name =
+    leg.bookmaker.toLowerCase() === "orbit" ? "Orbit" : leg.bookmaker
+  if (leg.bookmaker.toLowerCase() === "orbit" && leg.side) {
+    return `${name} — ${leg.side}`
+  }
   if (leg.bookmaker.toLowerCase() === "orbit") {
     return "Orbit Exchange"
   }
-  return leg.bookmaker
+  return name
 }
 
 function LegBadges({ leg }: { leg: Leg }) {
@@ -212,40 +255,66 @@ function formatAge(seconds: number | null): string {
 // different things (see collector.py's CollectorStatus docstring).
 function CollectorStatusPanel({
   status,
+  mode,
+  lang,
 }: {
   status: CollectorStatusResponse | null
+  mode: FeedMode
+  lang: Lang
 }) {
   if (!status) {
     return null
   }
 
-  const order = ["orbit", "betkanyon", "onwin"]
+  const order =
+    mode === "prematch"
+      ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch", "kolay90_prematch"]
+      : ["orbit", "betkanyon", "onwin"]
   const collectors = order
     .map((key) => status.collectors[key])
     .filter((c): c is CollectorHealth => Boolean(c))
+  const matched =
+    mode === "prematch"
+      ? (status as CollectorStatusResponse & { prematchMatchedEvents?: number })
+          .prematchMatchedEvents ?? status.matchedEvents
+      : status.matchedEvents
+  const opps =
+    mode === "prematch"
+      ? (status as CollectorStatusResponse & { prematchOpportunityCount?: number })
+          .prematchOpportunityCount ?? status.opportunityCount
+      : status.opportunityCount
 
   return (
     <Card className="bg-slate-900 border-slate-800">
       <CardContent className="py-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="text-xs font-semibold text-slate-500 tracking-wide">
-            COLLECTORS
+            {t(lang, "collectors")}
           </div>
-          {collectors.map((collector) => (
+          {collectors.map((collector) => {
+            const shown =
+              status.scheduledRestart &&
+              (collector.collectorStatus === "STARTING" ||
+                collector.collectorStatus === "RECOVERING" ||
+                collector.collectorStatus === "STOPPED")
+                ? "RUNNING"
+                : collector.collectorStatus
+            return (
             <div key={collector.name} className="flex items-center gap-1.5">
               <CircleDot className="w-3 h-3 text-slate-500" />
               <span className="text-sm text-slate-300">{collector.name}</span>
-              <Badge className={COLLECTOR_STATUS_STYLES[collector.collectorStatus]}>
-                {collector.collectorStatus}
+              <Badge className={COLLECTOR_STATUS_STYLES[shown]}>
+                {shown}
               </Badge>
               <span className="text-xs text-slate-500">
                 {formatAge(collector.ageSeconds)}
               </span>
             </div>
-          ))}
+            )
+          })}
           <div className="text-xs text-slate-500 ml-auto">
-            Matched events: {status.matchedEvents} &middot; Opportunities:{" "}
-            {status.opportunityCount}
+            {t(lang, "matchedEvents")}: {matched} &middot; {t(lang, "opportunities")}:{" "}
+            {opps}
           </div>
         </div>
       </CardContent>
@@ -282,7 +351,73 @@ function StakeRow({
   )
 }
 
-function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
+function formatOdds(odds: number): string {
+  return odds.toFixed(2)
+}
+
+function BackLayCard({
+  opportunity,
+  lang,
+}: {
+  opportunity: BackLayOpportunity
+  lang: Lang
+}) {
+  const teamName =
+    opportunity.outcome === "DRAW"
+      ? t(lang, "draw")
+      : opportunity.arbitrageTeam || opportunity.homeTeam
+
+  return (
+    <Card
+      data-testid="back-lay-card"
+      className="bg-slate-900 border-slate-800 hover:border-cyan-500/50 transition-colors duration-300"
+    >
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-slate-500 tracking-wide">
+              {t(lang, "matchLabel")}
+            </div>
+            <CardTitle className="text-lg">
+              {opportunity.homeTeam} vs {opportunity.awayTeam}
+            </CardTitle>
+          </div>
+          {typeof opportunity.profitPercentage === "number" ? (
+            <Badge className="bg-emerald-500 text-black shrink-0">
+              +{opportunity.profitPercentage.toFixed(2)}%
+            </Badge>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
+        <div>
+          <div className="text-xs font-semibold text-slate-500 tracking-wide">
+            {t(lang, "arbitrageLabel")}
+          </div>
+          <div className="text-base text-slate-100 mt-0.5">{teamName}</div>
+        </div>
+        <div className="text-sm text-slate-200 space-y-1">
+          <div>
+            {opportunity.back.bookmaker} — {opportunity.back.side} @{" "}
+            {formatOdds(opportunity.back.odds)}
+          </div>
+          <div>
+            {opportunity.lay.bookmaker} — {opportunity.lay.side} @{" "}
+            {formatOdds(opportunity.lay.odds)}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function OpportunityCard({
+  opportunity,
+  lang,
+}: {
+  opportunity: Opportunity
+  lang: Lang
+}) {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -320,13 +455,13 @@ function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
 
             <CardContent className="pt-0">
               <OutcomeRow
-                label="HOME"
+                label={t(lang, "home")}
                 teamName={opportunity.homeTeam}
                 leg={opportunity.home}
               />
-              <OutcomeRow label="DRAW" leg={opportunity.draw} />
+              <OutcomeRow label={t(lang, "draw")} leg={opportunity.draw} />
               <OutcomeRow
-                label="AWAY"
+                label={t(lang, "away")}
                 teamName={opportunity.awayTeam}
                 leg={opportunity.away}
               />
@@ -338,28 +473,28 @@ function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
           <CardContent className="pt-0 pb-6">
             <div className="bg-slate-800 rounded-lg p-4 space-y-2">
               <div className="text-sm font-semibold text-slate-300 mb-1">
-                Stake Plan
+                {t(lang, "stakePlan")}
               </div>
 
-              <StakeRow label="Home" value={opportunity.home.stake} />
-              <StakeRow label="Draw" value={opportunity.draw.stake} />
-              <StakeRow label="Away" value={opportunity.away.stake} />
+              <StakeRow label={t(lang, "home")} value={opportunity.home.stake} />
+              <StakeRow label={t(lang, "draw")} value={opportunity.draw.stake} />
+              <StakeRow label={t(lang, "away")} value={opportunity.away.stake} />
 
               <div className="!my-3 border-t border-slate-700" />
 
-              <StakeRow label="Total Stake" value={opportunity.totalStake} />
+              <StakeRow label={t(lang, "totalStake")} value={opportunity.totalStake} />
               <StakeRow
-                label="Expected Return"
+                label={t(lang, "expectedReturn")}
                 value={opportunity.guaranteedReturn}
               />
               <StakeRow
-                label="Guaranteed Profit"
+                label={t(lang, "guaranteedProfit")}
                 value={opportunity.guaranteedProfit}
                 emphasize
               />
 
               <div className="flex items-center justify-between text-sm pt-1">
-                <span className="text-slate-400">ROI</span>
+                <span className="text-slate-400">{t(lang, "roi")}</span>
                 <span className="font-bold text-cyan-400">
                   {opportunity.roi.toFixed(2)}%
                 </span>
@@ -373,12 +508,20 @@ function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
 }
 
 function Dashboard() {
-  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [opportunities, setOpportunities] = useState<ApiOpportunity[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [collectorStatus, setCollectorStatus] =
     useState<CollectorStatusResponse | null>(null)
+  const [lang, setLang] = useState<Lang>("tr")
+  const [mode, setMode] = useState<FeedMode>("live")
+  const [backBackOpen, setBackBackOpen] = useState(false)
+  const [minArb, setMinArb] = useState("")
+  const [maxArb, setMaxArb] = useState("")
+  const [minOdds, setMinOdds] = useState("")
+  const [maxOdds, setMaxOdds] = useState("")
+  const [selectedBooks, setSelectedBooks] = useState<string[]>([])
 
   const loadCollectorStatus = async () => {
     try {
@@ -407,7 +550,7 @@ function Dashboard() {
     try {
       setLoading(true)
 
-      const response = await fetch(API_URL, {
+      const response = await fetch(`${API_URL}?mode=${mode}`, {
        headers: {
         "ngrok-skip-browser-warning": "true",
        },
@@ -421,7 +564,9 @@ function Dashboard() {
 
       const data = await response.json()
 
-      setOpportunities(data)
+      setOpportunities((previous) =>
+        keepLastGoodSnapshot(Array.isArray(data) ? data : [], previous)
+      )
       setLastUpdated(new Date())
       setError(null)
     } catch (err) {
@@ -448,24 +593,96 @@ function Dashboard() {
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [mode])
+
+  useEffect(() => {
+    if (collectorStatus?.engineMode === "prematch" && mode !== "prematch") {
+      setMode("prematch")
+    }
+  }, [collectorStatus?.engineMode])
+
+  const bookmakerOptions = useMemo(() => {
+    const fromStatus = bookmakersFromStatus(collectorStatus?.collectors, mode)
+    const fromOpps = bookmakersFromOpportunities(opportunities)
+    return [...new Set([...fromStatus, ...fromOpps])].sort((left, right) =>
+      left.localeCompare(right)
+    )
+  }, [collectorStatus, mode, opportunities])
+
+  const visibleOpportunities = useMemo(
+    () =>
+      filterOpportunities(opportunities, {
+        minArb: parseOptionalNumber(minArb),
+        maxArb: parseOptionalNumber(maxArb),
+        minOdds: parseOptionalNumber(minOdds),
+        maxOdds: parseOptionalNumber(maxOdds),
+        bookmakers: selectedBooks,
+      }),
+    [opportunities, minArb, maxArb, minOdds, maxOdds, selectedBooks]
+  )
+
+  const backLayOpportunities = visibleOpportunities.filter(isBackLayOpportunity)
+  const backBackOpportunities = visibleOpportunities.filter(
+    (opportunity): opportunity is Opportunity => !isBackLayOpportunity(opportunity)
+  )
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold">ArbScanner</h1>
+            <h1 className="text-3xl font-bold">{t(lang, "title")}</h1>
             <p className="text-slate-400">
-              Live arbitrage opportunities from 6 bookmakers
+              {mode === "live" ? t(lang, "subtitleLive") : t(lang, "subtitlePrematch")}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Badge className="bg-emerald-500 text-black">
-              <Activity className="w-3 h-3 mr-1" />
-              LIVE
-            </Badge>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex rounded-md overflow-hidden border border-slate-700">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  lang === "tr" ? "bg-cyan-500 text-black" : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setLang("tr")}
+              >
+                TR
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  lang === "en" ? "bg-cyan-500 text-black" : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setLang("en")}
+              >
+                EN
+              </button>
+            </div>
+
+            <div className="flex rounded-md overflow-hidden border border-slate-700">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  mode === "live"
+                    ? "bg-emerald-500 text-black"
+                    : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setMode("live")}
+              >
+                {t(lang, "live")}
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm font-semibold ${
+                  mode === "prematch"
+                    ? "bg-emerald-500 text-black"
+                    : "bg-slate-900 text-slate-300"
+                }`}
+                onClick={() => setMode("prematch")}
+              >
+                {t(lang, "prematch")}
+              </button>
+            </div>
 
             <Button
               variant="outline"
@@ -475,26 +692,125 @@ function Dashboard() {
               <RefreshCw
                 className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
               />
-              Scan Again
+              {t(lang, "scanAgain")}
             </Button>
           </div>
         </div>
 
         <div className="text-sm text-slate-500">
           {lastUpdated
-            ? `Last updated: ${lastUpdated.toLocaleTimeString()}`
-            : "Waiting for first scan..."}
+            ? `${t(lang, "lastUpdated")}: ${lastUpdated.toLocaleTimeString()}`
+            : t(lang, "waiting")}
         </div>
 
-        <CollectorStatusPanel status={collectorStatus} />
+        {collectorStatus?.engineMode === "prematch" ? (
+          <div className="text-sm text-amber-300 border border-amber-500/40 bg-amber-500/10 rounded-md px-3 py-2">
+            {lang === "tr"
+              ? "Maç öncesi hata ayıklama: canlı işçiler donduruldu. Sadece /opportunities?mode=prematch gösteriliyor."
+              : "Prematch debug: live workers are frozen. Showing /opportunities?mode=prematch only."}
+          </div>
+        ) : null}
+
+        <CollectorStatusPanel status={collectorStatus} mode={mode} lang={lang} />
+
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="py-3 space-y-3">
+            <div className="text-xs font-semibold text-slate-500 tracking-wide">
+              {t(lang, "filters")}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "minArb")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={minArb}
+                  onChange={(event) => setMinArb(event.target.value)}
+                />
+                %
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "maxArb")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={maxArb}
+                  onChange={(event) => setMaxArb(event.target.value)}
+                />
+                %
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "minOdds")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={minOdds}
+                  onChange={(event) => setMinOdds(event.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                {t(lang, "maxOdds")}
+                <Input
+                  className="h-8 w-20 bg-slate-950 border-slate-700 text-slate-100"
+                  inputMode="decimal"
+                  value={maxOdds}
+                  onChange={(event) => setMaxOdds(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-500">{t(lang, "bookmakers")}</span>
+              <button
+                type="button"
+                className={`px-2 py-1 text-xs rounded-md border ${
+                  selectedBooks.length === 0
+                    ? "bg-cyan-500 text-black border-cyan-500"
+                    : "bg-slate-950 text-slate-300 border-slate-700"
+                }`}
+                onClick={() => setSelectedBooks([])}
+              >
+                {t(lang, "allBookmakers")}
+              </button>
+              {bookmakerOptions.map((name) => {
+                const active = selectedBooks
+                  .map((item) => item.toLowerCase())
+                  .includes(name.toLowerCase())
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className={`px-2 py-1 text-xs rounded-md border ${
+                      active
+                        ? "bg-cyan-500 text-black border-cyan-500"
+                        : "bg-slate-950 text-slate-300 border-slate-700"
+                    }`}
+                    onClick={() =>
+                      setSelectedBooks((current) =>
+                        current
+                          .map((item) => item.toLowerCase())
+                          .includes(name.toLowerCase())
+                          ? current.filter(
+                              (item) => item.toLowerCase() !== name.toLowerCase()
+                            )
+                          : [...current, name]
+                      )
+                    }
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {loading && opportunities.length === 0 && !error ? (
           <Card className="bg-slate-900 border-slate-800">
             <CardContent className="py-12 text-center">
               <RefreshCw className="w-8 h-8 mx-auto mb-4 animate-spin text-cyan-400" />
-              <div className="text-lg font-semibold">Scanning bookmakers...</div>
+              <div className="text-lg font-semibold">{t(lang, "scanning")}</div>
               <div className="text-slate-400 mt-2">
-                Orbit • Betfair • Kolay90 • Novel34 • BetKanyon • OnWin
+                {t(lang, "scanningHint")}
               </div>
             </CardContent>
           </Card>
@@ -503,7 +819,7 @@ function Dashboard() {
             <CardContent className="py-12 text-center">
               <AlertTriangle className="w-10 h-10 mx-auto mb-4 text-amber-500" />
               <div className="text-xl font-semibold">
-                Unable to reach the scanner backend
+                {t(lang, "backendError")}
               </div>
               <div className="text-slate-400 mt-2">{error}</div>
             </CardContent>
@@ -513,15 +829,64 @@ function Dashboard() {
             <CardContent className="py-12 text-center">
               <TrendingUp className="w-10 h-10 mx-auto mb-4 text-slate-500" />
               <div className="text-xl font-semibold">
-                No arbitrage opportunities detected.
+                {t(lang, "noOpps")}
               </div>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {opportunities.map((opportunity, index) => (
-              <OpportunityCard key={index} opportunity={opportunity} />
-            ))}
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold tracking-wide text-slate-400">
+                {t(lang, "backVsLay")}
+              </h2>
+              {backLayOpportunities.length === 0 ? (
+                <div className="text-sm text-slate-500">{t(lang, "noBackLay")}</div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {backLayOpportunities.map((opportunity, index) => (
+                    <BackLayCard
+                      key={`back-lay-${index}`}
+                      opportunity={opportunity}
+                      lang={lang}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {backBackOpportunities.length > 0 ? (
+              <Collapsible
+                open={backBackOpen}
+                onOpenChange={setBackBackOpen}
+                defaultOpen={false}
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    data-testid="back-back-toggle"
+                    className="flex items-center gap-2 text-sm font-semibold tracking-wide text-slate-400 hover:text-slate-200"
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform duration-200 ${
+                        backBackOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                    {t(lang, "backVsBackOpportunities")}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-3">
+                    {backBackOpportunities.map((opportunity, index) => (
+                      <OpportunityCard
+                        key={`back-back-${index}`}
+                        opportunity={opportunity}
+                        lang={lang}
+                      />
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            ) : null}
           </div>
         )}
       </div>

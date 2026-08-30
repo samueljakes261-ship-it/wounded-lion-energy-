@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
+from debug import odds_trace
 from models.match import MatchOdds
 
 
@@ -124,6 +125,22 @@ class OrbitAdapter:
         if home_odds is None or draw_odds is None or away_odds is None:
             return None
 
+        # Orbit's "odds" fields are already JSON numbers (no string
+        # parsing involved), so RAW and PARSED are identical here --
+        # traced anyway for a consistent RAW->PARSED->ENGINE->API view
+        # across all three bookmakers.
+        odds_trace.record(
+            "PARSED",
+            "Orbit",
+            market.home_team,
+            market.away_team,
+            market.market_name,
+            side,
+            home_odds,
+            draw_odds,
+            away_odds,
+        )
+
         return MatchOdds(
 
             bookmaker="Orbit",
@@ -145,10 +162,14 @@ class OrbitAdapter:
             away_odds=away_odds,
 
             start_time=datetime.fromtimestamp(
-                market.start_time / 1000
+                market.start_time / 1000,
+                tz=timezone.utc,
             ),
 
-            collected_at=datetime.now(),
+            # Timezone-aware (UTC), matching BetKanyon/OnWin, so
+            # collector.py can safely compute freshness/age across all
+            # three bookmakers without a naive/aware datetime mismatch.
+            collected_at=datetime.now(timezone.utc),
 
             side=side,
         )

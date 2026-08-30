@@ -18,8 +18,8 @@ describe("dashboard data-fetching contract (frontend/src/routes/index.tsx)", () 
     expect(SOURCE).toMatch(/from ["']@\/lib\/api-config["']/)
   })
 
-  it("fetches opportunities from API_URL and status from STATUS_URL", () => {
-    expect(SOURCE).toMatch(/fetch\(API_URL/)
+  it("fetches opportunities from API_URL (with mode) and status from STATUS_URL", () => {
+    expect(SOURCE).toMatch(/fetch\(`\$\{API_URL\}\?mode=\$\{mode\}`/)
     expect(SOURCE).toMatch(/fetch\(STATUS_URL/)
   })
 
@@ -53,5 +53,82 @@ describe("dashboard data-fetching contract (frontend/src/routes/index.tsx)", () 
   it("warns loudly (without secrets) when a production build has no VITE_API_URL configured", () => {
     expect(SOURCE).toMatch(/import\.meta\.env\.PROD && usedLocalDevFallback/)
     expect(SOURCE).toMatch(/console\.error\(/)
+  })
+})
+
+describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
+  const backLayCard = SOURCE.slice(
+    SOURCE.indexOf("function BackLayCard"),
+    SOURCE.indexOf("function OpportunityCard")
+  )
+  const backBackSection = SOURCE.slice(
+    SOURCE.indexOf("backBackOpportunities.length > 0"),
+    SOURCE.indexOf("backBackOpportunities.map")
+  )
+
+  it("renders a dedicated BackLayCard with match, team, BACK/LAY prices, and percentage", () => {
+    expect(SOURCE).toMatch(/function BackLayCard/)
+    expect(backLayCard).toMatch(/matchLabel/)
+    expect(backLayCard).toMatch(/arbitrageLabel/)
+    expect(backLayCard).toMatch(/opportunity\.back\.bookmaker/)
+    expect(backLayCard).toMatch(/opportunity\.back\.side/)
+    expect(backLayCard).toMatch(/opportunity\.lay\.bookmaker/)
+    expect(backLayCard).toMatch(/opportunity\.lay\.side/)
+    expect(backLayCard).toMatch(/profitPercentage/)
+    expect(backLayCard).not.toMatch(/stake/i)
+    expect(backLayCard).not.toMatch(/guaranteedProfit/)
+    expect(backLayCard).not.toMatch(/\broi\b/i)
+    expect(backLayCard).not.toMatch(/liability/i)
+    expect(backLayCard).not.toMatch(/implied/i)
+    expect(backLayCard).not.toMatch(/generatedAt/)
+    expect(backLayCard).not.toMatch(/collectedAt/)
+    expect(backLayCard).not.toMatch(/eventId|marketId|feedId/i)
+  })
+
+  it("keeps the BACK vs BACK section collapsed by default", () => {
+    expect(SOURCE).toMatch(/const \[backBackOpen, setBackBackOpen\] = useState\(false\)/)
+    expect(backBackSection).toMatch(/defaultOpen=\{false\}/)
+    expect(backBackSection).toMatch(/open=\{backBackOpen\}/)
+  })
+
+  it("reveals BACK vs BACK cards when the dropdown is clicked", () => {
+    expect(SOURCE).toMatch(/data-testid="back-back-toggle"/)
+    expect(backBackSection).toMatch(/CollapsibleTrigger/)
+    expect(backBackSection).toMatch(/onOpenChange=\{setBackBackOpen\}/)
+    expect(SOURCE).toMatch(/backBackOpportunities\.map/)
+    expect(SOURCE).toMatch(/<OpportunityCard/)
+  })
+
+  it("shows BACK vs LAY opportunities first", () => {
+    const layIndex = SOURCE.indexOf("backLayOpportunities.map")
+    const backIndex = SOURCE.indexOf("backBackOpportunities.map")
+    expect(layIndex).toBeGreaterThan(0)
+    expect(backIndex).toBeGreaterThan(layIndex)
+  })
+
+  it("uses the shared i18n helper for new BACK vs LAY / BACK vs BACK labels", () => {
+    expect(SOURCE).toMatch(/t\(lang, "backVsLay"\)/)
+    expect(SOURCE).toMatch(/t\(lang, "backVsBackOpportunities"\)/)
+    expect(SOURCE).toMatch(/t\(lang, "matchLabel"\)/)
+    expect(SOURCE).toMatch(/t\(lang, "arbitrageLabel"\)/)
+  })
+
+  it("keeps existing BACK vs BACK and BACK vs LAY cards after adding filters", () => {
+    expect(SOURCE).toMatch(/function BackLayCard/)
+    expect(SOURCE).toMatch(/function OpportunityCard/)
+    expect(SOURCE).toMatch(/filterOpportunities\(/)
+    expect(SOURCE).toMatch(/keepLastGoodSnapshot\(/)
+    expect(SOURCE).not.toMatch(/Restarting/)
+  })
+
+  it("defines Turkish and English strings for the new labels", () => {
+    const i18n = readFileSync(fileURLToPath(new URL("../lib/i18n.ts", import.meta.url)), "utf-8")
+    expect(i18n).toMatch(/backVsLay: "BACK vs LAY"/)
+    expect(i18n).toMatch(/matchLabel: "Maç"/)
+    expect(i18n).toMatch(/matchLabel: "Match"/)
+    expect(i18n).toMatch(/arbitrageLabel: "Arbitraj"/)
+    expect(i18n).toMatch(/arbitrageLabel: "Arbitrage"/)
+    expect(i18n).toMatch(/backVsBackOpportunities: "BACK vs BACK FIRSATLARI"/)
+    expect(i18n).toMatch(/backVsBackOpportunities: "BACK vs BACK OPPORTUNITIES"/)
   })
 })

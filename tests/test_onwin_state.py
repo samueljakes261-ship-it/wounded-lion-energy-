@@ -166,6 +166,43 @@ def test_update_changes_existing_outcome():
     assert match.away_odds == 3.55
 
 
+def test_apply_update_accepts_list_wrapped_payload():
+    """Live get_main_line_gap responses arrive as a JSON array."""
+    state = OnwinState()
+    state.load_initial(make_payload({
+        "evt-1": make_event(odds=(2.07, 3.30, 3.60, 1000)),
+    }))
+
+    changed = state.apply_update([
+        make_payload(
+            {"evt-1": make_event(odds=(2.09, 3.31, 3.50, 3000))},
+            versions=[3],
+        )
+    ])
+
+    assert changed == {"evt-1"}
+    [match] = state.get_match_odds(["evt-1"])
+    assert match.home_odds == 2.09
+
+
+def test_apply_update_accepts_result_wrapper():
+    state = OnwinState()
+    state.load_initial(make_payload({
+        "evt-1": make_event(odds=(2.07, 3.30, 3.60, 1000)),
+    }))
+
+    changed = state.apply_update({
+        "result": make_payload(
+            {"evt-1": make_event(odds=(2.11, 3.30, 3.40, 4000))},
+            versions=[4],
+        )
+    })
+
+    assert changed == {"evt-1"}
+    [match] = state.get_match_odds(["evt-1"])
+    assert match.home_odds == 2.11
+
+
 # ----------------------------------------------------------------------
 # 4. An update containing only one event does not erase other events
 # ----------------------------------------------------------------------
