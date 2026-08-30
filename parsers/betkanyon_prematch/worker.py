@@ -77,6 +77,9 @@ class BetkanyonPrematchWorker:
             return dict(self._state)
 
     def _run(self):
+        from engine.sync_playwright_thread import isolate_from_running_asyncio_loop
+
+        isolate_from_running_asyncio_loop()
         try:
             self._run_loop()
         except Exception as exc:

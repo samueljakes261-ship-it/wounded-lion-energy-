@@ -297,16 +297,23 @@ def test_zenrows_fallback_fetcher_file_is_preserved():
     text = path.read_text(encoding="utf-8")
     assert "BetkanyonBrowser" in text
     assert "BetkanyonPrematchZenrowsFetcher" in text
+    assert "SPORT_PAGE" in text
+    assert "betkanyon1617.com" not in text
 
 
 def test_extract_encrypted_payload_from_json_envelope():
-    from parsers.betkanyon_prematch.fetcher import extract_encrypted_payload
+    from parsers.betkanyon_prematch.fetcher import extract_encrypted_payload, looks_like_cloudflare
 
     blob = "A" * 40
     assert extract_encrypted_payload({"payload": blob}) == blob
     assert extract_encrypted_payload({"Payload": blob}) == blob
     assert extract_encrypted_payload({"payload": 1}) is None
     assert extract_encrypted_payload(None, "<html>challenge</html>") is None
+    assert looks_like_cloudflare(
+        403,
+        "<!DOCTYPE html><title>Just a moment...</title>",
+        "text/html",
+    )
 
 
 def test_http_404_is_empty_payload_not_batch_abort():
@@ -317,6 +324,9 @@ def test_http_404_is_empty_payload_not_batch_abort():
             self.status_code = status
             self._payload = payload
             self.text = "<html>404</html>" if html else '{"payload":"%s"}' % (payload or "")
+            self.headers = {
+                "Content-Type": "text/html" if html else "application/json"
+            }
 
         def json(self):
             if self.status_code >= 400:

@@ -28,10 +28,23 @@ class BetkanyonFeed:
         """
 
         encrypted = self.fetcher.fetch()
+        if not encrypted:
+            return self._keep_last_good("empty payload")
 
         decrypted = self.decryptor.decrypt(encrypted)
+        if decrypted is None:
+            return self._keep_last_good("empty decrypt")
 
-        parsed = parse_json(decrypted)
+        try:
+            parsed = parse_json(decrypted)
+        except Exception:
+            if self._match_odds:
+                print(
+                    "[BETKANYON] malformed cycle ignored; "
+                    f"keeping {len(self._match_odds)} last MatchOdds"
+                )
+                return self._match_odds
+            raise
 
         matches = []
 
@@ -43,10 +56,22 @@ class BetkanyonFeed:
 
                 matches.append(match)
 
+        if not matches:
+            return self._keep_last_good("empty parse")
+
         self._match_odds = matches
         self._parsed_event_count = len(parsed)
 
         return matches
+
+    def _keep_last_good(self, reason: str):
+        if self._match_odds:
+            print(
+                f"[BETKANYON] {reason} ignored; "
+                f"keeping {len(self._match_odds)} last MatchOdds"
+            )
+            return self._match_odds
+        return []
 
     def get_match_odds(self):
 

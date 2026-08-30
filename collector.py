@@ -761,6 +761,15 @@ def stop_kolay90_prematch_worker():
         _kolay90_prematch_worker = None
 
 
+def onwin_live_enabled() -> bool:
+    """OnWin LIVE is frozen unless explicitly re-enabled.
+
+    OnWin PREMATCH is independent and still starts via start_prematch_workers().
+    """
+    value = os.getenv("ONWIN_LIVE", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def start_prematch_workers():
     """Start prematch workers independently of live start_workers()."""
     for name, starter in (
@@ -793,11 +802,19 @@ def start_workers():
     schedules an asyncio.Task) -- see run_engine.py.
     """
 
-    for name, starter in (
-        ("OnWin", _get_onwin_handle),
+    starters = [
         ("BetKanyon", _get_betkanyon_worker),
         ("Orbit", _get_orbit_worker),
-    ):
+    ]
+    if onwin_live_enabled():
+        starters.insert(0, ("OnWin", _get_onwin_handle))
+    else:
+        print(
+            "[ONWIN] LIVE worker frozen (set ONWIN_LIVE=1 to re-enable). "
+            "OnWin PREMATCH still starts."
+        )
+
+    for name, starter in starters:
         try:
             starter()
         except Exception as exc:
@@ -1350,13 +1367,14 @@ async def collect_opportunities(bankroll=1000):
         )
         return []
 
-    onwin_handle = None
+    onwin_handle = _onwin_handle
     betkanyon_worker = None
     orbit_worker = None
-    try:
-        onwin_handle = _get_onwin_handle()
-    except Exception as exc:
-        print(f"[ONWIN] Unavailable this tick ({type(exc).__name__}: {exc})")
+    if onwin_live_enabled() and onwin_handle is None:
+        try:
+            onwin_handle = _get_onwin_handle()
+        except Exception as exc:
+            print(f"[ONWIN] Unavailable this tick ({type(exc).__name__}: {exc})")
     try:
         betkanyon_worker = _get_betkanyon_worker()
     except Exception as exc:
@@ -1415,7 +1433,10 @@ async def collect_opportunities(bankroll=1000):
         now - orbit_last_update if orbit_last_update else None
     )
 
-    onwin_stale = _check_feed_freshness("OnWin", onwin_age, now)
+    if onwin_handle is None:
+        onwin_stale = True
+    else:
+        onwin_stale = _check_feed_freshness("OnWin", onwin_age, now)
     betkanyon_stale = _check_feed_freshness("BetKanyon", betkanyon_age, now)
     orbit_stale = _check_feed_freshness("Orbit", orbit_age, now)
 
