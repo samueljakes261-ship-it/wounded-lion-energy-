@@ -3,14 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { AlertTriangle, Eye, EyeOff, Lock, RefreshCw, TrendingUp } from "lucide-react";
-import {
-  clearStoredKenyanSession,
-  getStoredKenyanSession,
-  resolveKenyanApiBase,
-  storeKenyanSession,
-} from "@/lib/kenyan-api-config";
+import { AlertTriangle, RefreshCw, TrendingUp } from "lucide-react";
+import { resolveKenyanApiBase } from "@/lib/kenyan-api-config";
 
 export const Route = createFileRoute("/kenyan")({
   component: KenyanPage,
@@ -42,111 +36,14 @@ type KenyanOpportunity = {
 type KenyanMode = "live" | "prematch";
 
 // ------------------------------------------------------------
-// Access gate
-// ------------------------------------------------------------
-
-function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-
-    // A leading/trailing space from copy-paste or autofill is a common,
-    // purely-accidental source of "the code isn't working" -- trimming
-    // client-side does not weaken the gate (the required code itself
-    // has no surrounding whitespace) and avoids that specific footgun.
-    const candidate = code.trim();
-
-    try {
-      const response = await fetch(`${KENYAN_API_BASE}/auth`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: candidate }),
-      });
-
-      if (!response.ok) {
-        // Deliberately generic -- the backend never explains *why* a
-        // code was rejected, so there is nothing more specific to show.
-        setError("Incorrect access code.");
-        return;
-      }
-
-      const data = await response.json();
-      storeKenyanSession(data.token, data.expires_at);
-      setCode("");
-      onUnlocked();
-    } catch {
-      setError("Could not reach the Kenyan bookmakers service. Try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-      <Card className="bg-slate-900 border-slate-800 w-full max-w-sm">
-        <CardHeader className="text-center space-y-2">
-          <Lock className="w-8 h-8 mx-auto text-cyan-400" />
-          <CardTitle>Kenyan Bookmakers</CardTitle>
-          <p className="text-sm text-slate-400">Enter the access code to continue.</p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={submit} className="space-y-4">
-            <div className="relative">
-              <Input
-                // `type="text"` + `WebkitTextSecurity` (rather than
-                // `type="password"`) avoids triggering the browser's
-                // saved-password autofill/heuristics entirely -- a
-                // real password manager silently substituting an
-                // unrelated saved credential for "localhost" into a
-                // `type="password"` field is a known, confusing
-                // failure mode for a short access code like this one.
-                type="text"
-                inputMode="text"
-                autoFocus
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                name="kenyan-access-code"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Access code"
-                className="bg-slate-800 border-slate-700 text-center pr-10"
-                style={
-                  revealed ? undefined : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)
-                }
-              />
-              <button
-                type="button"
-                onClick={() => setRevealed((value) => !value)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                aria-label={revealed ? "Hide access code" : "Show access code"}
-                tabIndex={-1}
-              >
-                {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            {error ? <div className="text-sm text-rose-400 text-center">{error}</div> : null}
-            <Button type="submit" className="w-full" disabled={submitting || !code.trim()}>
-              {submitting ? "Checking..." : "Unlock"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------
 // Dashboard
+//
+// NOTE: this section previously required an access code before
+// showing opportunities (see git history for the removed AccessGate
+// component and kenyan/access.py's server-side code/session-token
+// machinery, which is untouched and could be re-attached later). That
+// gate was removed at explicit user request -- the "KENYAN
+// BOOKMAKERS" nav link now goes straight to this view.
 // ------------------------------------------------------------
 
 function OpportunityRow({
@@ -201,7 +98,7 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
   );
 }
 
-function KenyanDashboard({ token, onLocked }: { token: string; onLocked: () => void }) {
+function KenyanDashboard() {
   const [mode, setMode] = useState<KenyanMode>("live");
   const [opportunities, setOpportunities] = useState<KenyanOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,15 +107,7 @@ function KenyanDashboard({ token, onLocked }: { token: string; onLocked: () => v
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${KENYAN_API_BASE}/opportunities?mode=${mode}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.status === 401) {
-        clearStoredKenyanSession();
-        onLocked();
-        return;
-      }
+      const response = await fetch(`${KENYAN_API_BASE}/opportunities?mode=${mode}`);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -231,7 +120,7 @@ function KenyanDashboard({ token, onLocked }: { token: string; onLocked: () => v
     } finally {
       setLoading(false);
     }
-  }, [mode, token, onLocked]);
+  }, [mode]);
 
   useEffect(() => {
     load();
@@ -298,27 +187,6 @@ function KenyanDashboard({ token, onLocked }: { token: string; onLocked: () => v
   );
 }
 
-// ------------------------------------------------------------
-// Page: gate first, dashboard once unlocked
-// ------------------------------------------------------------
-
 function KenyanPage() {
-  const [token, setToken] = useState<string | null>(null);
-  const [checkedStorage, setCheckedStorage] = useState(false);
-
-  useEffect(() => {
-    const session = getStoredKenyanSession();
-    setToken(session?.token ?? null);
-    setCheckedStorage(true);
-  }, []);
-
-  if (!checkedStorage) {
-    return <div className="min-h-screen bg-slate-950" />;
-  }
-
-  if (!token) {
-    return <AccessGate onUnlocked={() => setToken(getStoredKenyanSession()?.token ?? null)} />;
-  }
-
-  return <KenyanDashboard token={token} onLocked={() => setToken(null)} />;
+  return <KenyanDashboard />;
 }

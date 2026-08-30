@@ -38,11 +38,9 @@ def test_kenyan_integration_is_a_single_additive_call():
 
 
 def test_kenyan_router_never_reuses_turkish_route_paths():
-    from kenyan.api_router import gated_router, router
+    from kenyan.api_router import router
 
-    kenyan_paths = {route.path for route in router.routes} | {
-        route.path for route in gated_router.routes
-    }
+    kenyan_paths = {route.path for route in router.routes}
     turkish_paths = {"/", "/health", "/opportunities", "/status"}
 
     assert kenyan_paths.isdisjoint(turkish_paths)

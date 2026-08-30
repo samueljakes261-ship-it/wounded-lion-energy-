@@ -7,79 +7,27 @@ marked addition at the bottom of api.py. No existing route, model, or
 behavior in api.py is changed.
 
 Endpoints:
-    POST /kenyan/auth          -- exchange the access code for a
-                                   short-lived session token. Never
-                                   echoes the submitted code back.
-    GET  /kenyan/opportunities -- Kenyan BACK-vs-BACK opportunities for
-                                   ?mode=live or ?mode=prematch.
-                                   Requires a valid session token.
-    GET  /kenyan/status        -- per-worker health. Requires a valid
-                                   session token.
+    GET /kenyan/opportunities -- Kenyan BACK-vs-BACK opportunities for
+                                  ?mode=live or ?mode=prematch.
+    GET /kenyan/status        -- per-worker health.
 
-None of these endpoints, their responses, or their logs ever include
-the access code (correct or incorrect) or any part of it.
+NOTE ON ACCESS CONTROL: this section previously required an access
+code (POST /kenyan/auth -> short-lived session token, checked via a
+`require_session` dependency on the two routes above). That gate was
+removed at explicit user request so the "KENYAN BOOKMAKERS" nav link
+goes straight to the opportunities view. The underlying
+code/hash/session-token machinery still lives, untouched, in
+kenyan/access.py if this ever needs to be re-enabled -- re-attaching
+it here would just mean adding back a `dependencies=[Depends(...)]`
+router (see git history for the exact prior wiring) without touching
+kenyan/access.py itself.
 """
-import logging
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
-
-from kenyan.access import issue_session_token, verify_access_code, verify_session_token
 from kenyan.config import PREMATCH
 from kenyan.runner import get_runner
 
-logger = logging.getLogger("kenyan")
-
-
-class AccessCodeRequest(BaseModel):
-    code: str
-
-
-class AccessCodeResponse(BaseModel):
-    token: str
-    expires_at: float
-
-
-def require_session(authorization: str = Header(default=None)) -> None:
-    """
-    FastAPI dependency: raises 401 unless `Authorization: Bearer
-    <token>` carries a currently-valid Kenyan session token. The 401
-    response never explains *why* the token was rejected (missing,
-    malformed, expired, tampered) -- all of those look identical to
-    the caller, so nothing about the gate is discoverable by probing
-    error messages.
-    """
-
-    token = None
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization[len("bearer "):].strip()
-
-    if not verify_session_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-
-# `/auth` is intentionally NOT behind `require_session` (that would be
-# circular -- it is how a session is obtained in the first place).
-# Every other route in this router is gated.
 router = APIRouter(prefix="/kenyan", tags=["kenyan"])
-gated_router = APIRouter(
-    prefix="/kenyan", tags=["kenyan"], dependencies=[Depends(require_session)]
-)
-
-
-@router.post("/auth", response_model=AccessCodeResponse)
-def authenticate(request: AccessCodeRequest):
-    is_correct = verify_access_code(request.code)
-
-    # Logged ONLY as a boolean outcome -- never the submitted value,
-    # never a partial-match hint.
-    logger.info("kenyan access attempt: %s", "granted" if is_correct else "denied")
-
-    if not is_correct:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    session = issue_session_token()
-    return AccessCodeResponse(token=session.token, expires_at=session.expires_at)
 
 
 def serialize_opportunities(opportunities) -> list:
@@ -124,7 +72,7 @@ def serialize_opportunities(opportunities) -> list:
     return serialized
 
 
-@gated_router.get("/opportunities")
+@router.get("/opportunities")
 def opportunities(mode: str = "live"):
     runner = get_runner()
 
@@ -134,17 +82,14 @@ def opportunities(mode: str = "live"):
     return serialize_opportunities(runner.get_live_opportunities())
 
 
-@gated_router.get("/status")
+@router.get("/status")
 def status():
     return get_runner().get_engine_status()
 
 
 def include_kenyan_routes(app):
     """
-    Single integration point for api.py: mounts every Kenyan route
-    (public `/auth` + gated `/opportunities` and `/status`) without
-    api.py needing to know anything about the access-gate internals.
+    Single integration point for api.py: mounts every Kenyan route.
     """
 
     app.include_router(router)
-    app.include_router(gated_router)
