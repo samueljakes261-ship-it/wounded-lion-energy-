@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Lock, RefreshCw, TrendingUp } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, Lock, RefreshCw, TrendingUp } from "lucide-react";
 import {
   clearStoredKenyanSession,
   getStoredKenyanSession,
@@ -49,17 +49,24 @@ function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [revealed, setRevealed] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
 
+    // A leading/trailing space from copy-paste or autofill is a common,
+    // purely-accidental source of "the code isn't working" -- trimming
+    // client-side does not weaken the gate (the required code itself
+    // has no surrounding whitespace) and avoids that specific footgun.
+    const candidate = code.trim();
+
     try {
       const response = await fetch(`${KENYAN_API_BASE}/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code: candidate }),
       });
 
       if (!response.ok) {
@@ -90,16 +97,45 @@ function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-4">
-            <Input
-              type="password"
-              autoFocus
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Access code"
-              className="bg-slate-800 border-slate-700 text-center"
-            />
+            <div className="relative">
+              <Input
+                // `type="text"` + `WebkitTextSecurity` (rather than
+                // `type="password"`) avoids triggering the browser's
+                // saved-password autofill/heuristics entirely -- a
+                // real password manager silently substituting an
+                // unrelated saved credential for "localhost" into a
+                // `type="password"` field is a known, confusing
+                // failure mode for a short access code like this one.
+                type="text"
+                inputMode="text"
+                autoFocus
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                name="kenyan-access-code"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Access code"
+                className="bg-slate-800 border-slate-700 text-center pr-10"
+                style={
+                  revealed ? undefined : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)
+                }
+              />
+              <button
+                type="button"
+                onClick={() => setRevealed((value) => !value)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                aria-label={revealed ? "Hide access code" : "Show access code"}
+                tabIndex={-1}
+              >
+                {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
             {error ? <div className="text-sm text-rose-400 text-center">{error}</div> : null}
-            <Button type="submit" className="w-full" disabled={submitting || !code}>
+            <Button type="submit" className="w-full" disabled={submitting || !code.trim()}>
               {submitting ? "Checking..." : "Unlock"}
             </Button>
           </form>
