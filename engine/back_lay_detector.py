@@ -95,6 +95,9 @@ class BackLayDetector:
                             lay_bookmaker=lay.bookmaker,
                             lay_odds=lay_odds,
                             profit_percentage=profit_percentage,
+                            market=back.market,
+                            feed_type=getattr(back, "feed_type", "live") or "live",
+                            line=getattr(back, "line", None),
                         )
                     )
 

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 OPPORTUNITY_TYPE_BACK_BACK = "BACK_BACK"
@@ -37,6 +38,7 @@ class BackLayOpportunity:
     opportunity_type: str = OPPORTUNITY_TYPE_BACK_LAY
     feed_type: str = "live"
     market: str = ""
+    line: Optional[float] = None
     back_side: str = "BACK"
     lay_side: str = "LAY"
 
@@ -67,6 +69,7 @@ class BackLayOpportunity:
             "outcome": self.outcome,
             "arbitrageTeam": self.arbitrage_team(),
             "profitPercentage": round(pct, 2),
+            "line": self.line,
             "back": {
                 "bookmaker": self.back_bookmaker,
                 "side": self.back_side or "BACK",

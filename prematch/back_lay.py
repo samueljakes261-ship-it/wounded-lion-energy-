@@ -149,6 +149,7 @@ class PrematchBackLayDetector:
                             opportunity_type=OPPORTUNITY_TYPE_BACK_LAY,
                             feed_type=_feed_type(back),
                             market=back.market,
+                            line=getattr(back, "line", None),
                             back_side=explicit_side(back),
                             lay_side=explicit_side(lay),
                         )

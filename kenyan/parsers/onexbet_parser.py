@@ -49,10 +49,10 @@ from datetime import datetime, timezone
 from kenyan.config import ONEXBET
 from kenyan.date_utils import is_today_in_kenya, unix_seconds_to_datetime
 from kenyan.models import KenyanMatchOdds
+from kenyan.log import log_parse
 from kenyan.parsers._common_1x2 import (
-    extract_1x2_from_event_groups,
-    extract_1x2_from_flat_events,
-    is_complete_1x2,
+    extract_1x2_clusters_from_event_groups,
+    extract_1x2_clusters_from_flat_events,
 )
 
 FOOTBALL_SPORT_ID = 1
@@ -83,22 +83,72 @@ def iter_events(payload):
     return events if isinstance(events, list) else []
 
 
+def _opponent_id(opponent) -> str:
+    if not isinstance(opponent, dict):
+        return ""
+    opps = opponent.get("opps")
+    if isinstance(opps, list) and opps and isinstance(opps[0], dict):
+        value = opps[0].get("id")
+        return "" if value is None else str(value)
+    value = opponent.get("id")
+    return "" if value is None else str(value)
+
+
+def _is_satellite_event(event: dict) -> bool:
+    """
+    Period/special games reuse the same opponent names as the main
+    fixture. Observed live payloads tag the main game with
+    id == mainGameId and an empty periodName. Anything else is a
+    different market cluster and must not enter MATCH_WINNER.
+    """
+    period_name = (event.get("periodName") or "").strip()
+    if period_name:
+        return True
+    event_id = event.get("id")
+    main_game_id = event.get("mainGameId")
+    if main_game_id not in (None, "") and event_id not in (None, "") and main_game_id != event_id:
+        return True
+    return False
+
+
 def _parse_one_event(event, *, status: str, now, today_reference):
     if not isinstance(event, dict):
         return None
+
+    home_team_id = ""
+    away_team_id = ""
+    league_id = ""
+    parent_event_id = ""
 
     if "eventGroups" in event:
         sport = event.get("sport") or {}
         if sport.get("id") != FOOTBALL_SPORT_ID:
             return None
 
-        home_team = (event.get("opponent1") or {}).get("fullName")
-        away_team = (event.get("opponent2") or {}).get("fullName")
-        competition = (event.get("liga") or {}).get("name") or ""
-        event_id = event.get("id")
-        start_ts = event.get("startTs")
+        if _is_satellite_event(event):
+            log_parse(
+                ONEXBET,
+                event=f"{(event.get('opponent1') or {}).get('fullName')} vs {(event.get('opponent2') or {}).get('fullName')}",
+                status="rejected",
+                market="1X2",
+                event_id=str(event.get("id") or ""),
+                reason="CLUSTER_MISMATCH",
+            )
+            return None
 
-        prices = extract_1x2_from_event_groups(event.get("eventGroups"))
+        home_opp = event.get("opponent1") or {}
+        away_opp = event.get("opponent2") or {}
+        home_team = home_opp.get("fullName")
+        away_team = away_opp.get("fullName")
+        liga = event.get("liga") or {}
+        competition = liga.get("name") or ""
+        league_id = "" if liga.get("id") is None else str(liga.get("id"))
+        event_id = event.get("id")
+        parent_event_id = "" if event.get("mainGameId") is None else str(event.get("mainGameId"))
+        home_team_id = _opponent_id(home_opp)
+        away_team_id = _opponent_id(away_opp)
+        start_ts = event.get("startTs")
+        clusters = extract_1x2_clusters_from_event_groups(event.get("eventGroups"))
     else:
         if event.get("SI") != FOOTBALL_SPORT_ID:
             return None
@@ -107,9 +157,10 @@ def _parse_one_event(event, *, status: str, now, today_reference):
         away_team = event.get("O2")
         competition = event.get("L") or ""
         event_id = event.get("I")
+        home_team_id = "" if event.get("O1I") is None else str(event.get("O1I"))
+        away_team_id = "" if event.get("O2I") is None else str(event.get("O2I"))
         start_ts = event.get("S")
-
-        prices = extract_1x2_from_flat_events(event.get("E"))
+        clusters = extract_1x2_clusters_from_flat_events(event.get("E"))
 
     if not home_team or not away_team:
         return None
@@ -117,8 +168,11 @@ def _parse_one_event(event, *, status: str, now, today_reference):
     if _is_placeholder_fixture(home_team, away_team):
         return None
 
-    if not is_complete_1x2(prices):
+    if not clusters:
         return None
+
+    chosen = clusters[0]
+    prices = chosen["prices"]
 
     if start_ts is None:
         return None
@@ -130,7 +184,7 @@ def _parse_one_event(event, *, status: str, now, today_reference):
     ):
         return None
 
-    return KenyanMatchOdds(
+    match = KenyanMatchOdds(
         bookmaker=ONEXBET,
         competition=competition,
         sport="Football",
@@ -143,9 +197,26 @@ def _parse_one_event(event, *, status: str, now, today_reference):
         start_time=start_time,
         collected_at=now,
         event_id=str(event_id),
+        cluster_id=chosen["cluster_id"],
+        market_id=chosen["market_id"],
+        parent_event_id=parent_event_id or str(event_id),
+        home_team_id=home_team_id,
+        away_team_id=away_team_id,
+        league_id=league_id,
         status=status,
         source=f"onexbet_{status.lower()}",
     )
+    log_parse(
+        ONEXBET,
+        event=f"{home_team} vs {away_team}",
+        status="parsed",
+        market="MATCH_WINNER",
+        selection="HOME",
+        event_id=match.event_id,
+        cluster_id=match.cluster_id,
+        market_id=match.market_id,
+    )
+    return match
 
 
 def parse_events(payload, *, status: str, reference_now=None) -> list:

@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from kenyan.config import BETIKA
 from kenyan.date_utils import KENYA_TZ, is_today_in_kenya
 from kenyan.models import KenyanMatchOdds
+from kenyan.odds import parse_decimal_odds
 
 FOOTBALL_SPORT_NAME = "soccer"
 ONE_X_TWO_SUB_TYPE_ID = 1
@@ -73,11 +74,8 @@ def _extract_1x2_odds(match: dict):
             if not isinstance(outcome, dict):
                 continue
             outcome_id = outcome.get("outcome_id")
-            try:
-                price = float(outcome.get("odd_value"))
-            except (TypeError, ValueError):
-                continue
-            if price <= 0:
+            price = parse_decimal_odds(outcome.get("odd_value"))
+            if price is None:
                 continue
 
             if outcome_id == "1":

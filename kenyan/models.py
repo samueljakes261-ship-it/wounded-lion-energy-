@@ -12,18 +12,15 @@ engine/best_odds_selector.py, engine/arbitrage_detector.py or
 engine/stake_calculator.py perform an `isinstance(...)` check anywhere
 -- they only ever read these attributes by name (verified by
 inspection before writing this module). That means this isolated
-Kenyan module can reuse the EXISTING, UNMODIFIED arbitrage
-matching/math pipeline for its own BACK-vs-BACK matching, with zero
-changes to engine/*, by simply constructing objects of this
-Kenyan-only type instead of `models.match.MatchOdds`.
+Kenyan module can reuse the EXISTING, UNMODIFIED BestOddsSelector /
+ArbitrageDetector / StakeCalculator for BACK-vs-BACK math. Event
+identity uses kenyan.matcher.KenyanMatchFinder instead of the
+Turkish live 3-character EventMatcher.
 
-This is the "create an isolated adapter" approach called for by the
-task: engine/* stays completely untouched, but its logic is reused
-rather than duplicated.
-
-Extra fields (`event_id`, `status`, `source`) are Kenyan-specific
-metadata that the shared engine classes simply never look at, so their
-presence does not affect reuse.
+Extra fields (`event_id`, `cluster_id`, `market_id`, `status`,
+`source`, team/league ids) are Kenyan-specific provenance. The shared
+BestOddsSelector / ArbitrageDetector never read them; the Kenyan
+matcher and engine validation layer do.
 """
 from dataclasses import dataclass
 from datetime import datetime
@@ -63,8 +60,16 @@ class KenyanMatchOdds:
     start_time: datetime
     collected_at: datetime
 
-    # Kenyan-specific metadata (ignored by the reused engine/* classes).
+    # Kenyan-specific provenance. event_id is the bookmaker's own
+    # fixture id (not shared across books). cluster_id / market_id
+    # keep 1xBet/22Bet 1X2 selections inside the cluster they came from.
     event_id: str = ""
+    cluster_id: str = ""
+    market_id: str = ""
+    parent_event_id: str = ""
+    home_team_id: str = ""
+    away_team_id: str = ""
+    league_id: str = ""
     status: str = "PREMATCH"  # "LIVE" or "PREMATCH" -- see kenyan/config.py
     source: str = ""  # e.g. "sportpesa_live", "betika_prematch"
 
@@ -72,6 +77,7 @@ class KenyanMatchOdds:
     # class docstring above) -- always None/live-derived for Kenyan.
     side: Optional[str] = None
     tournament_id: Optional[str] = None
+    line: Optional[float] = None
 
     @property
     def feed_type(self) -> str:

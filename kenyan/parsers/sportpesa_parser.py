@@ -54,14 +54,35 @@ trimmed payloads used by this module's tests):
 from datetime import datetime, timezone
 from typing import Optional
 
+from engine.normalizer import TeamNameNormalizer
 from kenyan.config import SPORTPESA
 from kenyan.date_utils import is_today_in_kenya, unix_seconds_to_datetime
+from kenyan.log import log_parse
 from kenyan.models import KenyanMatchOdds
+from kenyan.odds import parse_decimal_odds
+from resources.aliases import TEAM_ALIASES
 
 LIVE_1X2_MARKET_ID = 194
 PREMATCH_1X2_MARKET_ID = 10
 
 SPORTPESA_BASE_URL = "https://www.sportpesa.com"
+
+_NORMALIZER = TeamNameNormalizer()
+_DRAW_NAMES = frozenset({"draw", "x", "tie", "beraberlik"})
+
+
+def _event_id_key(value) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _canonical_team(name: str) -> str:
+    value = _NORMALIZER.normalize(name or "")
+    if not value:
+        return ""
+    aliased = TEAM_ALIASES.get(value, value)
+    return TEAM_ALIASES.get(aliased, aliased)
 
 
 def build_live_discovery_url(*, limit: int = 50, offset: int = 0) -> str:
@@ -126,8 +147,12 @@ def extract_live_football_events(discovery_payload: dict) -> list:
                 "event_id": event.get("id"),
                 "home_team": competitors[0].get("name"),
                 "away_team": competitors[1].get("name"),
+                "home_team_id": _event_id_key(competitors[0].get("id")),
+                "away_team_id": _event_id_key(competitors[1].get("id")),
                 "competition": (event.get("tournament") or {}).get("name") or "",
+                "league_id": _event_id_key((event.get("tournament") or {}).get("id")),
                 "kickoff_utc": event.get("kickoffTimeUTC"),
+                "external_id": _event_id_key(event.get("externalId")),
             }
         )
 
@@ -146,10 +171,9 @@ def _parse_iso_utc(value: Optional[str]) -> Optional[datetime]:
 def _selection_odds(selections: list, *, home_team: str, away_team: str):
     """
     Identifies home/draw/away by NAME (never by array position -- the
-    live sample shows SportPesa does not guarantee ordering), matching
-    the existing Orbit adapter's approach for the same underlying
-    reason. A selection whose status isn't "Open" is treated as
-    unavailable (rejected), per "reject blocked/unavailable odds".
+    live sample shows SportPesa does not guarantee ordering). Falls
+    back to shortName 1/X/2 when names differ by FC/suffix only.
+    A selection whose status isn't "Open" is treated as unavailable.
     """
 
     home_price = draw_price = away_price = None
@@ -157,29 +181,31 @@ def _selection_odds(selections: list, *, home_team: str, away_team: str):
     if not isinstance(selections, list):
         return home_price, draw_price, away_price
 
+    home_key = _canonical_team(home_team)
+    away_key = _canonical_team(away_team)
+
     for selection in selections:
         if not isinstance(selection, dict):
             continue
 
-        name = (selection.get("name") or "").strip()
         status = selection.get("status")
-
         if status != "Open":
             continue
 
-        try:
-            price = float(selection.get("odds"))
-        except (TypeError, ValueError):
+        price = parse_decimal_odds(selection.get("odds"))
+        if price is None:
             continue
 
-        if price <= 0:
-            continue
+        name = (selection.get("name") or "").strip()
+        short_name = (selection.get("shortName") or "").strip()
+        name_key = _canonical_team(name)
+        lowered = name.lower()
 
-        if name.lower() == (home_team or "").strip().lower():
+        if short_name == "1" or (home_key and name_key == home_key):
             home_price = price
-        elif name.lower() == (away_team or "").strip().lower():
+        elif short_name == "2" or (away_key and name_key == away_key):
             away_price = price
-        elif name.lower() == "draw":
+        elif short_name == "X" or lowered in _DRAW_NAMES:
             draw_price = price
 
     return home_price, draw_price, away_price
@@ -196,7 +222,9 @@ def parse_live_markets(
     fully quoted.
     """
 
-    events_by_id = {event["event_id"]: event for event in discovered_events}
+    events_by_id = {
+        _event_id_key(event["event_id"]): event for event in discovered_events
+    }
     now = datetime.now(timezone.utc)
     results = []
 
@@ -208,9 +236,17 @@ def parse_live_markets(
         if not isinstance(entry, dict):
             continue
 
-        event_id = entry.get("eventId")
+        event_id = _event_id_key(entry.get("eventId"))
         meta = events_by_id.get(event_id)
         if meta is None:
+            log_parse(
+                SPORTPESA,
+                event=str(entry.get("eventId") or ""),
+                status="rejected",
+                market="MATCH_WINNER",
+                event_id=event_id,
+                reason="MATCH_IDENTITY_MISMATCH",
+            )
             continue
 
         market_1x2 = None
@@ -229,28 +265,51 @@ def parse_live_markets(
         )
 
         if home_odds is None or draw_odds is None or away_odds is None:
+            log_parse(
+                SPORTPESA,
+                event=f"{meta['home_team']} vs {meta['away_team']}",
+                status="rejected",
+                market="MATCH_WINNER",
+                event_id=event_id,
+                reason="MARKET_IDENTITY_MISMATCH",
+            )
             continue
 
         start_time = _parse_iso_utc(meta.get("kickoff_utc")) or now
+        market_id = _event_id_key(market_1x2.get("id"))
 
-        results.append(
-            KenyanMatchOdds(
-                bookmaker=SPORTPESA,
-                competition=meta["competition"],
-                sport="Football",
-                market="1X2",
-                home_team=meta["home_team"],
-                away_team=meta["away_team"],
-                home_odds=home_odds,
-                draw_odds=draw_odds,
-                away_odds=away_odds,
-                start_time=start_time,
-                collected_at=now,
-                event_id=str(event_id),
-                status="LIVE",
-                source="sportpesa_live",
-            )
+        match = KenyanMatchOdds(
+            bookmaker=SPORTPESA,
+            competition=meta["competition"],
+            sport="Football",
+            market="1X2",
+            home_team=meta["home_team"],
+            away_team=meta["away_team"],
+            home_odds=home_odds,
+            draw_odds=draw_odds,
+            away_odds=away_odds,
+            start_time=start_time,
+            collected_at=now,
+            event_id=event_id,
+            cluster_id=f"m{market_id}",
+            market_id=market_id,
+            parent_event_id=event_id,
+            home_team_id=meta.get("home_team_id") or "",
+            away_team_id=meta.get("away_team_id") or "",
+            league_id=meta.get("league_id") or "",
+            status="LIVE",
+            source="sportpesa_live",
         )
+        log_parse(
+            SPORTPESA,
+            event=f"{match.home_team} vs {match.away_team}",
+            status="parsed",
+            market="MATCH_WINNER",
+            selection="HOME",
+            event_id=match.event_id,
+            market_id=match.market_id,
+        )
+        results.append(match)
 
     return results
 
@@ -305,11 +364,8 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
             if not isinstance(selection, dict):
                 continue
             short_name = selection.get("shortName")
-            try:
-                price = float(selection.get("odds"))
-            except (TypeError, ValueError):
-                continue
-            if price <= 0:
+            price = parse_decimal_odds(selection.get("odds"))
+            if price is None:
                 continue
 
             if short_name == "1":
@@ -323,24 +379,40 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
             continue
 
         competition = (game.get("competition") or {}).get("name") or ""
+        event_id = _event_id_key(game.get("id"))
+        market_id = _event_id_key(market_3way.get("id"))
 
-        results.append(
-            KenyanMatchOdds(
-                bookmaker=SPORTPESA,
-                competition=competition,
-                sport="Football",
-                market="1X2",
-                home_team=competitors[0].get("name"),
-                away_team=competitors[1].get("name"),
-                home_odds=home_odds,
-                draw_odds=draw_odds,
-                away_odds=away_odds,
-                start_time=start_time,
-                collected_at=now,
-                event_id=str(game.get("id")),
-                status="PREMATCH",
-                source="sportpesa_prematch",
-            )
+        match = KenyanMatchOdds(
+            bookmaker=SPORTPESA,
+            competition=competition,
+            sport="Football",
+            market="1X2",
+            home_team=competitors[0].get("name"),
+            away_team=competitors[1].get("name"),
+            home_odds=home_odds,
+            draw_odds=draw_odds,
+            away_odds=away_odds,
+            start_time=start_time,
+            collected_at=now,
+            event_id=event_id,
+            cluster_id=f"m{market_id}",
+            market_id=market_id,
+            parent_event_id=event_id,
+            home_team_id=_event_id_key(competitors[0].get("id")),
+            away_team_id=_event_id_key(competitors[1].get("id")),
+            league_id=_event_id_key((game.get("competition") or {}).get("id")),
+            status="PREMATCH",
+            source="sportpesa_prematch",
         )
+        log_parse(
+            SPORTPESA,
+            event=f"{match.home_team} vs {match.away_team}",
+            status="parsed",
+            market="MATCH_WINNER",
+            selection="HOME",
+            event_id=match.event_id,
+            market_id=match.market_id,
+        )
+        results.append(match)
 
     return results

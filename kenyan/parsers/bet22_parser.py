@@ -36,8 +36,9 @@ from datetime import datetime, timezone
 
 from kenyan.config import BET22
 from kenyan.date_utils import is_today_in_kenya, unix_seconds_to_datetime
+from kenyan.log import log_parse
 from kenyan.models import KenyanMatchOdds
-from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
+from kenyan.parsers._common_1x2 import extract_1x2_clusters_from_flat_events
 
 FOOTBALL_SPORT_ID = 1
 
@@ -103,30 +104,48 @@ def parse_events(payload, *, status: str, reference_now=None) -> list:
         ):
             continue
 
-        prices = extract_1x2_from_flat_events(event.get("E"))
-        if not is_complete_1x2(prices):
+        clusters = extract_1x2_clusters_from_flat_events(event.get("E"))
+        if not clusters:
             continue
 
+        chosen = clusters[0]
+        prices = chosen["prices"]
         competition = event.get("L") or ""
         event_id = event.get("I")
+        home_team_id = "" if event.get("O1I") is None else str(event.get("O1I"))
+        away_team_id = "" if event.get("O2I") is None else str(event.get("O2I"))
 
-        results.append(
-            KenyanMatchOdds(
-                bookmaker=BET22,
-                competition=competition,
-                sport="Football",
-                market="1X2",
-                home_team=home_team,
-                away_team=away_team,
-                home_odds=prices[1],
-                draw_odds=prices[2],
-                away_odds=prices[3],
-                start_time=start_time,
-                collected_at=now,
-                event_id=str(event_id),
-                status=status,
-                source=f"bet22_{status.lower()}",
-            )
+        match = KenyanMatchOdds(
+            bookmaker=BET22,
+            competition=competition,
+            sport="Football",
+            market="1X2",
+            home_team=home_team,
+            away_team=away_team,
+            home_odds=prices[1],
+            draw_odds=prices[2],
+            away_odds=prices[3],
+            start_time=start_time,
+            collected_at=now,
+            event_id=str(event_id),
+            cluster_id=chosen["cluster_id"],
+            market_id=chosen["market_id"],
+            parent_event_id=str(event_id),
+            home_team_id=home_team_id,
+            away_team_id=away_team_id,
+            status=status,
+            source=f"bet22_{status.lower()}",
         )
+        log_parse(
+            BET22,
+            event=f"{home_team} vs {away_team}",
+            status="parsed",
+            market="MATCH_WINNER",
+            selection="HOME",
+            event_id=match.event_id,
+            cluster_id=match.cluster_id,
+            market_id=match.market_id,
+        )
+        results.append(match)
 
     return results

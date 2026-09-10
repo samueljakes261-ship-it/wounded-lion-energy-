@@ -76,6 +76,8 @@ type BackLayOpportunity = {
   outcome: string
   arbitrageTeam: string
   profitPercentage?: number
+  market?: string
+  line?: number
   back: BackLayPrice
   lay: BackLayPrice
 }
@@ -407,7 +409,7 @@ function BackLayCard({
             </CardTitle>
             {opportunity.outcome === "OVER" || opportunity.outcome === "UNDER" ? (
               <div className="text-slate-400 text-sm mt-1">
-                {t(lang, "overUnderMarket")}
+                {t(lang, "overUnderMarket")} ({opportunity.line ?? 2.5})
               </div>
             ) : null}
           </div>
