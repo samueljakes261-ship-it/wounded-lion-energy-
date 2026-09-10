@@ -279,3 +279,33 @@ def test_prematch_parser_extracts_over_under_2_5_without_dropping_1x2():
     assert ou[0].away_team == "PreAway"
     live = OnWinParser().parse(payload)
     assert live == []
+
+
+def test_prematch_parser_rejects_implausible_ou_odds():
+    event = _event("not_started", "PreHome", "PreAway")
+    event["scopes"]["normal_time--0"]["markets"]["score_ou--2.5"] = {
+        "outcomes": {
+            "outcome::over": {"coefficient": 500, "updatedAt": 1},
+            "outcome::under": {"coefficient": 75, "updatedAt": 1},
+        }
+    }
+    payload = {
+        "sports": {
+            SPORT: {
+                "categories": {
+                    "c1": {
+                        "diff": {"name": "England"},
+                        "tournaments": {
+                            "t1": {
+                                "diff": {"name": "League"},
+                                "events": {"pre-1": event},
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+    matches = parse_prematch(payload)
+    assert [m for m in matches if m.market == "1X2"]
+    assert [m for m in matches if m.market == "over_under"] == []

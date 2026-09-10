@@ -343,3 +343,27 @@ def test_over_under_2_5_two_runner_market():
     classic_match = OrbitAdapter.to_match_odds(classic, side="BACK")
     assert classic_match.market == "Match Odds"
     assert classic_match.draw_odds == 3.40
+
+
+def test_over_under_1_5_is_not_treated_as_2_5():
+    over = RunnerOdds(
+        10, name="Over 1.5 Goals", back=ladder(1.40), lay=ladder(1.42), traded_volume=0
+    )
+    under = RunnerOdds(
+        11, name="Under 1.5 Goals", back=ladder(2.80), lay=ladder(2.84), traded_volume=0
+    )
+    market = MarketOdds(
+        market_id="1.ou15",
+        event_id="10",
+        market_status="OPEN",
+        in_play=False,
+        runners=[under, over],
+        home_team="Home FC",
+        away_team="Away FC",
+        competition="Test League",
+        sport="Soccer",
+        market_name="Over/Under 1.5",
+        start_time=1_700_000_000_000,
+        total_matched=0.0,
+    )
+    assert OrbitAdapter.to_match_odds(market, side="BACK") is None

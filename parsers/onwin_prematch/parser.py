@@ -17,6 +17,9 @@ from parsers.onwin.parser import (
 )
 from models.markets import CANONICAL_OU_MARKET, TARGET_OU_LINE, parse_ou_line_from_name
 
+_MIN_OU_ODDS = 1.01
+_MAX_OU_ODDS = 100.0
+
 LIVE_STATUSES = {"in_progress"}
 FINISHED_STATUSES = {
     "finished",
@@ -60,9 +63,16 @@ def extract_ou_markets(event: dict) -> list:
         if line != TARGET_OU_LINE:
             continue
         try:
-            found.append((line, float(over_odds), float(under_odds)))
+            over_price = float(over_odds)
+            under_price = float(under_odds)
         except (TypeError, ValueError):
             continue
+        if not (
+            _MIN_OU_ODDS <= over_price <= _MAX_OU_ODDS
+            and _MIN_OU_ODDS <= under_price <= _MAX_OU_ODDS
+        ):
+            continue
+        found.append((line, over_price, under_price))
     return found
 
 

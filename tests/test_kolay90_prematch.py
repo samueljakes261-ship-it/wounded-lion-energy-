@@ -63,6 +63,26 @@ def test_malformed_event_ignored():
     assert parse_payload(["x", None, 3]) == []
 
 
+def test_getmaclar_does_not_invent_over_under_from_extra_oranlar_keys():
+    # getMaclar oranlar only confirm 1/0/2. Extra keys must not become O/U.
+    item = {
+        **BOCHOLT,
+        "oranlar": {
+            "1": "2.38",
+            "0": "3.45",
+            "2": "2.50",
+            "üst": "1.90",
+            "alt": "1.85",
+            "2.5": "1.90",
+        },
+    }
+    parsed = parse_event(item)
+    assert parsed is not None
+    assert parsed.match.market == "1X2"
+    assert parsed.match.line is None
+    assert [row.match.market for row in parse_payload([item])] == ["1X2"]
+
+
 def test_missing_oranlar():
     item = {k: v for k, v in BOCHOLT.items() if k != "oranlar"}
     assert parse_event(item) is None
