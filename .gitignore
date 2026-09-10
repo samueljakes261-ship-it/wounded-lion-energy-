@@ -16,10 +16,23 @@ env/
 .env
 
 # ==========================
+# CREDENTIAL MANAGEMENT
+# ==========================
+
+# Encrypted credential store (real secrets) -- never commit this,
+# even though the API keys inside it are encrypted at rest.
+credentials.json
+
+# Non-secret runtime credential health state (safe to delete/regenerate).
+runtime/
+
+# ==========================
 # FASTAPI / CACHE
 # ==========================
 
 cached_opportunities.json
+cached_prematch_opportunities.json
+cached_status.json
 
 # Logs
 *.log
@@ -77,3 +90,14 @@ Thumbs.db
 
 *.tmp
 *.bak
+
+# Isolated experiment dumps (encrypted betting payloads)
+experiments/betkanyon_prematch_direct/output/
+
+# Isolated kolay90 experiment (browser profile + session dumps)
+experiments/kolay90_direct/browser_profile/
+experiments/kolay90_direct/chrome_profile/
+experiments/kolay90_direct/output/
+
+# Isolated OnWin direct-API experiment (may contain session diagnostics)
+experiments/onwin_direct_api/output/

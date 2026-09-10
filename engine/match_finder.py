@@ -1,6 +1,7 @@
 from engine.matcher import EventMatcher
 
 from models.match import MatchOdds
+from models.markets import arb_group_key
 from models.matched_event import MatchedEvent
 
 
@@ -52,6 +53,10 @@ class MatchFinder:
                 #
 
                 if match.bookmaker == other.bookmaker:
+                    continue
+
+                # Same teams can carry 1X2 and O/U; arb groups must not mix.
+                if arb_group_key(match) != arb_group_key(other):
                     continue
 
                 #

@@ -1,5 +1,7 @@
 import requests
 
+from config import ORBIT_COOKIES, ORBIT_CSRF_TOKEN
+
 BASE_URL = "https://www.orbitxch.com"
 
 HEADERS = {
@@ -11,19 +13,8 @@ HEADERS = {
     "Origin": "https://www.orbitxch.com",
     "Referer": "https://www.orbitxch.com/customer/inplay/highlights",
     "Content-Type": "application/json",
-
-    "x-csrf-token": "a95b617c-c16d-4297-885d-476f7061fccb",
-
-    "Cookie": (
-        "BIAB_LANGUAGE=en; "
-        "COLLAPSE_SIDEBAR=false; "
-        "BIAB_TZ=-180; "
-        "COLLAPSE-LEFT_PANEL_COLLAPSE_GROUP-SPORT_COLLAPSE=true; "
-        "BIAB_AN=ead97c02-9101-47f3-99cf-e1deb0b5c955; "
-        "CSRF-TOKEN=a95b617c-c16d-4297-885d-476f7061fccb; "
-        "AWSALB=HdmCBwOUUaHiryv2FwtUtmeoZyCcUU//29ixkbam8bxfDJcxspQJUidEchidJtC6nYAyeXIGSCfPUHG9HHD3MGA8Xo+1Y2wDcjPu0MtrkXOkCrSzT1ZGZQdFiQ0F; "
-        "AWSALBCORS=HdmCBwOUUaHiryv2FwtUtmeoZyCcUU//29ixkbam8bxfDJcxspQJUidEchidJtC6nYAyeXIGSCfPUHG9HHD3MGA8Xo+1Y2wDcjPu0MtrkXOkCrSzT1ZGZQdFiQ0F"
-    ),
+    "x-csrf-token": ORBIT_CSRF_TOKEN,
+    "Cookie": ORBIT_COOKIES,
 }
 
 
@@ -81,8 +72,6 @@ def get_all_live_markets():
 
     while True:
 
-        print(f"Downloading page {page}...")
-
         data = _download_page(page, sports)
 
         markets = data["marketCatalogueList"]["content"]
@@ -93,7 +82,5 @@ def get_all_live_markets():
         all_markets.extend(markets)
 
         page += 1
-
-    print(f"\nDownloaded {len(all_markets)} markets.\n")
 
     return all_markets

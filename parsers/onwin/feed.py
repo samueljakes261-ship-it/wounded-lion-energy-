@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from urllib.parse import urlsplit
 
 from parsers.onwin.browser import OnwinBrowser
 from parsers.onwin.state import OnwinState
@@ -15,9 +16,32 @@ class OnwinFeed:
 
     TARGET = "get_main_line.erisgaming"
 
-    # The continuously-changing update feed. Same session/page as
-    # TARGET above -- never fetched by opening a separate browser.
+    # Continuous update feeds. The original forensic capture used
+    # find_event_snapshots; current OnWin live traffic also (or
+    # instead) posts get_main_line_gap. Matching only the first one
+    # left the worker with a frozen snapshot and a 30s silent-feed
+    # reconnect loop.
     UPDATE_TARGET = "find_event_snapshots.erisgaming"
+    UPDATE_TARGET_FRAGMENTS = (
+        "find_event_snapshots.erisgaming",
+        "get_main_line_gap.erisgaming",
+    )
+
+    @classmethod
+    def is_update_url(cls, url: str) -> bool:
+        """True if `url` is a live-odds update endpoint (not the initial snapshot)."""
+        if not url:
+            return False
+        url_l = url.lower()
+        return any(fragment in url_l for fragment in cls.UPDATE_TARGET_FRAGMENTS)
+
+    @staticmethod
+    def safe_url_path(url: str) -> str:
+        """Path only -- never query string (tokens/keys live there)."""
+        try:
+            return urlsplit(url).path or ""
+        except Exception:
+            return ""
 
     OUTPUT_FILE = "output/onwin_main_line.json"
 
@@ -50,6 +74,7 @@ class OnwinFeed:
         self._initial_captured = False
         self._last_update_at = None
         self._closing = False
+        self._logged_api_paths = set()
 
     def fetch(self):
         """
@@ -331,8 +356,8 @@ class OnwinFeed:
         # ------------------------------------------------------------------
 
         os.makedirs(
-            os.path.dirname(self.OUTPUT_FILE),
-            exist_ok=True
+            os.path.dirname(self.OUTPUT_FILE) or ".",
+            exist_ok=True,
         )
 
         with open(
@@ -416,7 +441,7 @@ class OnwinFeed:
     # and patched straight into self.state.
     # ------------------------------------------------------------------
 
-    def start(self, on_change=None, on_update=None, timeout=180):
+    def start(self, on_change=None, on_update=None, on_progress=None, timeout=180):
         """
         Open the browser/page once, capture get_main_line once, build
         local state, and leave the page open with a live listener for
@@ -432,6 +457,10 @@ class OnwinFeed:
                 update response, whether or not it changed anything --
                 intended for lightweight status logging, not for
                 deciding whether to republish MatchOdds (see on_change).
+            on_progress: optional callable(phase: str) invoked at
+                coarse startup stages (browser_connect, navigating,
+                waiting_main_line) so the parent process can heartbeat
+                last_attempt/phase without reading child stdout.
             timeout: seconds to wait for the initial get_main_line
                 capture before giving up.
 
@@ -439,10 +468,19 @@ class OnwinFeed:
             The initialized OnwinState.
         """
 
+        def progress(phase):
+            if on_progress is None:
+                return
+            try:
+                on_progress(phase)
+            except Exception:
+                pass
+
         self._on_change = on_change
         self._on_update = on_update
         self._initial_captured = False
 
+        progress("browser_connect")
         page = self.browser.page()
         self._page = page
 
@@ -482,18 +520,46 @@ class OnwinFeed:
             initial_box["data"] = data
             self._initial_captured = True
 
-        def handle_update(response):
-            if self.UPDATE_TARGET not in response.url:
+        def handle_update(request):
+            # Use requestfinished so the body is fully available -- the
+            # same reason fetch() captures get_main_line on
+            # requestfinished. Match both known update endpoints;
+            # current live traffic uses get_main_line_gap.
+            url = request.url
+            path = self.safe_url_path(url)
+            if "erisgaming" in url.lower() and path not in self._logged_api_paths:
+                if len(self._logged_api_paths) < 20:
+                    print(f"[OnwinFeed] API path: {path}")
+                self._logged_api_paths.add(path)
+
+            if not self.is_update_url(url):
+                return
+
+            try:
+                response = request.response()
+            except Exception:
+                return
+
+            if response is None:
                 return
 
             self._handle_update_response(response)
 
-        # Attach BOTH listeners before navigating so no early responses
+        def handle_update_from_response(response):
+            # Fallback: some Playwright/ZenRows paths deliver the body
+            # on the "response" event rather than requestfinished.
+            if not self.is_update_url(response.url):
+                return
+            self._handle_update_response(response)
+
+        # Attach listeners before navigating so no early responses
         # are missed.
         page.on("requestfinished", handle_main_line)
-        page.on("response", handle_update)
+        page.on("requestfinished", handle_update)
+        page.on("response", handle_update_from_response)
 
         print("\n[OnwinFeed] Navigating to OnWin (once)...")
+        progress("navigating")
 
         page.goto(
             self.ONWIN_PAGE,
@@ -502,6 +568,7 @@ class OnwinFeed:
         )
 
         started_at = time.monotonic()
+        progress("waiting_main_line")
 
         while initial_box["data"] is None:
 
@@ -517,6 +584,7 @@ class OnwinFeed:
                 )
 
             page.wait_for_timeout(500)
+            progress("waiting_main_line")
 
         load_started = time.monotonic()
         event_ids = self.state.load_initial(initial_box["data"])
@@ -568,6 +636,12 @@ class OnwinFeed:
                 exc,
             )
             return
+
+        if not getattr(self, "_logged_update_shape", False):
+            self._logged_update_shape = True
+            print(
+                f"[OnwinFeed] update payload shape: {self._describe_shape(data)}"
+            )
 
         self._last_update_at = time.monotonic()
 
@@ -629,4 +703,17 @@ class OnwinFeed:
             return None
 
         return time.monotonic() - self._last_update_at
+
+    @staticmethod
+    def _describe_shape(obj, depth=0) -> str:
+        """Type/key outline of a JSON value. Never includes field values."""
+        if depth > 3:
+            return "..."
+        if isinstance(obj, list):
+            item = OnwinFeed._describe_shape(obj[0], depth + 1) if obj else "empty"
+            return f"list(len={len(obj)}, item0={item})"
+        if isinstance(obj, dict):
+            keys = ",".join(list(obj.keys())[:16])
+            return f"dict(keys={keys})"
+        return type(obj).__name__
 

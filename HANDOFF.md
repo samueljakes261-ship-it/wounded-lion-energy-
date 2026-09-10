@@ -1514,3 +1514,96 @@ frontend connection
 
 Build forward from what exists.
 Do not start over.
+
+---
+
+# 34. CREDENTIAL MANAGEMENT LAYER (ZENROWS)
+
+The single-key `ZENROWS_BROWSER_WS` model described in section 30 has been
+superseded by an encrypted credential pool with automatic failover, added
+in `credentials/`:
+
+```text
+credentials/
+    crypto.py             -- Fernet encryption keyed by MASTER_CREDENTIAL_KEY
+    models.py              -- StoredCredential, CredentialRuntimeState
+    store.py                -- credentials.json + runtime/credentials_state.json
+    failures.py             -- FailureType classification
+    manager.py               -- CredentialManager (selection/cooldown/failover)
+    health.py                -- request-free health checks
+    zenrows_provider.py      -- connect_with_failover(), used by both ZenRowsSession classes
+    cli.py                   -- python -m credentials.cli ...
+```
+
+`utils/zenrows_persistent.py` (OnWin) and `browser/sessions/zenrows.py`
+(BetKanyon + legacy) now call `connect_with_failover()` instead of reading
+`ZENROWS_BROWSER_WS` directly. Their public interface is unchanged, so
+nothing downstream (OnwinBrowser/OnwinFeed, BetkanyonBrowser/Fetcher) had
+to change.
+
+Zero-migration fallback: if no ZenRows credentials are configured in
+`credentials.json`, the manager auto-synthesizes one in-memory credential
+from `ZENROWS_BROWSER_WS`, so existing `.env`-only setups keep working
+unchanged.
+
+Full plain-language documentation: `docs/CREDENTIALS.md`.
+Reset/restart scripts: `scripts/reset-dev.ps1` (Windows), `scripts/reset-prod.sh` (Linux/VPS).
+
+---
+
+# 35. ODDS ACCURACY + ORBIT COLLECTOR INDEPENDENCE
+
+Two production bugs fixed:
+
+**Root cause 1 -- Orbit odds went stale after the first frame.** Orbit's
+websocket protocol only includes a runner in a frame's "rc" list when that
+runner's OWN price just changed ("img": true = full snapshot, otherwise a
+partial delta -- see `tests/sample_market.json`). `OrbitParser.parse()`
+built an EMPTY back/lay ladder for any runner absent from a given frame,
+so `OrbitAdapter` rejected the whole market as "not fully quoted" the
+instant only one of the three runners ticked -- which is the common case.
+In production this froze every Orbit market at its very first full-image
+snapshot while the real exchange price kept moving. Fixed by giving
+`OrbitFeed` a persistent per-selection `runner_cache` (selection_id -> last
+known back/lay ladder) that `OrbitParser.parse()` now consults so an absent
+runner resolves to its last known real price instead of "unquoted". See
+`tests/test_orbit_parser_partial_delta_merge.py`.
+
+Also added a second, finer-grained staleness guard in `collector.py`
+(`_filter_stale_matches`) that excludes any INDIVIDUAL match whose own
+`collected_at` is older than `MAX_ODDS_AGE_SECONDS`, independent of whether
+its bookmaker's overall feed looks healthy -- defense in depth beyond the
+existing whole-feed check. `OrbitAdapter`'s `collected_at`/`start_time` were
+also switched from naive local time to timezone-aware UTC to match
+OnWin/BetKanyon.
+
+An opt-in trace mechanism (`debug/odds_trace.py`, `ODDS_TRACE=1`) records
+each match's odds at the PARSED, ENGINE, and API stages (RAW is identical
+to PARSED for all three bookmakers -- none of them round/reformat before
+this project's own `float()` cast) so a specific odds value can be followed
+end-to-end without changing it. Frontend has a matching opt-in
+`VITE_ODDS_TRACE=1` console trace for the final DISPLAY stage. No odds
+rounding was found anywhere in the pipeline -- `_write_cache()` writes the
+exact parsed float; only derived display metrics (profitPercentage,
+impliedProbability, stake amounts) are ever rounded.
+
+**Root cause 2 -- Orbit "not running" was a visibility gap, not a real
+lifecycle bug.** `OrbitWorker`'s own lifecycle was already fully decoupled
+from opportunity count (it never reads `collect_opportunities()`'s output),
+but neither `api.py` nor the frontend exposed ANY collector health --
+`/opportunities` returning `[]` was the only signal, so "zero opportunities"
+looked identical to "Orbit stopped". Fixed by having the engine publish a
+per-tick health snapshot (`collector.py`'s `_write_status()` ->
+`cached_status.json`) for OnWin/BetKanyon/Orbit, classified into
+`CollectorStatus` (RUNNING/STARTING/DEGRADED/STOPPED/ERROR) purely from each
+worker's own connection state + liveness -- deliberately never from
+opportunity count. Exposed via a new `GET /status` endpoint (`api.py`,
+`collector.get_collector_status()`) and a "COLLECTORS" panel in the
+frontend (`frontend/src/routes/index.tsx`) that polls it alongside
+`/opportunities`.
+
+Files touched: `parsers/orbit/parser.py`, `parsers/orbit/feed.py`,
+`parsers/orbit/adapter.py`, `parsers/onwin/state.py`,
+`parsers/betkanyon/parser.py`, `parsers/betkanyon/worker.py`,
+`parsers/orbit/worker.py`, `engine/best_odds_selector.py`, `collector.py`,
+`api.py`, `frontend/src/routes/index.tsx`. New: `debug/odds_trace.py`.

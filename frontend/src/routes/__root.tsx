@@ -117,11 +117,30 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+// Single, minimal, always-present entry point into the isolated Kenyan
+// Bookmakers section (see frontend/src/routes/kenyan.tsx). This is the
+// ONLY change made to the existing Turkish/client-facing layout for
+// this feature -- it does not alter any existing page's content,
+// styling, or behavior otherwise.
+function KenyanNavLink() {
+  return (
+    <div className="flex justify-end px-4 py-1.5 bg-slate-950 border-b border-slate-900">
+      <Link
+        to="/kenyan"
+        className="text-xs font-semibold tracking-wide text-slate-500 hover:text-cyan-400 transition-colors"
+      >
+        KENYAN BOOKMAKERS →
+      </Link>
+    </div>
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <KenyanNavLink />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>

@@ -47,7 +47,7 @@ from parsers.betkanyon.feed import BetkanyonFeed
 # instead of waiting further. Configurable via env var rather than
 # hard-coded in multiple places (worker + any caller that wants to
 # reason about expected freshness).
-BETKANYON_POLL_INTERVAL = float(os.getenv("BETKANYON_POLL_INTERVAL", "3"))
+BETKANYON_POLL_INTERVAL = float(os.getenv("BETKANYON_POLL_INTERVAL", "5"))
 
 # Reconnect backoff: starts here after the first failure and doubles
 # on each consecutive failure, capped at MAX_BACKOFF_SECONDS, so a
@@ -321,7 +321,8 @@ class BetkanyonWorker:
         with self._lock:
             state = self._state
 
-            state["matches"] = matches
+            if matches or not state["matches"]:
+                state["matches"] = matches
             state["status"] = "running"
             state["error"] = None
             state["last_update_at"] = time.time()

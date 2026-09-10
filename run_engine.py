@@ -1,12 +1,46 @@
 import asyncio
+import time
 
 from collector import (
     ENGINE_TICK_SECONDS,
     collect_opportunities,
+    start_prematch_workers,
     start_workers,
+    stop_betkanyon_prematch_worker,
     stop_betkanyon_worker,
+    stop_kolay90_prematch_worker,
+    stop_onwin_prematch_worker,
     stop_onwin_worker,
+    stop_orbit_prematch_worker,
+    stop_orbit_worker,
 )
+from engine.recovery import restart_due
+from prematch.mode import is_prematch_only
+
+
+async def restart_workers_gracefully():
+    """Stop then start the existing workers. Does not kill this process.
+
+    Kolay90 close() detaches CDP only; the authenticated Chrome stays open.
+    """
+    from engine.recovery import begin_scheduled_restart, end_scheduled_restart
+
+    begin_scheduled_restart()
+    try:
+        stop_onwin_worker()
+        stop_betkanyon_worker()
+        await stop_orbit_worker()
+        stop_betkanyon_prematch_worker()
+        await stop_orbit_prematch_worker()
+        stop_kolay90_prematch_worker()
+        stop_onwin_prematch_worker()
+        if is_prematch_only():
+            start_prematch_workers()
+        else:
+            start_workers()
+            start_prematch_workers()
+    finally:
+        end_scheduled_restart()
 
 
 async def main():
@@ -16,21 +50,27 @@ async def main():
     print("ARBITRAGE ENGINE")
     print("=" * 70)
     print()
-    print("Starting persistent bookmaker workers (OnWin + BetKanyon)...")
-    print("Both run concurrently and independently in the background.")
-    print()
+    if is_prematch_only():
+        print("PREMATCH-ONLY MODE: live BetKanyon/Orbit/OnWin workers are frozen.")
+        print("Set ENGINE_MODE=live and restart to restore the live pipeline.")
+        print()
+        start_prematch_workers()
+    else:
+        print("Starting persistent bookmaker workers (live + prematch)...")
+        print("Live BetKanyon/Orbit/OnWin continue independently of prematch.")
+        print()
+        start_workers()
+        start_prematch_workers()
 
-    # Explicitly kick off both persistent workers up front so they
-    # start acquiring data CONCURRENTLY, rather than each only
-    # appearing lazily whenever collect_opportunities() first happens
-    # to touch it.
-    start_workers()
-
+    cycle_started = time.monotonic()
     try:
         while True:
 
             try:
                 await collect_opportunities()
+                if restart_due(cycle_started):
+                    await restart_workers_gracefully()
+                    cycle_started = time.monotonic()
 
             except Exception as e:
                 print()
@@ -55,6 +95,11 @@ async def main():
     finally:
         stop_onwin_worker()
         stop_betkanyon_worker()
+        await stop_orbit_worker()
+        stop_betkanyon_prematch_worker()
+        await stop_orbit_prematch_worker()
+        stop_kolay90_prematch_worker()
+        stop_onwin_prematch_worker()
         print("Workers stopped. Goodbye.")
 
 

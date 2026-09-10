@@ -43,10 +43,19 @@ class BetkanyonFeed:
 
                 matches.append(match)
 
-        self._match_odds = matches
-        self._parsed_event_count = len(parsed)
+        if matches:
+            self._match_odds = matches
+            self._parsed_event_count = len(parsed)
+        elif self._match_odds:
+            print(
+                "[BETKANYON] empty cycle ignored; "
+                f"keeping {len(self._match_odds)} last MatchOdds"
+            )
+        else:
+            self._match_odds = matches
+            self._parsed_event_count = len(parsed)
 
-        return matches
+        return self._match_odds
 
     def get_match_odds(self):
 
