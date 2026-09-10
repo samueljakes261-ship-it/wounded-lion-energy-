@@ -24,10 +24,9 @@ describe("dashboard data-fetching contract (frontend/src/routes/index.tsx)", () 
   })
 
   it("does not hardcode any production/tunnel backend URL", () => {
-    // "ngrok-skip-browser-warning" is a legitimate request header kept
-    // for when ngrok IS intentionally used as a bridge (see
-    // frontend/.env.example) -- what must never reappear is an actual
-    // hardcoded backend hostname/URL baked into source.
+    // "ngrok-skip-browser-warning" is not used. Production frontend
+    // is https://wounded-lion-energy.vercel.app and talks to VITE_API_URL.
+    expect(SOURCE).not.toMatch(/ngrok-skip-browser-warning/)
     expect(SOURCE).not.toMatch(/https?:\/\/[a-z0-9.-]+\.ngrok[a-z0-9.-]*\//i)
     expect(SOURCE).not.toMatch(/https?:\/\/[a-z0-9.-]+\.(vercel\.app|onrender\.com|railway\.app)/i)
   })

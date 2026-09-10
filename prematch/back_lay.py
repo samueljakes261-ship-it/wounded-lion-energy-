@@ -20,6 +20,7 @@ from models.back_lay_opportunity import (
     OPPORTUNITY_TYPE_BACK_LAY,
     BackLayOpportunity,
 )
+from models.markets import arb_group_key, is_over_under_market
 from prematch.matcher import PrematchMatchFinder
 
 
@@ -28,19 +29,13 @@ OUTCOME_FIELDS = {
     "DRAW": "draw_odds",
     "AWAY": "away_odds",
 }
-
-_MARKET_ALIASES = {
-    "1x2": "1x2",
-    "match odds": "1x2",
-    "matchodds": "1x2",
+OU_OUTCOME_FIELDS = {
+    "OVER": "home_odds",
+    "UNDER": "away_odds",
 }
 
+
 _MAX_REJECT_LOGS = 5
-
-
-def _market_key(market) -> str:
-    key = (market or "").strip().lower()
-    return _MARKET_ALIASES.get(key, key)
 
 
 def explicit_side(match) -> str:
@@ -105,10 +100,16 @@ class PrematchBackLayDetector:
                         continue
                     if _feed_type(back) != "prematch":
                         continue
-                    if _market_key(back.market) != _market_key(lay.market):
+                    if arb_group_key(back) != arb_group_key(lay):
                         continue
 
-                    for outcome, field in OUTCOME_FIELDS.items():
+                    fields = (
+                        OU_OUTCOME_FIELDS
+                        if is_over_under_market(back.market)
+                        else OUTCOME_FIELDS
+                    )
+
+                    for outcome, field in fields.items():
                         back_odds = getattr(back, field)
                         lay_odds = getattr(lay, field)
                         evaluated += 1

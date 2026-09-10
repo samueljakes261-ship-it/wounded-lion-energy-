@@ -1,6 +1,7 @@
 from debug import odds_trace
 from models.best_odds import BestOdds
 from models.matched_event import MatchedEvent
+from models.over_under import TwoWayBestOdds
 
 
 class NoBackableOddsError(ValueError):
@@ -64,3 +65,19 @@ class BestOddsSelector:
         odds_trace.record_engine_selection(event, best)
 
         return best
+
+    def select_over_under(self, event: MatchedEvent) -> TwoWayBestOdds:
+        """Best OVER (home_odds) and UNDER (away_odds) among backable quotes."""
+        backable = [
+            match
+            for match in event.matches
+            if match.side != "LAY"
+        ]
+        if not backable:
+            raise NoBackableOddsError(
+                f"No backable (non-LAY) Over/Under odds available for "
+                f"{event.home_team} vs {event.away_team}."
+            )
+        over_match = max(backable, key=lambda match: match.home_odds)
+        under_match = max(backable, key=lambda match: match.away_odds)
+        return TwoWayBestOdds(over_match=over_match, under_match=under_match)

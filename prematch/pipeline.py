@@ -8,9 +8,11 @@ from pathlib import Path
 
 from engine.arbitrage_detector import ArbitrageDetector
 from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
+from engine.over_under import build_over_under_opportunities
 from engine.stake_calculator import StakeCalculator
 from models.arbitrage_opportunity import ArbitrageOpportunity
 from models.back_lay_opportunity import OPPORTUNITY_TYPE_BACK_BACK
+from models.markets import is_1x2_market, is_over_under_market
 from prematch.back_lay import serialize_back_lay_opportunities
 from prematch.matcher import PrematchMatchFinder
 
@@ -78,6 +80,10 @@ def build_prematch_opportunities(matches, bankroll=1000):
     matched_events = finder.find(matches)
     opportunities = []
     for event in matched_events:
+        if is_over_under_market(event.market):
+            continue
+        if event.market and not is_1x2_market(event.market):
+            continue
         try:
             best = selector.select(event)
         except NoBackableOddsError:
@@ -102,7 +108,8 @@ def build_prematch_opportunities(matches, bankroll=1000):
             continue
         print("Confidence: VERIFIED")
         opportunities.append(opportunity)
-    return matched_events, opportunities
+    over_under = build_over_under_opportunities(matched_events, bankroll=bankroll)
+    return matched_events, opportunities, over_under
 
 
 def serialize_opportunities(opportunities, generated_at_dt=None):
@@ -158,8 +165,20 @@ def serialize_opportunities(opportunities, generated_at_dt=None):
     return cache
 
 
-def serialize_prematch_cache(back_lay_opportunities, back_back_opportunities, generated_at_dt=None):
-    """BACK-vs-LAY first, then unchanged BACK-vs-BACK cards."""
-    return serialize_back_lay_opportunities(back_lay_opportunities) + serialize_opportunities(
-        back_back_opportunities, generated_at_dt=generated_at_dt
+def serialize_prematch_cache(
+    back_lay_opportunities,
+    back_back_opportunities,
+    generated_at_dt=None,
+    over_under_opportunities=None,
+):
+    """BACK-vs-LAY first, then O/U two-way, then unchanged BACK-vs-BACK cards."""
+    generated_at_dt = generated_at_dt or datetime.now(timezone.utc)
+    ou_cache = [
+        item.to_api_dict(generated_at=_iso_dt(generated_at_dt))
+        for item in (over_under_opportunities or [])
+    ]
+    return (
+        serialize_back_lay_opportunities(back_lay_opportunities)
+        + ou_cache
+        + serialize_opportunities(back_back_opportunities, generated_at_dt=generated_at_dt)
     )

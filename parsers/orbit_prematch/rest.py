@@ -12,6 +12,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import ORBIT_COOKIES, ORBIT_CSRF_TOKEN
+from models.markets import TARGET_OU_LINE, parse_ou_line_from_name
 
 BASE_URL = "https://www.orbitxch.com"
 SOCCER_EVENT_TYPE = 1
@@ -84,6 +85,22 @@ def _is_match_odds(market):
     return False
 
 
+def _is_over_under_2_5(market):
+    name = (
+        market.get("marketName")
+        or (market.get("description") or {}).get("marketName")
+        or ""
+    )
+    lowered = name.lower()
+    if "over/under" not in lowered and "over under" not in lowered:
+        return False
+    return parse_ou_line_from_name(name) == TARGET_OU_LINE
+
+
+def _is_supported_market(market):
+    return _is_match_odds(market) or _is_over_under_2_5(market)
+
+
 def _filter_markets(raw_markets, stats=None):
     kept = []
     stats = stats if stats is not None else {}
@@ -91,7 +108,7 @@ def _filter_markets(raw_markets, stats=None):
         if not _is_prematch_market(market):
             stats["rejected_inplay_or_closed"] = stats.get("rejected_inplay_or_closed", 0) + 1
             continue
-        if not _is_match_odds(market):
+        if not _is_supported_market(market):
             stats["rejected_not_match_odds"] = stats.get("rejected_not_match_odds", 0) + 1
             continue
         if not market.get("marketId"):

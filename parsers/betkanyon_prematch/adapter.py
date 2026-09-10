@@ -13,6 +13,26 @@ class BetkanyonPrematchAdapter:
         elif isinstance(kickoff, (int, float)):
             kickoff = datetime.fromtimestamp(kickoff / 1000, tz=timezone.utc)
 
+        if event.get("market") == "over_under" or event.get("line") is not None:
+            over_odds = float(event.get("over_odds", event["home_odds"]))
+            under_odds = float(event.get("under_odds", event["away_odds"]))
+            return MatchOdds(
+                bookmaker="Betkanyon",
+                competition=event["competition"],
+                sport=event["sport"],
+                market="over_under",
+                home_team=event["home"],
+                away_team=event["away"],
+                home_odds=over_odds,
+                draw_odds=0.0,
+                away_odds=under_odds,
+                start_time=kickoff,
+                collected_at=datetime.now(timezone.utc),
+                feed_type="prematch",
+                tournament_id=str(tournament_id) if tournament_id is not None else None,
+                line=float(event["line"]),
+            )
+
         return MatchOdds(
             bookmaker="Betkanyon",
             competition=event["competition"],

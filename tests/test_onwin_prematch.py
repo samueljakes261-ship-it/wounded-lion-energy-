@@ -239,3 +239,43 @@ def test_quota_exhausted_is_redacted_and_marks_degraded():
     status = worker.get_status()
     assert status["status"] == "degraded"
     assert status["error"] == "QUOTA_EXHAUSTED"
+
+
+def test_prematch_parser_extracts_over_under_2_5_without_dropping_1x2():
+    event = _event("not_started", "PreHome", "PreAway")
+    event["scopes"]["normal_time--0"]["markets"]["score_ou--2.5"] = {
+        "outcomes": {
+            "outcome::over": {"coefficient": 1.95, "updatedAt": 1},
+            "outcome::under": {"coefficient": 1.85, "updatedAt": 1},
+        }
+    }
+    payload = {
+        "sports": {
+            SPORT: {
+                "categories": {
+                    "c1": {
+                        "diff": {"name": "England"},
+                        "tournaments": {
+                            "t1": {
+                                "diff": {"name": "League"},
+                                "events": {"pre-1": event},
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+    matches = parse_prematch(payload)
+    one_x_two = [m for m in matches if m.market == "1X2"]
+    ou = [m for m in matches if m.market == "over_under"]
+    assert len(one_x_two) == 1
+    assert one_x_two[0].home_odds == 2.1
+    assert len(ou) == 1
+    assert ou[0].line == 2.5
+    assert ou[0].home_odds == 1.95
+    assert ou[0].away_odds == 1.85
+    assert ou[0].home_team == "PreHome"
+    assert ou[0].away_team == "PreAway"
+    live = OnWinParser().parse(payload)
+    assert live == []

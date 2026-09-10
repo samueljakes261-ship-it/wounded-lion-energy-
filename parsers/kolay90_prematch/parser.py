@@ -8,6 +8,10 @@ Mapping is explicit:
   oranlar["0"] = DRAW
   oranlar["2"] = AWAY
 
+getMaclar events in this architecture only expose those three 1X2 keys
+in `oranlar`. There is no confirmed Over/Under field in the committed
+payloads, so this parser does not invent O/U markets.
+
 An event is accepted only when all three keys exist and parse as
 floats. Missing prices are never invented.
 """

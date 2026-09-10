@@ -27,6 +27,12 @@ MATCH_ODDS_NAMES = {
     "1x2",
     "full time result",
 }
+OU_MARKET_IDS = {3, -3, "3", "-3"}
+OU_OVER_TOKENS = {"üst", "ust", "over"}
+OU_UNDER_TOKENS = {"alt", "under"}
+TARGET_OU_LINE = 2.5
+MIN_OU_IMPLIED = 0.80
+MAX_OU_IMPLIED = 1.30
 
 
 def _text(value: Any) -> str:
@@ -98,7 +104,16 @@ def _stake_lists(market: dict) -> list:
 
 
 def _is_match_odds_market(market: dict) -> bool:
+    # Id == 1 is BetKanyon's stable "Match Result"/1X2 market identifier
+    # -- the same rule the proven live parser
+    # (parsers/betkanyon/parser.py) trusts with no name check at all.
+    # The market's display name ("N") is locale-dependent (e.g. Turkish
+    # "Maç Sonucu" vs English "Result" depending on langId) and must
+    # never be required to recognize the market; a name match is only
+    # a fallback for payloads where Id itself is missing/renamed.
     market_id = market.get("Id", market.get("id", market.get("SID")))
+    if market_id in (1, "1", 1.0):
+        return True
     name = _norm(
         market.get("N")
         or market.get("EN")
@@ -106,8 +121,6 @@ def _is_match_odds_market(market: dict) -> bool:
         or market.get("name")
         or market.get("GN")
     )
-    if market_id in (1, "1", 1.0) and (not name or name in MATCH_ODDS_NAMES or "sonucu" in name or "1x2" in name or "match" in name):
-        return True
     if name in MATCH_ODDS_NAMES:
         return True
     return False
@@ -191,12 +204,74 @@ def _extract_1x2(event: dict) -> Optional[Tuple[float, float, float]]:
     return None
 
 
+def _is_totals_market(market: dict) -> bool:
+    market_id = market.get("Id", market.get("id", market.get("SID")))
+    if market_id in OU_MARKET_IDS:
+        return True
+    name = _norm(
+        market.get("N")
+        or market.get("EN")
+        or market.get("EGN")
+        or market.get("name")
+        or market.get("GN")
+    )
+    return name in {"toplam", "toplam gol"}
+
+
+def _ou_side(stake: dict) -> str | None:
+    token = _selection_token(stake)
+    if token in OU_OVER_TOKENS:
+        return "over"
+    if token in OU_UNDER_TOKENS:
+        return "under"
+    return None
+
+
+def _extract_over_under(event: dict) -> dict:
+    """Return {line: (over_odds, under_odds)} for complete totals lines."""
+    by_line: dict = {}
+    markets = _market_lists(event)
+    for market in markets:
+        if not isinstance(market, dict) or not _is_totals_market(market):
+            continue
+        for stake in _stake_lists(market):
+            if not isinstance(stake, dict) or _stake_locked(stake):
+                continue
+            price = _stake_price(stake)
+            if price is None:
+                continue
+            line_raw = stake.get("A")
+            if line_raw is None:
+                continue
+            try:
+                line = round(float(line_raw), 2)
+            except (TypeError, ValueError):
+                continue
+            side = _ou_side(stake)
+            if side is None:
+                continue
+            bucket = by_line.setdefault(line, {"over": None, "under": None})
+            bucket[side] = price
+    complete = {}
+    for line, prices in by_line.items():
+        over = prices.get("over")
+        under = prices.get("under")
+        if over is None or under is None:
+            continue
+        implied = (1.0 / over) + (1.0 / under)
+        if MIN_OU_IMPLIED <= implied <= MAX_OU_IMPLIED:
+            complete[line] = (over, under)
+    return complete
+
+
 def parse_prematch(data) -> Tuple[List[dict], Dict[str, int]]:
     """Return (events, stats) from one decrypted tournament payload."""
     stats = {
         "events_discovered": 0,
         "match_odds_markets": 0,
         "complete_1x2": 0,
+        "over_under_markets": 0,
+        "complete_ou_2_5": 0,
         "skipped_locked_or_incomplete": 0,
         "skipped_invalid_odds": 0,
     }
@@ -229,9 +304,34 @@ def parse_prematch(data) -> Tuple[List[dict], Dict[str, int]]:
         prices = _extract_1x2(event)
         if prices is None:
             stats["skipped_locked_or_incomplete"] += 1
-            continue
-        stats["complete_1x2"] += 1
+        else:
+            stats["complete_1x2"] += 1
+            competition = (
+                event.get("ECN")
+                or event.get("CN")
+                or event.get("competition")
+                or "Unknown"
+            )
+            kickoff = event.get("D") or event.get("kickoff")
+            if kickoff is None:
+                kickoff = datetime.now(timezone.utc)
+            parsed.append(
+                {
+                    "event_id": event_id,
+                    "competition": competition,
+                    "sport": event.get("ESN") or event.get("SN") or sport,
+                    "home": home,
+                    "away": away,
+                    "kickoff": kickoff,
+                    "home_odds": prices[0],
+                    "draw_odds": prices[1],
+                    "away_odds": prices[2],
+                }
+            )
 
+        ou_lines = _extract_over_under(event)
+        if ou_lines:
+            stats["over_under_markets"] = stats.get("over_under_markets", 0) + 1
         competition = (
             event.get("ECN")
             or event.get("CN")
@@ -241,19 +341,27 @@ def parse_prematch(data) -> Tuple[List[dict], Dict[str, int]]:
         kickoff = event.get("D") or event.get("kickoff")
         if kickoff is None:
             kickoff = datetime.now(timezone.utc)
-        parsed.append(
-            {
-                "event_id": event_id,
-                "competition": competition,
-                "sport": event.get("ESN") or event.get("SN") or sport,
-                "home": home,
-                "away": away,
-                "kickoff": kickoff,
-                "home_odds": prices[0],
-                "draw_odds": prices[1],
-                "away_odds": prices[2],
-            }
-        )
+        for line, (over_odds, under_odds) in ou_lines.items():
+            if line != TARGET_OU_LINE:
+                continue
+            stats["complete_ou_2_5"] = stats.get("complete_ou_2_5", 0) + 1
+            parsed.append(
+                {
+                    "event_id": event_id,
+                    "competition": competition,
+                    "sport": event.get("ESN") or event.get("SN") or sport,
+                    "home": home,
+                    "away": away,
+                    "kickoff": kickoff,
+                    "market": "over_under",
+                    "line": line,
+                    "home_odds": over_odds,
+                    "draw_odds": 0.0,
+                    "away_odds": under_odds,
+                    "over_odds": over_odds,
+                    "under_odds": under_odds,
+                }
+            )
 
     stats["matchodds_produced"] = len(parsed)
     return parsed, stats

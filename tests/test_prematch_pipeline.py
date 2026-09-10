@@ -45,6 +45,9 @@ def test_prematch_url_uses_dynamic_dates_and_tournament_id():
     assert "startDate=" in url
     assert "endDate=" in url
     assert "stakeTypes=1" in url
+    # Confirmed against the working sport.bksp3.com prematch endpoint:
+    # langId=2, not the old langId=4.
+    assert "langId=2" in url
 
 
 def test_prematch_adapter_tags_feed_type_and_tournament():
@@ -84,7 +87,7 @@ def test_kolay90_enters_same_prematch_pipeline():
     assert len(events) == 1
     books = {item.bookmaker.lower() for item in events[0].matches}
     assert books == {"betkanyon", "orbit", "kolay90"}
-    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    _matched, opportunities, _ou = build_prematch_opportunities(matches, bankroll=1000)
     assert len(opportunities) == 1
     assert opportunities[0].result.arbitrage_exists is True
     legs = {
@@ -113,7 +116,7 @@ def test_known_prematch_arbitrage_and_stakes():
         _odds("Betkanyon", "Alpha FC", "Beta FC", 2.2, 3.1, 3.4),
         _odds("Orbit", "Alpha FC", "Beta FC", 1.9, 3.6, 4.8, side="BACK"),
     ]
-    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    _matched, opportunities, _ou = build_prematch_opportunities(matches, bankroll=1000)
     assert len(opportunities) == 1
     opp = opportunities[0]
     assert opp.result.arbitrage_exists is True
@@ -145,7 +148,7 @@ def test_onwin_joins_betkanyon_and_orbit_prematch_arb():
             feed_type="prematch",
         ),
     ]
-    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    _matched, opportunities, _ou = build_prematch_opportunities(matches, bankroll=1000)
     assert len(opportunities) == 1
     books = {
         opportunities[0].result.best_odds.home_match.bookmaker,

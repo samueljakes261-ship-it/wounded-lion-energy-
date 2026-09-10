@@ -30,6 +30,13 @@ const backLay = {
   lay: { bookmaker: "Orbit", odds: 2.1 },
 }
 
+const overUnder = {
+  opportunityType: "OVER_UNDER",
+  profitPercentage: 3.1,
+  over: { bookmaker: "Betkanyon", odds: 2.1 },
+  under: { bookmaker: "Orbit", odds: 2.05 },
+}
+
 describe("opportunity display filters", () => {
   it("applies a minimum arb percentage", () => {
     expect(filterOpportunities([backBack, backLay], { minArb: 2 })).toEqual([backBack])
@@ -101,6 +108,14 @@ describe("opportunity display filters", () => {
       "OnWin",
       "Orbit",
     ])
+  })
+
+  it("filters Over/Under opportunities by over/under odds and bookmakers", () => {
+    expect(filterOpportunities([overUnder], { minOdds: 2 })).toEqual([overUnder])
+    expect(filterOpportunities([overUnder], { bookmakers: ["Betkanyon", "Orbit"] })).toEqual([
+      overUnder,
+    ])
+    expect(bookmakersFromOpportunities([overUnder])).toEqual(["Betkanyon", "Orbit"])
   })
 })
 

@@ -270,6 +270,39 @@ def test_selection_codes_map_home_draw_away_without_sn():
     assert parsed[0]["away_odds"] == 3.10
 
 
+def test_market_id_one_is_trusted_regardless_of_locale_name():
+    # Regression: sport.bksp3.com's Result/1X2 market is always Id == 1,
+    # but its display name ("N") is locale-dependent -- e.g. English
+    # "Result" (langId=2) instead of the Turkish "Maç Sonucu" seen
+    # before. The live parser (parsers/betkanyon/parser.py) already
+    # trusts Id == 1 alone with no name check; the prematch parser must
+    # do the same or it silently drops every event (0 MatchOdds
+    # produced even though events/markets were discovered).
+    payload = _payload(
+        _event(
+            "Genclerbirligi",
+            "Erzurumspor",
+            [
+                _market(
+                    [
+                        {"SN": "W1", "SC": 1, "F": 2.1, "IsL": False, "IsA": True},
+                        {"SN": "X", "SC": 2, "F": 3.0, "IsL": False, "IsA": True},
+                        {"SN": "W2", "SC": 3, "F": 4.1, "IsL": False, "IsA": True},
+                    ],
+                    market_id=1,
+                    name="Result",
+                )
+            ],
+        )
+    )
+    parsed, stats = parse_prematch(payload)
+    assert stats["match_odds_markets"] == 1
+    assert len(parsed) == 1
+    assert parsed[0]["home_odds"] == 2.1
+    assert parsed[0]["draw_odds"] == 3.0
+    assert parsed[0]["away_odds"] == 4.1
+
+
 def test_prematch_schema_variants_live_parser_misses():
     # Live parser requires CNT/CL/E, Id == 1 (int), and SN as strings
     # "1"/"X"/"2". Prematch payloads have been observed to vary.
@@ -306,3 +339,100 @@ def test_prematch_schema_variants_live_parser_misses():
     match = BetkanyonPrematchAdapter.to_match_odds(parsed[0], tournament_id="4520")
     assert match.feed_type == "prematch"
     assert match.start_time == datetime(2026, 8, 21, 12, 0, tzinfo=timezone.utc)
+
+
+def test_over_under_2_5_extracted_from_totals_market():
+    payload = _payload(
+        _event(
+            "Fenerbahce",
+            "Galatasaray",
+            [
+                _market(
+                    [
+                        _stake("1", 2.10),
+                        _stake("X", 3.40),
+                        _stake("2", 3.10),
+                    ]
+                ),
+                _market(
+                    [
+                        _stake("Üst", 2.05, extra={"A": 1.5, "SC": 1}),
+                        _stake("Alt", 1.75, extra={"A": 1.5, "SC": 2}),
+                        _stake("Üst", 2.10, extra={"A": 2.5, "SC": 1}),
+                        _stake("Alt", 1.72, extra={"A": 2.5, "SC": 2}),
+                    ],
+                    market_id=3,
+                    name="Toplam",
+                ),
+            ],
+        )
+    )
+    parsed, stats = parse_prematch(payload)
+    assert stats["complete_1x2"] == 1
+    ou = [row for row in parsed if row.get("market") == "over_under"]
+    one_x_two = [row for row in parsed if row.get("market") != "over_under"]
+    assert len(one_x_two) == 1
+    assert len(ou) == 1
+    assert ou[0]["line"] == 2.5
+    assert ou[0]["over_odds"] == 2.10
+    assert ou[0]["under_odds"] == 1.72
+    assert ou[0]["home"] == "Fenerbahce"
+    assert ou[0]["away"] == "Galatasaray"
+    match = BetkanyonPrematchAdapter.to_match_odds(ou[0], tournament_id="4520")
+    assert match.market == "over_under"
+    assert match.line == 2.5
+    assert match.home_odds == 2.10
+    assert match.away_odds == 1.72
+    assert match.bookmaker == "Betkanyon"
+
+
+def test_malformed_over_under_is_ignored():
+    payload = _payload(
+        _event(
+            "Alpha FC",
+            "Beta FC",
+            [
+                _market(
+                    [
+                        _stake("Üst", 500, extra={"A": 2.5}),
+                        _stake("Alt", 75, extra={"A": 2.5}),
+                    ],
+                    market_id=3,
+                    name="Toplam",
+                )
+            ],
+        )
+    )
+    parsed, _stats = parse_prematch(payload)
+    assert [row for row in parsed if row.get("market") == "over_under"] == []
+
+
+def test_live_parser_still_extracts_1x2_and_ou_2_5():
+    payload = _payload(
+        _event(
+            "Alpha FC",
+            "Beta FC",
+            [
+                _market(
+                    [_stake("1", 2.10), _stake("X", 3.40), _stake("2", 3.10)]
+                ),
+                _market(
+                    [
+                        _stake("Üst", 1.95, extra={"A": 2.5}),
+                        _stake("Alt", 1.85, extra={"A": 2.5}),
+                    ],
+                    market_id=3,
+                    name="Toplam",
+                ),
+            ],
+        )
+    )
+    live = parse_live(payload)
+    assert any(
+        row.get("home_odds") == 2.10 and row.get("draw_odds") == 3.40 for row in live
+    )
+    ou = [row for row in live if row.get("market") == "over_under"]
+    assert len(ou) == 1
+    assert ou[0]["line"] == 2.5
+    assert ou[0]["over_odds"] == 1.95
+    assert ou[0]["under_odds"] == 1.85

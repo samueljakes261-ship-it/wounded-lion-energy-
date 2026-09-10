@@ -222,7 +222,7 @@ def test_existing_back_back_opportunity_still_detected():
         _odds("Orbit", "Alpha FC", "Beta FC", 1.9, 3.6, 4.8, side="BACK"),
         _odds("Orbit", "Alpha FC", "Beta FC", 2.0, 3.7, 5.0, side="LAY"),
     ]
-    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    _matched, opportunities, _ou = build_prematch_opportunities(matches, bankroll=1000)
     assert len(opportunities) == 1
     assert opportunities[0].result.arbitrage_exists is True
     implied = (
@@ -289,7 +289,7 @@ def test_combined_cache_lists_back_lay_before_back_back():
         _odds("Orbit", "Alpha FC", "Beta FC", 1.9, 3.6, 4.8, side="BACK"),
     ]
     back_lay = _detect(back_lay_matches)
-    _matched, back_back = build_prematch_opportunities(back_back_matches, bankroll=1000)
+    _matched, back_back, _ou = build_prematch_opportunities(back_back_matches, bankroll=1000)
     cache = serialize_prematch_cache(back_lay, back_back, generated_at_dt=NOW)
     types = [item["opportunityType"] for item in cache]
     assert types[0] == "BACK_LAY"

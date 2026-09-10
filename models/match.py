@@ -42,6 +42,11 @@ class MatchOdds:
     # from. Unused (None) for live feeds and for Orbit.
     tournament_id: Optional[str] = None
 
+    # Totals line for Over/Under markets (e.g. 2.5). None for 1X2.
+    # For over_under records, home_odds carries OVER and away_odds
+    # carries UNDER; draw_odds is unused and must not enter 1X2 math.
+    line: Optional[float] = None
+
     def __str__(self):
         side_label = f" [{self.side}]" if self.side else ""
         return (

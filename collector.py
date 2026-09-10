@@ -19,9 +19,11 @@ from engine.collector_health import (
 from engine.match_finder import MatchFinder
 from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
 from engine.arbitrage_detector import ArbitrageDetector
+from engine.over_under import build_over_under_opportunities
 from engine.stake_calculator import StakeCalculator
 from engine.back_lay_detector import BackLayDetector
 from models.arbitrage_opportunity import ArbitrageOpportunity
+from models.markets import is_1x2_market, is_over_under_market
 
 from parsers.betkanyon.worker import BetkanyonWorker
 from parsers.betkanyon_prematch.worker import BetkanyonPrematchWorker
@@ -794,7 +796,6 @@ def start_workers():
     """
 
     for name, starter in (
-        ("OnWin", _get_onwin_handle),
         ("BetKanyon", _get_betkanyon_worker),
         ("Orbit", _get_orbit_worker),
     ):
@@ -1190,13 +1191,21 @@ def _iso_dt(value) -> str | None:
     return value.isoformat()
 
 
-def _write_cache(opportunities, generated_at_dt=None, back_lay_opportunities=None):
+def _write_cache(
+    opportunities,
+    generated_at_dt=None,
+    back_lay_opportunities=None,
+    over_under_opportunities=None,
+):
 
     generated_at_dt = generated_at_dt or datetime.now(timezone.utc)
 
     cache = []
     for back_lay in back_lay_opportunities or []:
         cache.append(back_lay.to_api_dict())
+
+    for ou in over_under_opportunities or []:
+        cache.append(ou.to_api_dict(generated_at=_iso_dt(generated_at_dt)))
 
     for opportunity in opportunities:
 
@@ -1353,10 +1362,10 @@ async def collect_opportunities(bankroll=1000):
     onwin_handle = None
     betkanyon_worker = None
     orbit_worker = None
-    try:
-        onwin_handle = _get_onwin_handle()
-    except Exception as exc:
-        print(f"[ONWIN] Unavailable this tick ({type(exc).__name__}: {exc})")
+    # OnWin LIVE is frozen; do not lazily start it. Prematch OnWin
+    # still starts via start_prematch_workers().
+    if _onwin_handle is not None:
+        onwin_handle = _onwin_handle
     try:
         betkanyon_worker = _get_betkanyon_worker()
     except Exception as exc:
@@ -1521,6 +1530,11 @@ async def collect_opportunities(bankroll=1000):
 
     for event in matched_events:
 
+        if is_over_under_market(event.market):
+            continue
+        if event.market and not is_1x2_market(event.market):
+            continue
+
         try:
             best = selector.select(event)
         except NoBackableOddsError:
@@ -1551,6 +1565,9 @@ async def collect_opportunities(bankroll=1000):
     # --------------------------------------------------------
 
     back_lay_opportunities = back_lay_detector.find(matches)
+    over_under_opportunities = build_over_under_opportunities(
+        matched_events, bankroll=bankroll
+    )
 
     # --------------------------------------------------------
     # Odds-change visibility: only for events currently matched
@@ -1612,6 +1629,7 @@ async def collect_opportunities(bankroll=1000):
             opportunities,
             generated_at_dt=now_dt,
             back_lay_opportunities=back_lay_opportunities,
+            over_under_opportunities=over_under_opportunities,
         )
 
     _run_prematch_tick(bankroll=bankroll, now_dt=now_dt)
@@ -1795,7 +1813,7 @@ def _run_prematch_tick(bankroll, now_dt):
     orbit_back = sum(1 for m in orbit_matches if (m.side or "").upper() == "BACK")
     orbit_lay = sum(1 for m in orbit_matches if (m.side or "").upper() == "LAY")
     try:
-        matched_events, opportunities = build_prematch_opportunities(
+        matched_events, opportunities, over_under = build_prematch_opportunities(
             matches, bankroll=bankroll
         )
     except Exception as exc:
@@ -1880,7 +1898,10 @@ def _run_prematch_tick(bankroll, now_dt):
         _prematch_back_lay_sig = back_lay_sig
     _maybe_print_prematch_panel()
     cache = serialize_prematch_cache(
-        back_lay, opportunities, generated_at_dt=now_dt
+        back_lay,
+        opportunities,
+        generated_at_dt=now_dt,
+        over_under_opportunities=over_under,
     )
     feed_gap = reason in {
         "both_feeds_empty",

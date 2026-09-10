@@ -80,12 +80,34 @@ type BackLayOpportunity = {
   lay: BackLayPrice
 }
 
-type ApiOpportunity = Opportunity | BackLayOpportunity
+type OverUnderOpportunity = {
+  opportunityType: "OVER_UNDER"
+  competition?: string
+  homeTeam: string
+  awayTeam: string
+  market?: string
+  line?: number
+  profitPercentage: number
+  roi?: number
+  guaranteedProfit?: number
+  guaranteedReturn?: number
+  totalStake?: number
+  over: Leg
+  under: Leg
+}
+
+type ApiOpportunity = Opportunity | BackLayOpportunity | OverUnderOpportunity
 
 function isBackLayOpportunity(
   opportunity: ApiOpportunity
 ): opportunity is BackLayOpportunity {
   return opportunity.opportunityType === "BACK_LAY"
+}
+
+function isOverUnderOpportunity(
+  opportunity: ApiOpportunity
+): opportunity is OverUnderOpportunity {
+  return opportunity.opportunityType === "OVER_UNDER"
 }
 
 // One collector's health, independent of opportunity count -- see
@@ -118,13 +140,11 @@ type CollectorStatusResponse = {
 // build expects.
 //
 // - Local dev: frontend/.env.local sets VITE_API_URL (gitignored,
-//   e.g. http://localhost:8000).
-// - Production (Vercel): VITE_API_URL must be set as a Vercel project
-//   environment variable pointing at a backend that is ACTUALLY
-//   publicly reachable (a VPS/Render/Railway/etc. deployment, or --
-//   only as an explicit, intentional temporary bridge -- a currently
-//   running ngrok tunnel). Vite inlines VITE_* vars at build time, so
-//   changing this in Vercel requires a new deployment to take effect.
+//   e.g. http://localhost:8000 or http://127.0.0.1:8000).
+// - Production frontend is the existing Vercel project
+//   (wounded-lion-energy). Set VITE_API_URL in Vercel to the public
+//   Truehost API origin once that HTTPS endpoint exists. Do not use
+//   ngrok or any other temporary tunnel as the production API URL.
 //
 // See lib/api-config.ts for the (unit-tested) resolution logic. The
 // local-dev fallback there is a convenience only -- it deliberately
@@ -365,7 +385,11 @@ function BackLayCard({
   const teamName =
     opportunity.outcome === "DRAW"
       ? t(lang, "draw")
-      : opportunity.arbitrageTeam || opportunity.homeTeam
+      : opportunity.outcome === "OVER"
+        ? t(lang, "over")
+        : opportunity.outcome === "UNDER"
+          ? t(lang, "under")
+          : opportunity.arbitrageTeam || opportunity.homeTeam
 
   return (
     <Card
@@ -381,6 +405,11 @@ function BackLayCard({
             <CardTitle className="text-lg">
               {opportunity.homeTeam} vs {opportunity.awayTeam}
             </CardTitle>
+            {opportunity.outcome === "OVER" || opportunity.outcome === "UNDER" ? (
+              <div className="text-slate-400 text-sm mt-1">
+                {t(lang, "overUnderMarket")}
+              </div>
+            ) : null}
           </div>
           {typeof opportunity.profitPercentage === "number" ? (
             <Badge className="bg-emerald-500 text-black shrink-0">
@@ -406,6 +435,51 @@ function BackLayCard({
             {formatOdds(opportunity.lay.odds)}
           </div>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function OverUnderCard({
+  opportunity,
+  lang,
+}: {
+  opportunity: OverUnderOpportunity
+  lang: Lang
+}) {
+  const line = opportunity.line ?? 2.5
+  return (
+    <Card
+      data-testid="over-under-card"
+      className="bg-slate-900 border-slate-800 hover:border-cyan-500/50 transition-colors duration-300"
+    >
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-slate-500 tracking-wide">
+              {t(lang, "matchLabel")}
+            </div>
+            <CardTitle className="text-lg">
+              {opportunity.homeTeam} vs {opportunity.awayTeam}
+            </CardTitle>
+            <div className="text-slate-400 text-sm mt-1">
+              {t(lang, "marketLabel")}: {t(lang, "overUnderMarket")} ({line})
+            </div>
+          </div>
+          <Badge className="bg-emerald-500 text-black shrink-0">
+            +{opportunity.profitPercentage.toFixed(2)}%
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-2">
+        <OutcomeRow
+          label={`${t(lang, "over")} ${line}`}
+          leg={opportunity.over}
+        />
+        <OutcomeRow
+          label={`${t(lang, "under")} ${line}`}
+          leg={opportunity.under}
+        />
       </CardContent>
     </Card>
   )
@@ -525,9 +599,7 @@ function Dashboard() {
 
   const loadCollectorStatus = async () => {
     try {
-      const response = await fetch(STATUS_URL, {
-        headers: { "ngrok-skip-browser-warning": "true" },
-      })
+      const response = await fetch(STATUS_URL, {})
       if (!response.ok) {
         // Supplementary UI -- never blocks/clears opportunities -- but
         // still worth a console trace (no secrets) so a misconfigured
@@ -550,11 +622,7 @@ function Dashboard() {
     try {
       setLoading(true)
 
-      const response = await fetch(`${API_URL}?mode=${mode}`, {
-       headers: {
-        "ngrok-skip-browser-warning": "true",
-       },
-    })
+      const response = await fetch(`${API_URL}?mode=${mode}`)
 
       if (!response.ok) {
         throw new Error(
@@ -622,8 +690,10 @@ function Dashboard() {
   )
 
   const backLayOpportunities = visibleOpportunities.filter(isBackLayOpportunity)
+  const overUnderOpportunities = visibleOpportunities.filter(isOverUnderOpportunity)
   const backBackOpportunities = visibleOpportunities.filter(
-    (opportunity): opportunity is Opportunity => !isBackLayOpportunity(opportunity)
+    (opportunity): opportunity is Opportunity =>
+      !isBackLayOpportunity(opportunity) && !isOverUnderOpportunity(opportunity)
   )
 
   return (
@@ -853,6 +923,23 @@ function Dashboard() {
                 </div>
               )}
             </section>
+
+            {overUnderOpportunities.length > 0 ? (
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold tracking-wide text-slate-400">
+                  {t(lang, "overUnder")}
+                </h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {overUnderOpportunities.map((opportunity, index) => (
+                    <OverUnderCard
+                      key={`over-under-${index}`}
+                      opportunity={opportunity}
+                      lang={lang}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             {backBackOpportunities.length > 0 ? (
               <Collapsible

@@ -9,6 +9,7 @@ from parsers.orbit_prematch.rest import (
     _fetch_tab,
     _fetch_tab_first_page,
     _is_match_odds,
+    _is_over_under_2_5,
     get_upcoming_markets,
 )
 from prematch.matcher import PrematchEventMatcher, PrematchMatchFinder
@@ -160,7 +161,7 @@ def test_single_bookmaker_arbitrage_is_not_emitted():
         _odds("Orbit", "Alpha FC", "Beta FC", 12.0, 6.6, 5.9, side="BACK"),
         _odds("Orbit", "Alpha FC", "Beta FC", 1.05, 1.18, 1.20, side="LAY"),
     ]
-    _matched, opportunities = build_prematch_opportunities(matches, bankroll=1000)
+    _matched, opportunities, _ou = build_prematch_opportunities(matches, bankroll=1000)
     assert opportunities == []
 
 
@@ -183,6 +184,9 @@ def test_orbit_match_odds_name_filter():
     assert _is_match_odds({"marketName": "Match Odds"}) is True
     assert _is_match_odds({"marketName": "Over/Under 2.5"}) is False
     assert _is_match_odds({"marketName": ""}) is False
+    assert _is_over_under_2_5({"marketName": "Over/Under 2.5"}) is True
+    assert _is_over_under_2_5({"marketName": "Over/Under 1.5"}) is False
+    assert _is_over_under_2_5({"marketName": "Match Odds"}) is False
 
 
 def test_orbit_pagination_stops_on_last_flag(monkeypatch):

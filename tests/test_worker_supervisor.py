@@ -28,36 +28,28 @@ def anyio_backend():
     return "asyncio"
 
 
-def test_start_workers_continues_when_onwin_constructor_raises(monkeypatch):
-    started = {"betkanyon": False, "orbit": False}
+def test_start_workers_never_starts_onwin_live(monkeypatch):
+    """OnWin LIVE is intentionally frozen: start_workers() (the live
+    worker set) must never call _get_onwin_handle. OnWin PREMATCH still
+    starts separately via start_prematch_workers()."""
+    onwin_started = {"called": False}
 
     def boom():
-        raise RuntimeError("onwin constructor failed")
-
-    def start_betkanyon():
-        started["betkanyon"] = True
-        return FakeBetkanyonWorker()
-
-    def start_orbit():
-        started["orbit"] = True
-        return FakeOrbitWorker()
+        onwin_started["called"] = True
+        raise AssertionError("start_workers() must not start OnWin LIVE")
 
     monkeypatch.setattr(collector, "_get_onwin_handle", boom)
-    monkeypatch.setattr(collector, "_get_betkanyon_worker", start_betkanyon)
-    monkeypatch.setattr(collector, "_get_orbit_worker", start_orbit)
+    monkeypatch.setattr(collector, "_get_betkanyon_worker", FakeBetkanyonWorker)
+    monkeypatch.setattr(collector, "_get_orbit_worker", FakeOrbitWorker)
 
     collector.start_workers()
 
-    assert started["betkanyon"] is True
-    assert started["orbit"] is True
+    assert onwin_started["called"] is False
 
 
 def test_start_workers_continues_when_betkanyon_constructor_raises(monkeypatch):
-    started = {"onwin": False, "orbit": False}
+    started = {"orbit": False}
 
-    monkeypatch.setattr(
-        collector, "_get_onwin_handle", lambda: started.__setitem__("onwin", True) or FakeOnwinHandle()
-    )
     monkeypatch.setattr(
         collector, "_get_betkanyon_worker", lambda: (_ for _ in ()).throw(RuntimeError("bk failed"))
     )
@@ -67,16 +59,12 @@ def test_start_workers_continues_when_betkanyon_constructor_raises(monkeypatch):
 
     collector.start_workers()
 
-    assert started["onwin"] is True
     assert started["orbit"] is True
 
 
 def test_start_workers_continues_when_orbit_constructor_raises(monkeypatch):
-    started = {"onwin": False, "betkanyon": False}
+    started = {"betkanyon": False}
 
-    monkeypatch.setattr(
-        collector, "_get_onwin_handle", lambda: started.__setitem__("onwin", True) or FakeOnwinHandle()
-    )
     monkeypatch.setattr(
         collector,
         "_get_betkanyon_worker",
@@ -88,7 +76,6 @@ def test_start_workers_continues_when_orbit_constructor_raises(monkeypatch):
 
     collector.start_workers()
 
-    assert started["onwin"] is True
     assert started["betkanyon"] is True
 
 

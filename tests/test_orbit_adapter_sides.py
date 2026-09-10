@@ -307,3 +307,39 @@ def test_zero_odds_placeholder_levels_are_ignored():
     )
 
     assert OrbitAdapter.to_match_odds(market, side="BACK") is None
+
+
+def test_over_under_2_5_two_runner_market():
+    over = RunnerOdds(
+        10, name="Over 2.5 Goals", back=ladder(2.10), lay=ladder(2.14), traded_volume=0
+    )
+    under = RunnerOdds(
+        11, name="Under 2.5 Goals", back=ladder(1.72), lay=ladder(1.76), traded_volume=0
+    )
+    market = MarketOdds(
+        market_id="1.ou",
+        event_id="9",
+        market_status="OPEN",
+        in_play=False,
+        runners=[under, over],
+        home_team="Home FC",
+        away_team="Away FC",
+        competition="Test League",
+        sport="Soccer",
+        market_name="Over/Under 2.5",
+        start_time=1_700_000_000_000,
+        total_matched=0.0,
+    )
+    match = OrbitAdapter.to_match_odds(market, side="BACK")
+    assert match is not None
+    assert match.market == "over_under"
+    assert match.line == 2.5
+    assert match.home_odds == 2.10
+    assert match.away_odds == 1.72
+    assert match.home_team == "Home FC"
+    assert match.away_team == "Away FC"
+    assert match.bookmaker == "Orbit"
+    classic = make_market(home_back=2.10, draw_back=3.40, away_back=3.60)
+    classic_match = OrbitAdapter.to_match_odds(classic, side="BACK")
+    assert classic_match.market == "Match Odds"
+    assert classic_match.draw_odds == 3.40

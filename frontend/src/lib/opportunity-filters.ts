@@ -21,7 +21,7 @@ function profitPercentage(opportunity: FilterableOpportunity): number | null {
 
 function displayedOdds(opportunity: FilterableOpportunity): number[] {
   const odds: number[] = []
-  for (const key of ["home", "draw", "away", "back", "lay"] as const) {
+  for (const key of ["home", "draw", "away", "back", "lay", "over", "under"] as const) {
     const leg = opportunity[key]
     if (isRecord(leg) && typeof leg.odds === "number" && Number.isFinite(leg.odds)) {
       odds.push(leg.odds)
@@ -32,7 +32,7 @@ function displayedOdds(opportunity: FilterableOpportunity): number[] {
 
 function displayedBookmakers(opportunity: FilterableOpportunity): string[] {
   const names: string[] = []
-  for (const key of ["home", "draw", "away", "back", "lay"] as const) {
+  for (const key of ["home", "draw", "away", "back", "lay", "over", "under"] as const) {
     const leg = opportunity[key]
     if (isRecord(leg) && typeof leg.bookmaker === "string" && leg.bookmaker.trim()) {
       names.push(leg.bookmaker)

@@ -8,6 +8,7 @@ field named "odds". Live feed.py is not imported or modified.
 import asyncio
 import time
 
+from models.markets import is_over_under_market
 from parsers.orbit.adapter import OrbitAdapter
 from parsers.orbit.client import is_orbit_heartbeat
 from parsers.orbit.parser import OrbitParser
@@ -312,8 +313,12 @@ class OrbitPrematchFeed:
             # BACK 1X2 books have overround >= ~1.0. LAY books sit
             # below 1.0 by design (the exchange spread). Do not apply
             # the BACK overround guard to LAY.
-            if match.side == "BACK" and not _implied_ok(
-                match.home_odds, match.draw_odds, match.away_odds
+            if (
+                match.side == "BACK"
+                and not is_over_under_market(match.market)
+                and not _implied_ok(
+                    match.home_odds, match.draw_odds, match.away_odds
+                )
             ):
                 self.stats["implied_rejected"] += 1
                 if self.stats["implied_rejected"] <= 5 or self.stats["implied_rejected"] % 50 == 0:

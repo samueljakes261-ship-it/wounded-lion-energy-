@@ -15,6 +15,7 @@ from collections import defaultdict
 
 from engine.normalizer import TeamNameNormalizer
 from models.match import MatchOdds
+from models.markets import arb_group_key
 from models.matched_event import MatchedEvent
 
 
@@ -119,7 +120,9 @@ class PrematchMatchFinder:
             if feed != "prematch" or not home or not away:
                 unmatched.append(match)
                 continue
-            buckets.setdefault((feed, sport, home, away), []).append(match)
+            buckets.setdefault(
+                (feed, sport, home, away, arb_group_key(match)), []
+            ).append(match)
 
         clusters = []
         for key, group in buckets.items():
@@ -142,9 +145,15 @@ class PrematchMatchFinder:
 
         by_prefix = defaultdict(list)
         for index, (key, _group, _books) in enumerate(clusters):
-            feed, sport, home, away = key
+            feed, sport, home, away, group = key
             by_prefix[
-                (feed, sport, self.matcher._prefix(home), self.matcher._prefix(away))
+                (
+                    feed,
+                    sport,
+                    self.matcher._prefix(home),
+                    self.matcher._prefix(away),
+                    group,
+                )
             ].append(index)
 
         for indexes in by_prefix.values():

@@ -1,5 +1,6 @@
 from engine.matcher import EventMatcher
 from models.back_lay_opportunity import BackLayOpportunity
+from models.markets import arb_group_key, is_over_under_market
 from models.match import MatchOdds
 
 
@@ -38,6 +39,10 @@ class BackLayDetector:
         "DRAW": "draw_odds",
         "AWAY": "away_odds",
     }
+    OU_OUTCOME_FIELDS = {
+        "OVER": "home_odds",
+        "UNDER": "away_odds",
+    }
 
     def __init__(self):
         self.matcher = EventMatcher()
@@ -55,7 +60,16 @@ class BackLayDetector:
                 if not self.matcher.is_same_event(back, lay):
                     continue
 
-                for outcome, field in self.OUTCOME_FIELDS.items():
+                if arb_group_key(back) != arb_group_key(lay):
+                    continue
+
+                fields = (
+                    self.OU_OUTCOME_FIELDS
+                    if is_over_under_market(back.market)
+                    else self.OUTCOME_FIELDS
+                )
+
+                for outcome, field in fields.items():
 
                     back_odds = getattr(back, field)
                     lay_odds = getattr(lay, field)
