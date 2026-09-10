@@ -12,7 +12,7 @@ API = (
     "&stakeTypes=2"
     "&stakeTypes=3"
     "&stakeTypes=37"
-    "&langId=4"
+    "&langId=2"
     "&partnerId=107"
     "&countryCode=KE"
 )

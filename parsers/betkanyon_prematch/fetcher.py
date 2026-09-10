@@ -40,14 +40,16 @@ HEADERS = {
 }
 
 
+def _iso_utc(moment: datetime) -> str:
+    utc = moment.astimezone(timezone.utc)
+    millis = utc.microsecond // 1000
+    return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{millis:03d}Z"
+
+
 def _date_window():
     now = datetime.now(timezone.utc)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=14)
-    return (
-        start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-        end.strftime("%Y-%m-%dT23:59:59.000Z"),
-    )
+    end = now + timedelta(days=14)
+    return (_iso_utc(now), _iso_utc(end.replace(hour=23, minute=59, second=59, microsecond=0)))
 
 
 def build_prematch_url(tournament_id, path=PATHS[0]):
@@ -65,7 +67,7 @@ def build_prematch_url(tournament_id, path=PATHS[0]):
             ("isTournament", "false"),
             ("eventFilterType", "false"),
             ("includeLiveEvents", "false"),
-            ("langId", "4"),
+            ("langId", "2"),
             ("partnerId", "107"),
             ("countryCode", "KE"),
         ]
