@@ -12,10 +12,7 @@ import asyncio
 import random
 import string
 
-import websockets
-
-from config import ORBIT_COOKIES
-from parsers.orbit.client import ORBIT_WS_BASE, OrbitWebSocketClient
+from parsers.orbit.client import ORBIT_WS_BASE, OrbitWebSocketClient, open_orbit_websocket
 
 
 def _fresh_sockjs_path() -> str:
@@ -30,18 +27,8 @@ class OrbitPrematchWebSocketClient(OrbitWebSocketClient):
     async def connect(self):
         url = _fresh_sockjs_path()
         print("[ORBIT] Connecting websocket...")
-        self.ws = await websockets.connect(
+        self.ws = await open_orbit_websocket(
             url,
-            additional_headers={
-                "Origin": "https://www.orbitxch.com",
-                "Cookie": ORBIT_COOKIES,
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/150.0.0.0 Safari/537.36"
-                ),
-            },
-            open_timeout=15,
             ping_interval=None,
             ping_timeout=None,
         )

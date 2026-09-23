@@ -1,6 +1,9 @@
 import requests
+from requests import HTTPError
 
 from config import ORBIT_COOKIES, ORBIT_CSRF_TOKEN
+from parsers.orbit.access import OrbitAccessError, classify_http_status
+from parsers.orbit.proxy import requests_proxies
 
 BASE_URL = "https://www.orbitxch.com"
 
@@ -29,16 +32,41 @@ def _download_page(page, sports):
         "eventTypeIds": sports
     }
 
-    response = requests.post(
-        url,
-        json=payload,
-        headers=HEADERS,
-        timeout=20,
-    )
+    try:
+        post_kwargs = {
+            "json": payload,
+            "headers": HEADERS,
+            "timeout": 20,
+        }
+        proxies = requests_proxies()
+        if proxies is not None:
+            post_kwargs["proxies"] = proxies
+        response = requests.post(url, **post_kwargs)
+    except requests.RequestException as exc:
+        raise OrbitAccessError(
+            "network",
+            None,
+            type(exc).__name__,
+        ) from exc
 
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except HTTPError as exc:
+        status = getattr(exc.response, "status_code", None)
+        raise OrbitAccessError(
+            classify_http_status(status or 0),
+            status,
+            "rest_highlights",
+        ) from exc
 
-    return response.json()
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise OrbitAccessError(
+            "non_json_body",
+            response.status_code,
+            "rest_highlights",
+        ) from exc
 
 
 def get_all_live_markets():

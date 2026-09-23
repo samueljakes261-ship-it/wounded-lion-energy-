@@ -6,6 +6,11 @@ import string
 import websockets
 
 from config import ORBIT_COOKIES
+from parsers.orbit.proxy import (
+    configured_proxy_url,
+    log_acquisition_mode,
+    reraise_proxy_connect_failure,
+)
 
 # config.ORBIT_WS_URL hardcodes a specific SockJS server-id/session-id
 # pair (".../multiple-market-prices/610/2a9f9a94-.../websocket") that
@@ -41,6 +46,37 @@ def is_orbit_heartbeat(frame) -> bool:
     return isinstance(frame, dict) and frame.get("__orbit_internal__") == "heartbeat"
 
 
+_WS_HEADERS = {
+    "Origin": "https://www.orbitxch.com",
+    "Cookie": ORBIT_COOKIES,
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/150.0.0.0 Safari/537.36"
+    ),
+}
+
+
+async def open_orbit_websocket(url, *, ping_interval, ping_timeout):
+    """Connect the Orbit SockJS URL. Proxy is applied only when configured."""
+    log_acquisition_mode()
+    connect_kwargs = {
+        "additional_headers": _WS_HEADERS,
+        "open_timeout": 15,
+        "ping_interval": ping_interval,
+        "ping_timeout": ping_timeout,
+    }
+    proxy_url = configured_proxy_url()
+    if proxy_url is not None:
+        connect_kwargs["proxy"] = proxy_url
+    try:
+        return await websockets.connect(url, **connect_kwargs)
+    except Exception as exc:
+        if proxy_url is not None:
+            reraise_proxy_connect_failure(exc)
+        raise
+
+
 class OrbitWebSocketClient:
     def __init__(self):
         self.ws = None
@@ -50,18 +86,8 @@ class OrbitWebSocketClient:
 
         print("[ORBIT] Connecting websocket...")
 
-        self.ws = await websockets.connect(
+        self.ws = await open_orbit_websocket(
             url,
-            additional_headers={
-                "Origin": "https://www.orbitxch.com",
-                "Cookie": ORBIT_COOKIES,
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/150.0.0.0 Safari/537.36"
-                ),
-            },
-            open_timeout=15,
             ping_interval=20,
             ping_timeout=20,
         )

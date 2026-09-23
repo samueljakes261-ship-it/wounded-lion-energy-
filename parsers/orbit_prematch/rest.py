@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import ORBIT_COOKIES, ORBIT_CSRF_TOKEN
 from models.markets import TARGET_OU_LINE, parse_ou_line_from_name
+from parsers.orbit.proxy import requests_proxies
 
 BASE_URL = "https://www.orbitxch.com"
 SOCCER_EVENT_TYPE = 1
@@ -138,9 +139,15 @@ def _post_page(tab, page):
     last_error = None
     for attempt in range(3):
         try:
-            response = requests.post(
-                url, json=payload, headers=HEADERS, timeout=REQUEST_TIMEOUT
-            )
+            post_kwargs = {
+                "json": payload,
+                "headers": HEADERS,
+                "timeout": REQUEST_TIMEOUT,
+            }
+            proxies = requests_proxies()
+            if proxies is not None:
+                post_kwargs["proxies"] = proxies
+            response = requests.post(url, **post_kwargs)
             if response.status_code >= 400:
                 body = response.text[:180].replace("\n", " ")
                 raise RuntimeError(f"HTTP {response.status_code} {body}")
