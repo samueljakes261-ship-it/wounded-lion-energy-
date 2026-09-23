@@ -2,6 +2,7 @@ import asyncio
 import json
 import random
 import string
+from urllib.parse import urlparse
 
 import websockets
 
@@ -68,7 +69,26 @@ async def open_orbit_websocket(url, *, ping_interval, ping_timeout):
     }
     proxy_url = configured_proxy_url()
     if proxy_url is not None:
-        connect_kwargs["proxy"] = proxy_url
+        # Disable websockets' default proxy=True (env HTTP_PROXY).
+        # Use the same python-socks from_url path proven on the VPS.
+        connect_kwargs["proxy"] = None
+        dest = urlparse(url)
+        dest_host = dest.hostname
+        dest_port = dest.port or 443
+        try:
+            from python_socks.async_.asyncio import Proxy
+
+            connect_kwargs["sock"] = await Proxy.from_url(proxy_url).connect(
+                dest_host,
+                dest_port,
+            )
+            connect_kwargs["server_hostname"] = dest_host
+        except Exception as exc:
+            print(
+                "[ORBIT] Orbit SOCKS5 proxy connection failed "
+                f"({type(exc).__name__})"
+            )
+            raise ConnectionError("Orbit SOCKS5 proxy connection failed") from exc
     try:
         return await websockets.connect(url, **connect_kwargs)
     except Exception as exc:

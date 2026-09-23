@@ -20,6 +20,8 @@ class OrbitProxyConfigError(ValueError):
 
 def configured_proxy_url() -> str | None:
     raw = (os.environ.get("ORBIT_SOCKS5_PROXY") or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+        raw = raw[1:-1].strip()
     if not raw:
         return None
     parsed = urlparse(raw)
@@ -78,5 +80,8 @@ def reraise_proxy_connect_failure(exc: BaseException) -> None:
         pass
     missing_socks = isinstance(exc, ImportError) and "python-socks" in str(exc)
     if missing_socks or (proxy_types and isinstance(exc, proxy_types)):
-        print("[ORBIT] Orbit SOCKS5 proxy connection failed")
+        print(
+            "[ORBIT] Orbit SOCKS5 proxy connection failed "
+            f"({type(exc).__name__})"
+        )
         raise ConnectionError("Orbit SOCKS5 proxy connection failed") from exc

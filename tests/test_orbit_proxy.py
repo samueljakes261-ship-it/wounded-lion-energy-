@@ -88,9 +88,30 @@ def test_direct_http_does_not_pass_proxies(monkeypatch):
     assert "proxies" not in captured
 
 
-def test_configured_proxy_is_passed_to_websocket(monkeypatch):
+def test_configured_proxy_opens_socks_socket_for_websocket(monkeypatch):
+    import sys
+    import types
+
     monkeypatch.setenv("ORBIT_SOCKS5_PROXY", AUTH_PROXY)
     captured = {}
+    socks_calls = {}
+    fake_sock = object()
+
+    class FakeProxy:
+        @classmethod
+        def from_url(cls, url):
+            socks_calls["url"] = url
+            return cls()
+
+        async def connect(self, host, port):
+            socks_calls["dest"] = (host, port)
+            return fake_sock
+
+    monkeypatch.setitem(
+        sys.modules,
+        "python_socks.async_.asyncio",
+        types.SimpleNamespace(Proxy=FakeProxy),
+    )
 
     async def fake_connect(url, **kwargs):
         captured["url"] = url
@@ -105,9 +126,16 @@ def test_configured_proxy_is_passed_to_websocket(monkeypatch):
             ping_timeout=20,
         )
     )
-    assert captured["proxy"] == AUTH_PROXY
-    assert captured["open_timeout"] == 15
-    assert captured["ping_interval"] == 20
+    assert captured["proxy"] is None
+    assert captured["sock"] is fake_sock
+    assert socks_calls["url"] == AUTH_PROXY
+    assert socks_calls["dest"] == ("www.orbitxch.com", 443)
+    assert captured["server_hostname"] == "www.orbitxch.com"
+
+
+def test_quoted_proxy_env_is_accepted(monkeypatch):
+    monkeypatch.setenv("ORBIT_SOCKS5_PROXY", f'"{AUTH_PROXY}"')
+    assert configured_proxy_url() == AUTH_PROXY
 
 
 def test_direct_websocket_does_not_pass_proxy(monkeypatch):
