@@ -76,12 +76,16 @@ async def open_orbit_websocket(url, *, ping_interval, ping_timeout):
         dest_host = dest.hostname
         dest_port = dest.port or 443
         try:
-            from python_socks.async_.asyncio import Proxy
+            from python_socks.sync import Proxy
 
-            connect_kwargs["sock"] = await Proxy.from_url(proxy_url).connect(
-                dest_host,
-                dest_port,
-            )
+            def _open_socks():
+                return Proxy.from_url(proxy_url).connect(
+                    dest_host,
+                    dest_port,
+                    timeout=15,
+                )
+
+            connect_kwargs["sock"] = await asyncio.to_thread(_open_socks)
             connect_kwargs["server_hostname"] = dest_host
         except Exception as exc:
             print(

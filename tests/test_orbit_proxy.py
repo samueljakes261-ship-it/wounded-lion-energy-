@@ -97,20 +97,20 @@ def test_configured_proxy_opens_socks_socket_for_websocket(monkeypatch):
     socks_calls = {}
     fake_sock = object()
 
-    class FakeProxy:
+    class FakeSyncProxy:
         @classmethod
         def from_url(cls, url):
             socks_calls["url"] = url
             return cls()
 
-        async def connect(self, host, port):
+        def connect(self, host, port, timeout=15):
             socks_calls["dest"] = (host, port)
             return fake_sock
 
     monkeypatch.setitem(
         sys.modules,
-        "python_socks.async_.asyncio",
-        types.SimpleNamespace(Proxy=FakeProxy),
+        "python_socks.sync",
+        types.SimpleNamespace(Proxy=FakeSyncProxy),
     )
 
     async def fake_connect(url, **kwargs):
