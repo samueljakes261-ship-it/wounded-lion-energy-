@@ -10,6 +10,31 @@ _OU_UNDER_SN = {"alt"}
 _TARGET_OU_LINE = 2.5
 _MIN_ODDS = 1.01
 _MAX_ODDS = 100.0
+_HOME_TOKENS = {"1", "w1", "win1", "home", "ev sahibi", "evsahibi", "kazanan1"}
+_DRAW_TOKENS = {"x", "draw", "beraberlik", "berabere"}
+_AWAY_TOKENS = {"2", "w2", "win2", "away", "deplasman", "kazanan2"}
+
+
+def _norm_token(value):
+    return str(value or "").strip().lower().replace("ç", "c")
+
+
+def _selection_side(stake):
+    token = _norm_token(stake.get("SN") or stake.get("N"))
+    if token in _HOME_TOKENS:
+        return "home"
+    if token in _DRAW_TOKENS:
+        return "draw"
+    if token in _AWAY_TOKENS:
+        return "away"
+    sc = stake.get("SC", stake.get("sc"))
+    if sc in (1, "1", 1.0):
+        return "home"
+    if sc in (2, "2", 2.0):
+        return "draw"
+    if sc in (3, "3", 3.0):
+        return "away"
+    return None
 
 
 def _plausible_price(value):
@@ -79,17 +104,13 @@ def parse_json(data) -> List[dict]:
                         continue
 
                     for stake in market.get("Stakes", []):
-
-                        selection = stake.get("SN")
                         price = stake.get("F")
-
-                        if selection == "1":
+                        side = _selection_side(stake)
+                        if side == "home":
                             home_price = price
-
-                        elif selection == "X":
+                        elif side == "draw":
                             draw_price = price
-
-                        elif selection in ("2", "Kazanan2"):
+                        elif side == "away":
                             away_price = price
 
                 if (

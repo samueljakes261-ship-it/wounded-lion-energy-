@@ -95,6 +95,7 @@ class BetkanyonPrematchFeed:
         self._match_odds = []
         self._parsed_event_count = 0
         self._odds_count = 0
+        self.last_cycle_empty = False
         self.last_stats = {
             "tournaments": len(self.tournament_ids),
             "events": 0,
@@ -189,6 +190,17 @@ class BetkanyonPrematchFeed:
             f"{len(self.tournament_ids)} unique_events={len(unique_ids)}"
         )
 
+        this_cycle_empty = not matches
+        self.last_cycle_empty = this_cycle_empty
+        self.last_stats = {
+            "tournaments": len(self.tournament_ids),
+            "payloads": len(fetched_ids),
+            "events": parsed_events,
+            "odds": len(matches),
+            "unique_events": len(unique_ids),
+            "match_odds_markets": match_odds_markets,
+            "complete_1x2": complete_1x2,
+        }
         if matches:
             matches = merge_incomplete_prematch_snapshot(
                 self._match_odds,
@@ -199,15 +211,10 @@ class BetkanyonPrematchFeed:
             self._match_odds = matches
             self._parsed_event_count = parsed_events
             self._odds_count = len(matches)
-            self.last_stats = {
-                "tournaments": len(self.tournament_ids),
-                "payloads": len(fetched_ids),
-                "events": parsed_events,
-                "odds": len(matches),
-                "unique_events": len({(m.home_team, m.away_team) for m in matches}),
-                "match_odds_markets": match_odds_markets,
-                "complete_1x2": complete_1x2,
-            }
+            self.last_stats["odds"] = len(matches)
+            self.last_stats["unique_events"] = len(
+                {(m.home_team, m.away_team) for m in matches}
+            )
         elif self._match_odds:
             print(
                 "[BETKANYON PREMATCH] empty cycle ignored; "
@@ -217,13 +224,6 @@ class BetkanyonPrematchFeed:
             self._match_odds = matches
             self._parsed_event_count = parsed_events
             self._odds_count = 0
-            self.last_stats = {
-                "tournaments": len(self.tournament_ids),
-                "events": parsed_events,
-                "odds": 0,
-                "match_odds_markets": match_odds_markets,
-                "complete_1x2": complete_1x2,
-            }
         return self._match_odds
 
     def get_match_odds(self):

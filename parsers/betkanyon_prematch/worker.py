@@ -118,7 +118,6 @@ class BetkanyonPrematchWorker:
 
                 matches = self._feed.collect_once()
                 elapsed_ms = (time.monotonic() - cycle_start) * 1000
-                self._publish_success(matches, elapsed_ms)
                 stats = self._feed.last_stats
                 remaining = max(0.0, self.poll_interval - (elapsed_ms / 1000.0))
                 print(
@@ -131,7 +130,17 @@ class BetkanyonPrematchWorker:
                 print(
                     f"[BETKANYON PREMATCH] MatchOdds produced: {stats['odds']}"
                 )
-                print("[BETKANYON PREMATCH] state updated")
+                if getattr(self._feed, "last_cycle_empty", False):
+                    consecutive = self._publish_empty(elapsed_ms, stats)
+                    print(
+                        f"[BETKANYON PREMATCH] empty cycle "
+                        f"events_discovered={stats.get('events', 0)} "
+                        f"matchodds_created={stats.get('odds', 0)} "
+                        f"consecutive_empty={consecutive}"
+                    )
+                else:
+                    self._publish_success(matches, elapsed_ms)
+                    print("[BETKANYON PREMATCH] state updated")
                 print(
                     f"[BETKANYON PREMATCH] next refresh in {remaining:.0f}s"
                 )
@@ -174,6 +183,21 @@ class BetkanyonPrematchWorker:
             remaining = self.poll_interval - (time.monotonic() - cycle_start)
             if remaining > 0 and self._stop_event.wait(timeout=remaining):
                 break
+
+    def _publish_empty(self, elapsed_ms, stats=None) -> int:
+        """Record an exception-free empty cycle. Not a healthy success."""
+        stats = stats or {}
+        with self._lock:
+            state = self._state
+            state["error"] = "EmptyAcquisitionError: no events this cycle"
+            state["poll_count"] += 1
+            state["failed_count"] += 1
+            state["consecutive_successes"] = 0
+            state["consecutive_failures"] += 1
+            state["last_processing_ms"] = elapsed_ms
+            state["last_event_count"] = stats.get("events", 0)
+            state["last_odds_count"] = stats.get("odds", 0)
+            return state["consecutive_failures"]
 
     def _publish_success(self, matches, elapsed_ms):
         with self._lock:

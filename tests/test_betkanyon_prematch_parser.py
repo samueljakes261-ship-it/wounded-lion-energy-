@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from parsers.betkanyon.parser import parse_json as parse_live
 from parsers.betkanyon_prematch.adapter import BetkanyonPrematchAdapter
 from parsers.betkanyon_prematch.parser import parse_prematch
+from parsers.betkanyon_prematch.worker import BetkanyonPrematchWorker
 
 
 def _stake(sn, price, locked=False, active=True, extra=None):
@@ -262,7 +263,11 @@ def test_selection_codes_map_home_draw_away_without_sn():
             ],
         )
     )
-    assert parse_live(payload) == []
+    live = parse_live(payload)
+    assert len(live) == 1
+    assert live[0]["home_odds"] == 2.10
+    assert live[0]["draw_odds"] == 3.40
+    assert live[0]["away_odds"] == 3.10
     parsed, _stats = parse_prematch(payload)
     assert len(parsed) == 1
     assert parsed[0]["home_odds"] == 2.10
@@ -407,6 +412,53 @@ def test_malformed_over_under_is_ignored():
     assert [row for row in parsed if row.get("market") == "over_under"] == []
 
 
+def test_live_parser_maps_w1_x_w2():
+    payload = _payload(
+        _event(
+            "Bournemouth",
+            "Everton",
+            [
+                _market(
+                    [
+                        _stake("W1", 1.24),
+                        _stake("X", 4.8),
+                        _stake("W2", 23),
+                    ]
+                )
+            ],
+        )
+    )
+    live = parse_live(payload)
+    match_odds = [row for row in live if row.get("market") != "over_under"]
+    assert len(match_odds) == 1
+    assert match_odds[0]["home_odds"] == 1.24
+    assert match_odds[0]["draw_odds"] == 4.8
+    assert match_odds[0]["away_odds"] == 23
+
+
+def test_live_parser_maps_sc_without_sn():
+    payload = _payload(
+        _event(
+            "Alpha FC",
+            "Beta FC",
+            [
+                _market(
+                    [
+                        {"SC": 1, "F": 2.10, "IsL": False, "IsA": True},
+                        {"SC": 2, "F": 3.40, "IsL": False, "IsA": True},
+                        {"SC": 3, "F": 3.10, "IsL": False, "IsA": True},
+                    ]
+                )
+            ],
+        )
+    )
+    live = parse_live(payload)
+    assert len(live) == 1
+    assert live[0]["home_odds"] == 2.10
+    assert live[0]["draw_odds"] == 3.40
+    assert live[0]["away_odds"] == 3.10
+
+
 def test_live_parser_still_extracts_1x2_and_ou_2_5():
     payload = _payload(
         _event(
@@ -436,3 +488,16 @@ def test_live_parser_still_extracts_1x2_and_ou_2_5():
     assert ou[0]["line"] == 2.5
     assert ou[0]["over_odds"] == 1.95
     assert ou[0]["under_odds"] == 1.85
+
+
+def test_prematch_empty_cycle_is_not_healthy_success():
+    worker = BetkanyonPrematchWorker(poll_interval=90)
+    consecutive = worker._publish_empty(10.0, {"events": 0, "odds": 0})
+    status = worker.get_status()
+    assert consecutive == 1
+    assert status["status"] != "running"
+    assert status["success_count"] == 0
+    assert status["last_update_at"] is None
+    assert status["last_event_count"] == 0
+    assert status["consecutive_failures"] == 1
+    assert "EmptyAcquisition" in (status["error"] or "")

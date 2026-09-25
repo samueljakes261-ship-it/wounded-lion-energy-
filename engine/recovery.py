@@ -10,12 +10,16 @@ import os
 import time
 from pathlib import Path
 
-ENGINE_RESTART_SECONDS = float(os.getenv("ENGINE_RESTART_SECONDS", "600"))
+# 0 disables the old Windows ~10-minute forced worker restart.
+# systemd Restart=always remains the VPS crash-recovery mechanism.
+ENGINE_RESTART_SECONDS = float(os.getenv("ENGINE_RESTART_SECONDS", "0"))
 RESTART_FLAG_FILE = Path("runtime/scheduled_restart.json")
 TRANSIENT_STATUSES = {"STARTING", "RECOVERING", "STOPPED"}
 
 
 def restart_due(started_at: float, now: float | None = None, interval: float = ENGINE_RESTART_SECONDS) -> bool:
+    if interval <= 0:
+        return False
     current = time.monotonic() if now is None else now
     return current - started_at >= interval
 

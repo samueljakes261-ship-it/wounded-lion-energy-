@@ -282,6 +282,18 @@ def test_today_tomorrow_future_merge_by_market_id(monkeypatch):
     assert ids == {"1.1", "1.2", "1.3", "1.4"}
 
 
+def test_live_http_fetcher_does_not_import_zenrows_browser():
+    import parsers.betkanyon.fetcher as live_fetcher
+
+    source = open(live_fetcher.__file__, encoding="utf-8").read()
+    assert "BetkanyonBrowser" not in source
+    assert "ZenRows" not in source or "no ZenRows" in source
+    from parsers.betkanyon.fetcher import BetkanyonFetcher
+
+    instance = BetkanyonFetcher()
+    assert not hasattr(instance, "browser") or instance.session is not None
+
+
 def test_direct_http_fetcher_does_not_import_zenrows_browser():
     import parsers.betkanyon_prematch.fetcher as fetcher_mod
 

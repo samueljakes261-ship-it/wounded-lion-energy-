@@ -16,12 +16,14 @@ from engine.recovery import (
 )
 
 
-def test_scheduled_restart_interval_is_ten_minutes():
+def test_scheduled_restart_is_disabled_by_default():
     from engine.recovery import ENGINE_RESTART_SECONDS
 
-    assert ENGINE_RESTART_SECONDS == 600
-    assert restart_due(0, now=599) is False
-    assert restart_due(0, now=600) is True
+    assert ENGINE_RESTART_SECONDS == 0
+    assert restart_due(0, now=600) is False
+    assert restart_due(0, now=600, interval=0) is False
+    assert restart_due(0, now=599, interval=600) is False
+    assert restart_due(0, now=600, interval=600) is True
 
 
 def test_empty_acquisition_does_not_clear_last_good():
