@@ -1,22 +1,28 @@
-import os
-
-from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
-load_dotenv()
+from credentials.zenrows_provider import connect_with_failover
 
 
 class ZenRowsSession:
+    """
+    Maintains ONE persistent ZenRows Scraping Browser session (one
+    Playwright connection, reused across calls) so callers avoid
+    paying session-initialization overhead repeatedly.
+
+    The active credential is obtained from CredentialManager via
+    connect_with_failover() (credentials/zenrows_provider.py), which
+    automatically fails over to another authorized ZenRows credential
+    if the current one becomes unusable. Callers of this class never
+    need to know which credential is active -- see self.credential_id
+    if you need it for diagnostics (never log the secret itself).
+    """
+
     def __init__(self):
-        self.browser_ws = os.getenv("ZENROWS_BROWSER_WS")
-
-        if not self.browser_ws:
-            raise Exception("ZENROWS_BROWSER_WS missing from .env")
-
         self.playwright = None
         self.browser = None
         self.context = None
         self._page = None
+        self.credential_id = None
 
     def connect(self):
         """
@@ -31,9 +37,7 @@ class ZenRowsSession:
 
         self.playwright = sync_playwright().start()
 
-        self.browser = self.playwright.chromium.connect_over_cdp(
-            self.browser_ws
-        )
+        self.browser, self.credential_id = connect_with_failover(self.playwright)
 
         # Reuse the default browser context if available
         if self.browser.contexts:
@@ -112,3 +116,4 @@ class ZenRowsSession:
         self.context = None
         self.browser = None
         self.playwright = None
+        self.credential_id = None

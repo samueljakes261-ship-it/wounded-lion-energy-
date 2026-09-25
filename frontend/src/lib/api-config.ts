@@ -5,10 +5,9 @@
 // api-config.test.ts) without needing to render the whole dashboard.
 //
 // RULE: the backend URL comes exclusively from VITE_API_URL. There is
-// NO production/tunnel URL hardcoded here -- a stale hardcoded ngrok
-// URL previously left the deployed frontend silently depending on a
-// personal tunnel that could go offline at any time (see
-// frontend/.env.example for the required Vercel configuration).
+// NO production/tunnel URL hardcoded here. Local development falls
+// back to localhost only. Production (https://wounded-lion-energy.vercel.app)
+// must set VITE_API_URL to the public Truehost API origin.
 export const LOCAL_DEV_FALLBACK_API_URL = "http://localhost:8000"
 
 export interface ApiConfigEnv {

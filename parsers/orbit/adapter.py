@@ -1,6 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
+from debug import odds_trace
 from models.match import MatchOdds
+from models.markets import CANONICAL_OU_MARKET, TARGET_OU_LINE, parse_ou_line_from_name
 
 
 class OrbitAdapter:
@@ -96,6 +98,22 @@ class OrbitAdapter:
         return home, remaining[0], away
 
     @staticmethod
+    def _split_over_under(market):
+        """Identify Over/Under runners by name. Requires exactly two runners."""
+        if len(market.runners) != 2:
+            return None, None
+        over = under = None
+        for runner in market.runners:
+            name = (runner.name or "").strip().lower()
+            if name.startswith("over") or name in {"üst", "ust"}:
+                over = runner
+            elif name.startswith("under") or name == "alt":
+                under = runner
+        if over is None or under is None or over is under:
+            return None, None
+        return over, under
+
+    @staticmethod
     def to_match_odds(market, side="BACK"):
         """
         Build one MatchOdds for one side (BACK or LAY) of this market.
@@ -113,44 +131,79 @@ class OrbitAdapter:
             raise ValueError(f"Unknown Orbit side: {side!r}")
 
         home, draw, away = OrbitAdapter._split_home_draw_away(market)
+        if home is not None:
+            home_odds = OrbitAdapter._top_price(home, side)
+            draw_odds = OrbitAdapter._top_price(draw, side)
+            away_odds = OrbitAdapter._top_price(away, side)
+            if home_odds is None or draw_odds is None or away_odds is None:
+                return None
+            odds_trace.record(
+                "PARSED",
+                "Orbit",
+                market.home_team,
+                market.away_team,
+                market.market_name,
+                side,
+                home_odds,
+                draw_odds,
+                away_odds,
+            )
+            return MatchOdds(
+                bookmaker="Orbit",
+                competition=market.competition,
+                sport=market.sport,
+                market=market.market_name,
+                home_team=market.home_team,
+                away_team=market.away_team,
+                home_odds=home_odds,
+                draw_odds=draw_odds,
+                away_odds=away_odds,
+                start_time=datetime.fromtimestamp(
+                    market.start_time / 1000,
+                    tz=timezone.utc,
+                ),
+                collected_at=datetime.now(timezone.utc),
+                side=side,
+            )
 
-        if home is None:
+        over, under = OrbitAdapter._split_over_under(market)
+        if over is None:
             return None
-
-        home_odds = OrbitAdapter._top_price(home, side)
-        draw_odds = OrbitAdapter._top_price(draw, side)
-        away_odds = OrbitAdapter._top_price(away, side)
-
-        if home_odds is None or draw_odds is None or away_odds is None:
+        line = parse_ou_line_from_name(market.market_name)
+        if line != TARGET_OU_LINE:
             return None
-
+        over_odds = OrbitAdapter._top_price(over, side)
+        under_odds = OrbitAdapter._top_price(under, side)
+        if over_odds is None or under_odds is None:
+            return None
+        odds_trace.record(
+            "PARSED",
+            "Orbit",
+            market.home_team,
+            market.away_team,
+            CANONICAL_OU_MARKET,
+            side,
+            over_odds,
+            0.0,
+            under_odds,
+        )
         return MatchOdds(
-
             bookmaker="Orbit",
-
             competition=market.competition,
-
             sport=market.sport,
-
-            market=market.market_name,
-
+            market=CANONICAL_OU_MARKET,
             home_team=market.home_team,
-
             away_team=market.away_team,
-
-            home_odds=home_odds,
-
-            draw_odds=draw_odds,
-
-            away_odds=away_odds,
-
+            home_odds=over_odds,
+            draw_odds=0.0,
+            away_odds=under_odds,
             start_time=datetime.fromtimestamp(
-                market.start_time / 1000
+                market.start_time / 1000,
+                tz=timezone.utc,
             ),
-
-            collected_at=datetime.now(),
-
+            collected_at=datetime.now(timezone.utc),
             side=side,
+            line=line,
         )
 
     @staticmethod
