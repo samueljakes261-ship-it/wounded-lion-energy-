@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from collector import (
+    get_cached_betfair_opportunities,
     get_cached_opportunities,
     get_cached_prematch_opportunities,
     get_collector_status,
@@ -21,11 +22,17 @@ app.add_middleware(
         "https://woundedlionenergy.vercel.app",
         "https://wounded-lion-energy.vercel.app",
         "http://localhost:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:8081",
         # Local frontend dev server (vite dev), for local end-to-end
         # verification -- see frontend/.env.local (VITE_API_URL).
         "http://localhost:5173",
         "http://localhost:3000",
     ],
+    # Vite moves to 8081/8082/... when 8080 is already taken. Keep
+    # loopback origins working without allowing arbitrary websites.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,8 +64,16 @@ def opportunities(mode: str = "live"):
     """
     normalized = (mode or "live").strip().lower()
     if normalized in ("prematch", "pre-match", "mac-oncesi", "maç öncesi"):
-        return get_cached_prematch_opportunities()
-    return get_cached_opportunities()
+        base = get_cached_prematch_opportunities()
+        betfair = get_cached_betfair_opportunities(live=False)
+    else:
+        base = get_cached_opportunities()
+        betfair = get_cached_betfair_opportunities(live=True)
+    if not betfair:
+        return base
+    if not isinstance(base, list):
+        return base
+    return list(base) + list(betfair)
 
 
 @app.get("/status")

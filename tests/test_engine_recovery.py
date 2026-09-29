@@ -81,13 +81,15 @@ async def test_repeated_restart_stops_before_start(monkeypatch):
     monkeypatch.setattr(run_engine, "stop_orbit_prematch_worker", stop_async)
     monkeypatch.setattr(run_engine, "stop_kolay90_prematch_worker", stop_sync)
     monkeypatch.setattr(run_engine, "stop_onwin_prematch_worker", stop_sync)
+    monkeypatch.setattr(run_engine, "stop_betfair_worker", stop_sync)
     monkeypatch.setattr(run_engine, "start_workers", start)
     monkeypatch.setattr(run_engine, "start_prematch_workers", start)
+    monkeypatch.setattr(run_engine, "start_betfair_worker", start)
     monkeypatch.setattr(run_engine, "is_prematch_only", lambda: True)
 
     await run_engine.restart_workers_gracefully()
     await run_engine.restart_workers_gracefully()
-    assert calls.count("start") == 2
+    assert calls.count("start") == 4
     assert calls[0] == "stop"
     assert calls[-1] == "start"
 

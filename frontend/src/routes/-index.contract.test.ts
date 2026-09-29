@@ -130,4 +130,13 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     expect(i18n).toMatch(/backVsBackOpportunities: "BACK vs BACK FIRSATLARI"/)
     expect(i18n).toMatch(/backVsBackOpportunities: "BACK vs BACK OPPORTUNITIES"/)
   })
+
+  it("renders Betfair opportunities in a dedicated section using isLive", () => {
+    expect(SOURCE).toMatch(/function BetfairCard/)
+    expect(SOURCE).toMatch(/data-testid="betfair-opportunities"/)
+    expect(SOURCE).toMatch(/filterBetfairOpportunities/)
+    expect(SOURCE).toMatch(/isBetfairOpportunity/)
+    expect(SOURCE).toMatch(/\["orbit", "betkanyon", "onwin", "betfair"\]/)
+    expect(SOURCE).toMatch(/betfairValueOpportunities/)
+  })
 })

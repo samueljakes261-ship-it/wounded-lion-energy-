@@ -46,6 +46,7 @@ async def test_cancelling_main_stops_all_three_workers_cleanly(monkeypatch):
 
     monkeypatch.setattr(run_engine, "start_workers", fake_start_workers)
     monkeypatch.setattr(run_engine, "start_prematch_workers", lambda: None)
+    monkeypatch.setattr(run_engine, "start_betfair_worker", lambda: None)
     monkeypatch.setattr(run_engine, "stop_onwin_worker", fake_stop_onwin)
     monkeypatch.setattr(run_engine, "stop_betkanyon_worker", fake_stop_betkanyon)
     monkeypatch.setattr(run_engine, "stop_orbit_worker", fake_stop_orbit)
@@ -63,6 +64,7 @@ async def test_cancelling_main_stops_all_three_workers_cleanly(monkeypatch):
         "stop_onwin_prematch_worker",
         lambda: stop_onwin_prematch.__setitem__("n", stop_onwin_prematch["n"] + 1),
     )
+    monkeypatch.setattr(run_engine, "stop_betfair_worker", lambda: None)
     monkeypatch.setattr(run_engine, "collect_opportunities", fake_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 
@@ -109,6 +111,7 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
 
     monkeypatch.setattr(run_engine, "start_workers", lambda: None)
     monkeypatch.setattr(run_engine, "start_prematch_workers", lambda: None)
+    monkeypatch.setattr(run_engine, "start_betfair_worker", lambda: None)
     monkeypatch.setattr(
         run_engine, "stop_onwin_worker",
         lambda: calls.__setitem__("stop_onwin", calls["stop_onwin"] + 1),
@@ -125,6 +128,7 @@ async def test_engine_error_in_one_tick_does_not_crash_the_loop(monkeypatch):
 
     monkeypatch.setattr(run_engine, "stop_orbit_prematch_worker", fake_stop_orbit_prematch)
     monkeypatch.setattr(run_engine, "stop_onwin_prematch_worker", lambda: None)
+    monkeypatch.setattr(run_engine, "stop_betfair_worker", lambda: None)
     monkeypatch.setattr(run_engine, "collect_opportunities", flaky_collect_opportunities)
     monkeypatch.setattr(run_engine, "ENGINE_TICK_SECONDS", 0.01)
 

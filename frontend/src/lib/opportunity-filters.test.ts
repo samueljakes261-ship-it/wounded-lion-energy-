@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   bookmakersFromOpportunities,
+  bookmakersFromStatus,
   filterOpportunities,
   keepLastGoodSnapshot,
   parseOptionalNumber,
@@ -116,6 +117,19 @@ describe("opportunity display filters", () => {
       overUnder,
     ])
     expect(bookmakersFromOpportunities([overUnder])).toEqual(["Betkanyon", "Orbit"])
+  })
+
+  it("does not treat Betfair as a Kenyan/Turkish bookmaker chip", () => {
+    expect(
+      bookmakersFromStatus(
+        {
+          orbit: { name: "Orbit" },
+          betfair: { name: "Betfair" },
+          orbit_prematch: { name: "Orbit Prematch" },
+        },
+        "live"
+      )
+    ).toEqual(["Orbit"])
   })
 })
 

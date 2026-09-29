@@ -37,6 +37,12 @@ from engine.recovery import (
     should_replace_snapshot,
 )
 from parsers.kolay90_prematch.worker import Kolay90PrematchWorker
+from betfair.config import (
+    CACHE_FILE as BETFAIR_CACHE_FILE,
+    POLL_INTERVAL_SECONDS as BETFAIR_POLL_INTERVAL_SECONDS,
+    STALE_AFTER_SECONDS as BETFAIR_STALE_AFTER_SECONDS,
+)
+from betfair.worker import BetfairValuebetsWorker
 from prematch.mode import engine_mode_label, is_prematch_only
 from prematch.pipeline import (
     PREMATCH_CACHE_FILE,
@@ -763,6 +769,40 @@ def stop_kolay90_prematch_worker():
         _kolay90_prematch_worker = None
 
 
+# ============================================================
+# BETFAIR VALUEBETS FEED (external opportunity snapshot; not a
+# Kenyan bookmaker and not part of the Turkish 1X2 pipeline)
+# ============================================================
+
+_betfair_worker: BetfairValuebetsWorker | None = None
+
+
+def _get_betfair_worker() -> BetfairValuebetsWorker:
+    global _betfair_worker
+    if _betfair_worker is None:
+        _betfair_worker = BetfairValuebetsWorker()
+        _betfair_worker.start()
+    return _betfair_worker
+
+
+def start_betfair_worker():
+    """Start the Betfair valuebets poller independently of bookmakers."""
+    try:
+        _get_betfair_worker()
+    except Exception as exc:
+        print(
+            f"[BETFAIR] Failed to start worker "
+            f"({type(exc).__name__}: {exc}). Other collectors continue."
+        )
+
+
+def stop_betfair_worker():
+    global _betfair_worker
+    if _betfair_worker is not None:
+        _betfair_worker.stop()
+        _betfair_worker = None
+
+
 def start_prematch_workers():
     """Start prematch workers independently of live start_workers()."""
     for name, starter in (
@@ -819,6 +859,7 @@ _worker_restart_at = {
     "orbit_prematch": 0.0,
     "onwin_prematch": 0.0,
     "kolay90_prematch": 0.0,
+    "betfair": 0.0,
 }
 
 
@@ -915,6 +956,9 @@ async def _ensure_workers_alive():
             stop_kolay90_prematch_worker,
             _get_kolay90_prematch_worker,
         )
+
+    if _betfair_worker is not None and not _worker_alive(_betfair_worker._thread):
+        await _restart_worker("betfair", stop_betfair_worker, _get_betfair_worker)
 
 
 # ============================================================
@@ -2014,6 +2058,46 @@ def _collector_snapshot(name, raw_status, age, alive, status_dict, now_dt, max_a
     }
 
 
+def _betfair_collector_snapshot(now_dt, now: float) -> dict:
+    if _betfair_worker is None:
+        status_dict = {
+            "status": "stopped",
+            "error": None,
+            "last_update_at": None,
+            "last_attempt_at": None,
+            "consecutive_failures": 0,
+            "consecutive_successes": 0,
+            "reconnect_count": 0,
+            "event_count": 0,
+            "live_records": 0,
+            "prematch_records": 0,
+            "unknown_records": 0,
+            "poll_interval": BETFAIR_POLL_INTERVAL_SECONDS,
+        }
+        alive = False
+    else:
+        status_dict = _betfair_worker.get_status()
+        alive = _worker_alive(_betfair_worker._thread)
+    last = status_dict.get("last_update_at")
+    age = (now - last) if last else None
+    snapshot = _collector_snapshot(
+        "Betfair",
+        status_dict.get("status"),
+        age,
+        alive,
+        status_dict,
+        now_dt,
+        max_age=BETFAIR_STALE_AFTER_SECONDS,
+    )
+    snapshot["liveRecords"] = status_dict.get("live_records", 0) or 0
+    snapshot["prematchRecords"] = status_dict.get("prematch_records", 0) or 0
+    snapshot["unknownRecords"] = status_dict.get("unknown_records", 0) or 0
+    snapshot["pollInterval"] = (
+        status_dict.get("poll_interval") or BETFAIR_POLL_INTERVAL_SECONDS
+    )
+    return snapshot
+
+
 def _write_status(
     onwin_status, betkanyon_status, orbit_status,
     onwin_age, betkanyon_age, orbit_age,
@@ -2138,6 +2222,7 @@ def _write_status(
                 now_dt,
                 max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
             ),
+            "betfair": _betfair_collector_snapshot(now_dt, now),
         },
     }
 
@@ -2167,6 +2252,47 @@ def get_cached_prematch_opportunities():
     if not PREMATCH_CACHE_FILE.exists():
         return []
     return json.loads(PREMATCH_CACHE_FILE.read_text(encoding="utf-8"))
+
+
+def get_cached_betfair_opportunities(live: bool | None = None):
+    """
+    Latest Betfair valuebets snapshot for /opportunities.
+
+    `live=True` returns only is_live == true.
+    `live=False` returns only is_live == false.
+    UNKNOWN records are never placed in either bucket.
+    """
+    if not BETFAIR_CACHE_FILE.exists():
+        return []
+    try:
+        payload = json.loads(BETFAIR_CACHE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    if isinstance(payload, list):
+        items = payload
+        last_success = None
+    elif isinstance(payload, dict):
+        items = payload.get("opportunities") or []
+        last_success = payload.get("lastSuccessAt")
+    else:
+        return []
+
+    if last_success is not None:
+        try:
+            if (time.time() - float(last_success)) > BETFAIR_STALE_AFTER_SECONDS:
+                return []
+        except (TypeError, ValueError):
+            return []
+
+    if not isinstance(items, list):
+        return []
+
+    if live is True:
+        return [item for item in items if isinstance(item, dict) and item.get("isLive") is True]
+    if live is False:
+        return [item for item in items if isinstance(item, dict) and item.get("isLive") is False]
+    return [item for item in items if isinstance(item, dict)]
 
 
 def get_collector_status():
@@ -2206,6 +2332,7 @@ def get_collector_status():
                     ("orbit_prematch", "Orbit Prematch"),
                     ("onwin_prematch", "OnWin Prematch"),
                     ("kolay90_prematch", "Kolay90 Prematch"),
+                    ("betfair", "Betfair"),
                 )
             },
         }

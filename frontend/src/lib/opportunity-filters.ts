@@ -74,6 +74,7 @@ export function bookmakersFromStatus(
       ? Object.keys(collectors).filter((key) => key.endsWith("_prematch"))
       : Object.keys(collectors).filter((key) => !key.endsWith("_prematch"))
   const names = keys
+    .filter((key) => key !== "betfair")
     .map((key) => collectors[key]?.name || "")
     .map((name) => name.replace(/\s+Prematch$/i, "").trim())
     .filter(Boolean)
