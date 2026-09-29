@@ -1,0 +1,726 @@
+{
+  "data": [
+    {
+      "home_team": "Man Utd",
+      "game_id": "13090",
+      "match_id": "11072156",
+      "away_team": "Ipswich",
+      "start_time": "2026-08-30 18:30:00",
+      "competition_name": "Premier League",
+      "category": "England",
+      "parent_match_id": "72221226",
+      "side_bets": "84",
+      "home_odd": "1.38",
+      "neutral_odd": "5.60",
+      "away_odd": "7.60",
+      "competition_id": "222",
+      "sport_id": "14",
+      "sport_name": "Soccer",
+      "is_esport": false,
+      "is_srl": false,
+      "provider": "sr",
+      "odds": [
+        {
+          "sub_type_id": "1",
+          "name": "1X2",
+          "odds": [
+            {
+              "display": "1",
+              "odd_key": "Man Utd",
+              "odd_def": "{$competitor1}",
+              "odd_value": "1.38",
+              "special_bet_value": "",
+              "outcome_id": "1",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "X",
+              "odd_key": "draw",
+              "odd_def": "draw",
+              "odd_value": "5.60",
+              "special_bet_value": "",
+              "outcome_id": "2",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "2",
+              "odd_key": "Ipswich",
+              "odd_def": "{$competitor2}",
+              "odd_value": "7.60",
+              "special_bet_value": "",
+              "outcome_id": "3",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "home_team": "Real Madrid",
+      "game_id": "79384",
+      "match_id": "11479956",
+      "away_team": "Malaga",
+      "start_time": "2026-08-30 18:00:00",
+      "competition_name": "LaLiga",
+      "category": "Spain",
+      "parent_match_id": "72478520",
+      "side_bets": "82",
+      "home_odd": "1.10",
+      "neutral_odd": "12.00",
+      "away_odd": "25.00",
+      "competition_id": "14482",
+      "sport_id": "14",
+      "sport_name": "Soccer",
+      "is_esport": false,
+      "is_srl": false,
+      "provider": "sr",
+      "odds": [
+        {
+          "sub_type_id": "1",
+          "name": "1X2",
+          "odds": [
+            {
+              "display": "1",
+              "odd_key": "Real Madrid",
+              "odd_def": "{$competitor1}",
+              "odd_value": "1.10",
+              "special_bet_value": "",
+              "outcome_id": "1",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "X",
+              "odd_key": "draw",
+              "odd_def": "draw",
+              "odd_value": "12.00",
+              "special_bet_value": "",
+              "outcome_id": "2",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "2",
+              "odd_key": "Malaga",
+              "odd_def": "{$competitor2}",
+              "odd_value": "25.00",
+              "special_bet_value": "",
+              "outcome_id": "3",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "home_team": "Napoli",
+      "game_id": "26726",
+      "match_id": "10999606",
+      "away_team": "Como",
+      "start_time": "2026-08-30 19:30:00",
+      "competition_name": "Serie A",
+      "category": "Italy",
+      "parent_match_id": "71945222",
+      "side_bets": "84",
+      "home_odd": "2.55",
+      "neutral_odd": "3.10",
+      "away_odd": "3.10",
+      "competition_id": "182",
+      "sport_id": "14",
+      "sport_name": "Soccer",
+      "is_esport": false,
+      "is_srl": false,
+      "provider": "sr",
+      "odds": [
+        {
+          "sub_type_id": "1",
+          "name": "1X2",
+          "odds": [
+            {
+              "display": "1",
+              "odd_key": "Napoli",
+              "odd_def": "{$competitor1}",
+              "odd_value": "2.55",
+              "special_bet_value": "",
+              "outcome_id": "1",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "X",
+              "odd_key": "draw",
+              "odd_def": "draw",
+              "odd_value": "3.10",
+              "special_bet_value": "",
+              "outcome_id": "2",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "2",
+              "odd_key": "Como",
+              "odd_def": "{$competitor2}",
+              "odd_value": "3.10",
+              "special_bet_value": "",
+              "outcome_id": "3",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "home_team": "Cagliari",
+      "game_id": "66860",
+      "match_id": "10999601",
+      "away_team": "Inter Milan",
+      "start_time": "2026-08-30 21:45:00",
+      "competition_name": "Serie A",
+      "category": "Italy",
+      "parent_match_id": "71945208",
+      "side_bets": "84",
+      "home_odd": "8.20",
+      "neutral_odd": "5.00",
+      "away_odd": "1.41",
+      "competition_id": "182",
+      "sport_id": "14",
+      "sport_name": "Soccer",
+      "is_esport": false,
+      "is_srl": false,
+      "provider": "sr",
+      "odds": [
+        {
+          "sub_type_id": "1",
+          "name": "1X2",
+          "odds": [
+            {
+              "display": "1",
+              "odd_key": "Cagliari",
+              "odd_def": "{$competitor1}",
+              "odd_value": "8.20",
+              "special_bet_value": "",
+              "outcome_id": "1",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "X",
+              "odd_key": "draw",
+              "odd_def": "draw",
+              "odd_value": "5.00",
+              "special_bet_value": "",
+              "outcome_id": "2",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            },
+            {
+              "display": "2",
+              "odd_key": "Inter Milan",
+              "odd_def": "{$competitor2}",
+              "odd_value": "1.41",
+              "special_bet_value": "",
+              "outcome_id": "3",
+              "parsed_special_bet_value": {
+                "": ""
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "total": "832",
+    "tags": [
+      {
+        "tag_id": -1,
+        "tag_title": "Top Countries & Leagues",
+        "tag_group_id": -1,
+        "tag_group_type_reference": "",
+        "tag_group_type_id": -1,
+        "tag_group_type": "",
+        "country": null,
+        "status": 1
+      },
+      {
+        "tag_id": "40",
+        "tag_title": "Europa League",
+        "tag_group_id": "59",
+        "tag_group_type_reference": "19488",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "International Clubs",
+        "status": "1"
+      },
+      {
+        "tag_id": "39",
+        "tag_title": "UEFA Champions League",
+        "tag_group_id": "58",
+        "tag_group_type_reference": "19508",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "International Clubs",
+        "status": "1"
+      },
+      {
+        "tag_id": "38",
+        "tag_title": "Russian Premier League",
+        "tag_group_id": "57",
+        "tag_group_type_reference": "249",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "Russia",
+        "status": "1"
+      },
+      {
+        "tag_id": "37",
+        "tag_title": "Primeira Liga",
+        "tag_group_id": "56",
+        "tag_group_type_reference": "195",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "Portugal",
+        "status": "1"
+      },
+      {
+        "tag_id": "36",
+        "tag_title": "Championship",
+        "tag_group_id": "55",
+        "tag_group_type_reference": "167",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "England",
+        "status": "1"
+      },
+      {
+        "tag_id": "35",
+        "tag_title": "Serie A",
+        "tag_group_id": "54",
+        "tag_group_type_reference": "182",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "Italy",
+        "status": "1"
+      },
+      {
+        "tag_id": "34",
+        "tag_title": "Bundesliga",
+        "tag_group_id": "53",
+        "tag_group_type_reference": "214",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "Germany",
+        "status": "1"
+      },
+      {
+        "tag_id": "33",
+        "tag_title": "La Liga",
+        "tag_group_id": "52",
+        "tag_group_type_reference": "14482",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "Spain",
+        "status": "1"
+      },
+      {
+        "tag_id": "32",
+        "tag_title": "Ligue 1",
+        "tag_group_id": "51",
+        "tag_group_type_reference": "209",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "France",
+        "status": "1"
+      },
+      {
+        "tag_id": "31",
+        "tag_title": "Premier League",
+        "tag_group_id": "50",
+        "tag_group_type_reference": "222",
+        "tag_group_type_id": "1",
+        "tag_group_type": "competition",
+        "country": "England",
+        "status": "1"
+      }
+    ],
+    "limit": "5",
+    "current_page": 1,
+    "filters": [
+      {
+        "name": "1x2 / Winner",
+        "sub_type_id": "1",
+        "sport_ids": [
+          "14",
+          "28",
+          "29",
+          "30",
+          "33",
+          "35",
+          "37",
+          "39",
+          "41",
+          "44",
+          "56"
+        ],
+        "odd_keys": [
+          "1",
+          "X",
+          "2"
+        ]
+      },
+      {
+        "name": "Double Chance",
+        "sub_type_id": "10",
+        "sport_ids": [
+          "14",
+          "29",
+          "33",
+          "41",
+          "56"
+        ],
+        "odd_keys": [
+          "1X",
+          "12",
+          "X2"
+        ]
+      },
+      {
+        "name": "1st Half 1x2",
+        "sub_type_id": "60",
+        "sport_ids": [
+          "14",
+          "30"
+        ],
+        "odd_keys": [
+          "1",
+          "X",
+          "2"
+        ]
+      },
+      {
+        "name": "Both Teams To Score",
+        "sub_type_id": "29",
+        "sport_ids": [
+          "14"
+        ],
+        "odd_keys": [
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "name": "1st Set Winner",
+        "sub_type_id": "202",
+        "sport_ids": [
+          "28"
+        ],
+        "odd_keys": [
+          "1",
+          "2"
+        ]
+      }
+    ],
+    "sports": [
+      {
+        "sport_id": -1,
+        "sport_name": "All Sports"
+      },
+      {
+        "sport_id": "14",
+        "sport_name": "Soccer"
+      },
+      {
+        "sport_id": "28",
+        "sport_name": "Tennis"
+      },
+      {
+        "sport_id": "29",
+        "sport_name": "Ice Hockey"
+      },
+      {
+        "sport_id": "30",
+        "sport_name": "Basketball"
+      },
+      {
+        "sport_id": "31",
+        "sport_name": "Baseball"
+      },
+      {
+        "sport_id": "33",
+        "sport_name": "Handball"
+      },
+      {
+        "sport_id": "35",
+        "sport_name": "Volleyball"
+      },
+      {
+        "sport_id": "37",
+        "sport_name": "Cricket"
+      },
+      {
+        "sport_id": "39",
+        "sport_name": "Boxing"
+      },
+      {
+        "sport_id": "40",
+        "sport_name": "Futsal"
+      },
+      {
+        "sport_id": "41",
+        "sport_name": "Rugby"
+      },
+      {
+        "sport_id": "43",
+        "sport_name": "Aussie Rules"
+      },
+      {
+        "sport_id": "44",
+        "sport_name": "Darts"
+      },
+      {
+        "sport_id": "45",
+        "sport_name": "Table Tennis"
+      },
+      {
+        "sport_id": "56",
+        "sport_name": "American Football"
+      },
+      {
+        "sport_id": "105",
+        "sport_name": "eSoccer"
+      },
+      {
+        "sport_id": "132",
+        "sport_name": "ESport Counter-Strike"
+      },
+      {
+        "sport_id": "134",
+        "sport_name": "ESport League of Legends"
+      },
+      {
+        "sport_id": "139",
+        "sport_name": "Zoom Soccer"
+      },
+      {
+        "sport_id": "142",
+        "sport_name": "ESport Honor of Kings"
+      }
+    ],
+    "tabs": [
+      {
+        "id": -1,
+        "date": "2026-08-30",
+        "name": "Today's Highlights",
+        "period_start": "2026-08-30 04:00:00",
+        "period_end": "2026-08-31 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": -2,
+        "date": "2026-08-30",
+        "name": "\ud83d\udd25 Next 48hrs",
+        "period_start": "2026-08-30 04:00:00",
+        "period_end": "2026-10-29 04:01:00",
+        "prioritized": false
+      },
+      {
+        "id": 1,
+        "date": "2026-08-31",
+        "name": "Tomorrow",
+        "period_start": "2026-08-31 04:00:00",
+        "period_end": "2026-09-01 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 2,
+        "date": "2026-09-01",
+        "name": "Tuesday",
+        "period_start": "2026-09-01 04:00:00",
+        "period_end": "2026-09-02 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 3,
+        "date": "2026-09-02",
+        "name": "Wednesday",
+        "period_start": "2026-09-02 04:00:00",
+        "period_end": "2026-09-03 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 4,
+        "date": "2026-09-03",
+        "name": "Thursday",
+        "period_start": "2026-09-03 04:00:00",
+        "period_end": "2026-09-04 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 5,
+        "date": "2026-09-04",
+        "name": "Friday",
+        "period_start": "2026-09-04 04:00:00",
+        "period_end": "2026-09-05 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 6,
+        "date": "2026-09-05",
+        "name": "Saturday",
+        "period_start": "2026-09-05 04:00:00",
+        "period_end": "2026-09-06 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 7,
+        "date": "2026-09-06",
+        "name": "Sunday",
+        "period_start": "2026-09-06 04:00:00",
+        "period_end": "2026-09-07 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 8,
+        "date": "2026-09-07",
+        "name": "Next Week",
+        "period_start": "2026-09-07 04:00:00",
+        "period_end": "2026-10-29 04:01:00",
+        "prioritized": false
+      }
+    ],
+    "periods": [
+      {
+        "id": -1,
+        "date": "2026-08-30",
+        "name": "Today",
+        "period_start": "2026-08-30 04:00:00",
+        "period_end": "2026-08-31 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": -2,
+        "date": "2026-08-30",
+        "name": "Next 48hrs",
+        "period_start": "2026-08-30 04:00:00",
+        "period_end": "2026-09-01 04:01:00",
+        "prioritized": false
+      },
+      {
+        "id": 1,
+        "date": "2026-08-31",
+        "name": "Tomorrow",
+        "period_start": "2026-08-31 04:00:00",
+        "period_end": "2026-09-01 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 2,
+        "date": "2026-09-01",
+        "name": "Tuesday",
+        "period_start": "2026-09-01 04:00:00",
+        "period_end": "2026-09-02 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 3,
+        "date": "2026-09-02",
+        "name": "Wednesday",
+        "period_start": "2026-09-02 04:00:00",
+        "period_end": "2026-09-03 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 4,
+        "date": "2026-09-03",
+        "name": "Thursday",
+        "period_start": "2026-09-03 04:00:00",
+        "period_end": "2026-09-04 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 5,
+        "date": "2026-09-04",
+        "name": "Friday",
+        "period_start": "2026-09-04 04:00:00",
+        "period_end": "2026-09-05 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 6,
+        "date": "2026-09-05",
+        "name": "Saturday",
+        "period_start": "2026-09-05 04:00:00",
+        "period_end": "2026-09-06 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 7,
+        "date": "2026-09-06",
+        "name": "Sunday",
+        "period_start": "2026-09-06 04:00:00",
+        "period_end": "2026-09-07 04:01:00",
+        "prioritized": true
+      },
+      {
+        "id": 8,
+        "date": "2026-09-07",
+        "name": "Next Week",
+        "period_start": "2026-09-07 04:00:00",
+        "period_end": "2026-12-28 04:01:00",
+        "prioritized": false
+      },
+      {
+        "id": 9,
+        "date": "2026-08-30",
+        "name": "All",
+        "period_start": "2026-08-30 04:00:00",
+        "period_end": "2026-12-28 04:01:00",
+        "prioritized": false
+      }
+    ],
+    "sort_options": [
+      {
+        "id": 1,
+        "name": "Highlights"
+      },
+      {
+        "id": 2,
+        "name": "Start time"
+      },
+      {
+        "id": 3,
+        "name": "Top leagues"
+      }
+    ],
+    "current_tab": [
+      {
+        "id": -2,
+        "date": "2026-08-30",
+        "name": "\ud83d\udd25 Next 48hrs",
+        "period_start": "2026-08-30 04:00:00",
+        "period_end": "2026-10-29 04:01:00",
+        "prioritized": false
+      }
+    ],
+    "is_boosted": false,
+    "is_esports": false,
+    "is_srl": false
+  },
+  "time_elapsed_secs": 0.017853021621704
+}

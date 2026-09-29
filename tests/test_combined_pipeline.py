@@ -1,8 +1,8 @@
 """
 Deterministic tests proving the existing engine (normalizer -> matcher
 -> MatchFinder -> BestOddsSelector -> ArbitrageDetector ->
-StakeCalculator) correctly consumes MatchOdds coming from BOTH OnWin
-and BetKanyon at once.
+StakeCalculator) correctly consumes MatchOdds coming from OnWin,
+BetKanyon, AND Orbit (BACK/LAY) at once.
 
 These tests build MatchOdds fixtures directly rather than going through
 either bookmaker's live feed -- the point is to prove the *combination*
@@ -15,7 +15,7 @@ during a live run.
 from datetime import datetime, timezone
 
 from engine.arbitrage_detector import ArbitrageDetector
-from engine.best_odds_selector import BestOddsSelector
+from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
 from engine.match_finder import MatchFinder
 from engine.stake_calculator import StakeCalculator
 from models.match import MatchOdds
@@ -56,6 +56,23 @@ def betkanyon_match(home, away, home_odds, draw_odds, away_odds, competition="Te
     )
 
 
+def orbit_match(home, away, home_odds, draw_odds, away_odds, side="BACK", competition="Test League"):
+    return MatchOdds(
+        bookmaker="Orbit",
+        competition=competition,
+        sport="football",
+        market="Match Odds",
+        home_team=home,
+        away_team=away,
+        home_odds=home_odds,
+        draw_odds=draw_odds,
+        away_odds=away_odds,
+        start_time=NOW,
+        collected_at=NOW,
+        side=side,
+    )
+
+
 def run_pipeline(matches, bankroll=1000):
     finder = MatchFinder()
     selector = BestOddsSelector()
@@ -65,7 +82,12 @@ def run_pipeline(matches, bankroll=1000):
     opportunities = []
 
     for event in finder.find(matches):
-        best = selector.select(event)
+
+        try:
+            best = selector.select(event)
+        except NoBackableOddsError:
+            continue
+
         result = detector.detect(best)
 
         if not result.arbitrage_exists:
@@ -206,3 +228,82 @@ def test_multiple_events_only_matching_ones_combine():
     assert len(opportunities) == 1
     event, _, _ = opportunities[0]
     assert {m.bookmaker for m in event.matches} == {"OnWin", "Betkanyon"}
+
+
+# ----------------------------------------------------------------------
+# Orbit participation: BACK odds combine normally, LAY odds never
+# silently masquerade as a normal bookmaker BACK price.
+# ----------------------------------------------------------------------
+
+def test_orbit_back_participates_in_three_way_arbitrage():
+    """
+    BetKanyon has the best home price, Orbit's BACK price has the best
+    draw AND away price -- a genuine three-bookmaker (well, two here)
+    combination that must work exactly like the OnWin+BetKanyon case.
+    """
+
+    betkanyon = betkanyon_match(
+        "Liverpool", "Chelsea",
+        home_odds=2.30, draw_odds=3.00, away_odds=3.00,
+    )
+    orbit_back = orbit_match(
+        "Liverpool", "Chelsea",
+        home_odds=1.90, draw_odds=3.80, away_odds=4.20,
+        side="BACK",
+    )
+
+    implied = (1 / 2.30) + (1 / 3.80) + (1 / 4.20)
+    assert implied < 1, "fixture must contain a real arbitrage"
+
+    opportunities = run_pipeline([betkanyon, orbit_back])
+
+    assert len(opportunities) == 1
+    event, result, stake_plan = opportunities[0]
+
+    assert result.arbitrage_exists is True
+    assert stake_plan.home.bookmaker == "Betkanyon"
+    assert stake_plan.draw.bookmaker == "Orbit"
+    assert stake_plan.away.bookmaker == "Orbit"
+
+
+def test_orbit_lay_never_wins_best_odds_over_a_real_back_price():
+    """
+    Orbit's LAY price is numerically higher than BetKanyon's BACK price
+    for every outcome -- if LAY were ever compared as if it were a
+    normal BACK price, max(odds) would incorrectly select it and
+    report a fake arbitrage. It must not.
+    """
+
+    betkanyon = betkanyon_match(
+        "Liverpool", "Chelsea",
+        home_odds=2.00, draw_odds=3.20, away_odds=3.60,
+    )
+    orbit_lay = orbit_match(
+        "Liverpool", "Chelsea",
+        home_odds=9.00, draw_odds=9.00, away_odds=9.00,  # absurdly high LAY
+        side="LAY",
+    )
+
+    opportunities = run_pipeline([betkanyon, orbit_lay])
+
+    # The LAY-side numbers would trivially produce a "3.3x profit"
+    # arbitrage if fed into the ordinary formula -- correct behavior is
+    # that Orbit's LAY entry is excluded entirely from best-odds
+    # selection, leaving only BetKanyon's single-bookmaker (fair) odds.
+    assert opportunities == []
+
+
+def test_event_with_only_orbit_lay_odds_is_skipped_not_crashed():
+    """An event seen ONLY via an Orbit LAY quote (no bookmaker/BACK
+    price at all) must be skipped gracefully, not raise out of the
+    pipeline."""
+
+    orbit_lay_only = orbit_match(
+        "Napoli", "Roma",
+        home_odds=2.10, draw_odds=3.30, away_odds=3.50,
+        side="LAY",
+    )
+
+    opportunities = run_pipeline([orbit_lay_only])
+
+    assert opportunities == []
