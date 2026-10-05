@@ -143,6 +143,60 @@ def test_parse_todays_games_ignores_events_not_today(fixture_loader):
     assert matches == []
 
 
+def test_extract_live_football_events_accepts_string_sport_id():
+    payload = {
+        "events": [
+            {
+                "id": "99",
+                "sport": {"id": "1", "name": "Soccer"},
+                "competitors": [{"name": "Home FC"}, {"name": "Away FC"}],
+                "tournament": {"name": "League"},
+                "kickoffTimeUTC": "2026-10-06T12:00:00Z",
+            }
+        ]
+    }
+    events = extract_live_football_events(payload)
+    assert len(events) == 1
+    assert events[0]["home_team"] == "Home FC"
+
+
+def test_live_1_x_2_short_names_map_home_draw_away():
+    discovered = [
+        {
+            "event_id": 7,
+            "home_team": "Alpha",
+            "away_team": "Beta",
+            "competition": "League",
+            "kickoff_utc": "2026-10-06T12:00:00Z",
+        }
+    ]
+    markets = {
+        "markets": [
+            {
+                "eventId": "7",
+                "markets": [
+                    {
+                        "id": "194",
+                        "name": "1x2",
+                        "selections": [
+                            {"shortName": "1", "odds": "2.10", "status": "Open"},
+                            {"shortName": "X", "odds": "3.30", "status": "Open"},
+                            {"shortName": "2", "odds": "3.40", "status": "Open"},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    matches = parse_live_markets(markets, discovered)
+    assert len(matches) == 1
+    assert matches[0].bookmaker == "SportPesa"
+    assert matches[0].home_odds == 2.10
+    assert matches[0].draw_odds == 3.30
+    assert matches[0].away_odds == 3.40
+    assert matches[0].status == "LIVE"
+
+
 def test_parse_todays_games_ignores_non_football():
     payload = [
         {

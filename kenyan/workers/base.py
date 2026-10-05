@@ -35,6 +35,7 @@ from typing import Callable, Optional
 
 from kenyan.config import KENYAN_POLL_INTERVAL_SECONDS, KENYAN_STALE_AFTER_SECONDS
 from kenyan.health import HealthState, WorkerHealth
+from kenyan.match_snapshot import merge_match_records, visible_matches
 
 
 @dataclass
@@ -86,6 +87,7 @@ class BaseKenyanWorker:
 
         self._lock = threading.Lock()
         self._matches = []
+        self._match_records = {}
         self._last_good_at: Optional[float] = None
         self._last_attempt_at: Optional[float] = None
         self._last_diagnostics: Optional[Diagnostics] = None
@@ -148,15 +150,25 @@ class BaseKenyanWorker:
             self._last_diagnostics = diagnostics
 
             if diagnostics.endpoint_status == "ok" and diagnostics.parser_error is None:
+                self._match_records = merge_match_records(
+                    self._match_records,
+                    matches,
+                    now=now,
+                    retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                )
+                self._matches = visible_matches(
+                    self._match_records,
+                    now=now,
+                    retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                )
                 if matches:
-                    self._matches = matches
                     self._last_good_at = now
                     self._health_state.record_success()
                 else:
                     # Well-formed payload, genuinely zero relevant
                     # events right now (e.g. no live football matches
-                    # this instant) -- not a failure. Snapshot is left
-                    # as-is (last-good), health is untouched.
+                    # this instant) -- not a failure. Previously seen
+                    # events stay until per-event retention expires.
                     self._health_state.record_empty_but_ok()
             else:
                 self._health_state.record_failure(
@@ -169,24 +181,23 @@ class BaseKenyanWorker:
 
     def get_matches(self) -> list:
         """
-        Last-good snapshot, gated purely on DATA staleness (age since
-        the last successful acquisition vs KENYAN_STALE_AFTER_SECONDS)
-        -- deliberately independent of the reported health's
-        consecutive-failure hysteresis (see kenyan/health.py). This
-        means a worker can be reported DEGRADED (e.g. after 3
-        consecutive failed polls, ~15s) while STILL serving perfectly
-        fresh matches from before those failures started, but once the
-        snapshot itself is older than the staleness threshold it is
-        dropped -- "use last-good snapshots, but don't keep stale
-        opportunities indefinitely".
+        Last-good *per-event* snapshot. A successful poll that returns
+        only a subset of previously seen events (LIVE pages are count-
+        limited) merges into the existing records instead of replacing
+        them. Individual events expire after KENYAN_STALE_AFTER_SECONDS
+        without being seen, matching the project's Kenyan stale-data
+        policy. Failed polls do not mark events absent.
         """
 
         with self._lock:
-            if self._last_good_at is None:
+            now = time.time()
+            if not self._match_records:
                 return []
-            if (time.time() - self._last_good_at) > KENYAN_STALE_AFTER_SECONDS:
-                return []
-            return list(self._matches)
+            return visible_matches(
+                self._match_records,
+                now=now,
+                retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+            )
 
     def get_status(self) -> dict:
         with self._lock:
@@ -200,7 +211,13 @@ class BaseKenyanWorker:
                 "last_good_at": self._last_good_at,
                 "last_attempt_at": self._last_attempt_at,
                 "age_seconds": age,
-                "match_count": len(self._matches),
+                "match_count": len(
+                    visible_matches(
+                        self._match_records,
+                        now=now,
+                        retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                    )
+                ),
                 "error": self._health_state.last_error,
                 "diagnostics": _diagnostics_to_dict(self._last_diagnostics),
             }

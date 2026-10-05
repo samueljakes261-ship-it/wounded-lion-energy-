@@ -18,6 +18,7 @@ from typing import Dict, List
 
 from kenyan.config import LIVE, PREMATCH
 from kenyan.engine import KenyanArbitrageEngine
+from kenyan.opportunity_store import KenyanOpportunityStore
 from kenyan.workers import bet22, betika, onexbet, sportpesa
 from kenyan.workers.base import BaseKenyanWorker
 
@@ -46,6 +47,8 @@ class KenyanEngineRunner:
         self._workers: Dict[str, BaseKenyanWorker] = {}
         self._live_engine = KenyanArbitrageEngine()
         self._prematch_engine = KenyanArbitrageEngine()
+        self._live_store = KenyanOpportunityStore()
+        self._prematch_store = KenyanOpportunityStore()
         self._started = False
         self._started_at = None
 
@@ -100,10 +103,12 @@ class KenyanEngineRunner:
         return matches
 
     def get_live_opportunities(self):
-        return self._live_engine.compute_opportunities(self._matches_for(LIVE))
+        computed = self._live_engine.compute_opportunities(self._matches_for(LIVE))
+        return self._live_store.apply(computed)
 
     def get_prematch_opportunities(self):
-        return self._prematch_engine.compute_opportunities(self._matches_for(PREMATCH))
+        computed = self._prematch_engine.compute_opportunities(self._matches_for(PREMATCH))
+        return self._prematch_store.apply(computed)
 
     def get_worker_statuses(self) -> Dict[str, dict]:
         with self._lock:

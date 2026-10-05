@@ -26,6 +26,14 @@ KENYAN_POLL_INTERVAL_SECONDS = float(os.getenv("KENYAN_POLL_INTERVAL_SECONDS", "
 # quiet for a long time still gets excluded.
 KENYAN_STALE_AFTER_SECONDS = float(os.getenv("KENYAN_STALE_AFTER_SECONDS", "45"))
 
+# How long a computed Kenyan opportunity is retained after a poll no
+# longer returns it. Defaults to the same window as odds staleness
+# (nine 5s poll intervals) so one or two incomplete LIVE pages do not
+# wipe the card, but a fixture that has actually left the feed expires.
+KENYAN_OPPORTUNITY_RETENTION_SECONDS = float(
+    os.getenv("KENYAN_OPPORTUNITY_RETENTION_SECONDS", str(KENYAN_STALE_AFTER_SECONDS))
+)
+
 # Consecutive-failure / consecutive-success hysteresis for flipping a
 # worker's reported health, mirroring the spirit of
 # engine/collector_health.py's approach for the existing workers but

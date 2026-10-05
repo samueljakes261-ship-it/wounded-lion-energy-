@@ -3,7 +3,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, RefreshCw, TrendingUp } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { StakePlanPanel } from "@/components/stake-plan";
+import { t } from "@/lib/i18n";
+import { AlertTriangle, ChevronDown, RefreshCw, TrendingUp } from "lucide-react";
 import { resolveKenyanApiBase } from "@/lib/kenyan-api-config";
 
 export const Route = createFileRoute("/kenyan")({
@@ -19,6 +26,9 @@ type KenyanLeg = {
 };
 
 type KenyanOpportunity = {
+  opportunityId?: string;
+  opportunityType?: string;
+  isLive?: boolean;
   sport: string;
   competition: string;
   homeTeam: string;
@@ -70,30 +80,69 @@ function OpportunityRow({
 }
 
 function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Card className="bg-slate-900 border-slate-800">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="text-lg">
-              {opportunity.homeTeam} vs {opportunity.awayTeam}
-            </CardTitle>
-            <div className="text-slate-400 text-sm mt-1 truncate">{opportunity.competition}</div>
-          </div>
-          <Badge className="bg-emerald-500 text-black shrink-0">
-            +{opportunity.profitPercentage.toFixed(2)}%
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <OpportunityRow label="HOME" teamName={opportunity.homeTeam} leg={opportunity.home} />
-        <OpportunityRow label="DRAW" leg={opportunity.draw} />
-        <OpportunityRow label="AWAY" teamName={opportunity.awayTeam} leg={opportunity.away} />
-        <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-sm">
-          <span className="text-slate-400">ROI</span>
-          <span className="font-bold text-cyan-400">{opportunity.roi.toFixed(2)}%</span>
-        </div>
-      </CardContent>
+    <Card
+      data-testid="kenyan-opportunity-card"
+      className="bg-slate-900 border-slate-800 hover:border-cyan-500/50 transition-colors duration-300 overflow-hidden"
+    >
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full text-left cursor-pointer">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <CardTitle className="text-lg">
+                    {opportunity.homeTeam} vs {opportunity.awayTeam}
+                  </CardTitle>
+                  <div className="text-slate-400 text-sm mt-1 truncate">{opportunity.competition}</div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge className="bg-emerald-500 text-black">
+                    +{opportunity.profitPercentage.toFixed(2)}%
+                  </Badge>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${
+                      open ? "rotate-180" : ""
+                    }`}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <OpportunityRow label="HOME" teamName={opportunity.homeTeam} leg={opportunity.home} />
+              <OpportunityRow label="DRAW" leg={opportunity.draw} />
+              <OpportunityRow label="AWAY" teamName={opportunity.awayTeam} leg={opportunity.away} />
+            </CardContent>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0 pb-6">
+            <StakePlanPanel
+              labels={{
+                title: t("en", "stakePlan"),
+                home: t("en", "home"),
+                draw: t("en", "draw"),
+                away: t("en", "away"),
+                totalStake: t("en", "totalStake"),
+                expectedReturn: t("en", "expectedReturn"),
+                guaranteedProfit: t("en", "guaranteedProfit"),
+                roi: t("en", "roi"),
+              }}
+              values={{
+                homeStake: opportunity.home.stake,
+                drawStake: opportunity.draw.stake,
+                awayStake: opportunity.away.stake,
+                totalStake: opportunity.totalStake,
+                guaranteedReturn: opportunity.guaranteedReturn,
+                guaranteedProfit: opportunity.guaranteedProfit,
+                roi: opportunity.roi,
+              }}
+            />
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }
@@ -113,7 +162,10 @@ function KenyanDashboard() {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      setOpportunities(await response.json());
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setOpportunities(data);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load opportunities");
@@ -178,7 +230,10 @@ function KenyanDashboard() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {opportunities.map((opportunity, index) => (
-              <OpportunityCard key={index} opportunity={opportunity} />
+              <OpportunityCard
+                key={opportunity.opportunityId || `${opportunity.homeTeam}-${opportunity.awayTeam}-${index}`}
+                opportunity={opportunity}
+              />
             ))}
           </div>
         )}

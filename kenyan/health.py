@@ -26,7 +26,9 @@ class WorkerHealth(str, Enum):
     RUNNING means: a recent successful HTTP acquisition, a recent
     valid payload, AND the parser successfully produced valid
     normalized events. It does NOT just mean "the worker thread is
-    alive".
+    alive". Repeated acquisition/parse failures report DEGRADED even
+    if the worker has never produced a match (STARTING is only the
+    pre-success, pre-failure window).
     """
 
     STARTING = "STARTING"
@@ -91,11 +93,11 @@ class HealthState:
         now: float,
         stale_after_seconds: float = KENYAN_STALE_AFTER_SECONDS,
     ) -> WorkerHealth:
-        if not self.has_ever_succeeded:
-            return WorkerHealth.STARTING
-
         if self.is_degraded:
             return WorkerHealth.DEGRADED
+
+        if not self.has_ever_succeeded:
+            return WorkerHealth.STARTING
 
         if last_good_at is None or (now - last_good_at) > stale_after_seconds:
             return WorkerHealth.DEGRADED

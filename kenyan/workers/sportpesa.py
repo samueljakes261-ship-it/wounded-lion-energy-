@@ -15,17 +15,13 @@ for why this was chosen over `games/markets`), paginated across a
 few pages per cycle to cover a reasonable share of today's fixture
 list without unbounded network calls.
 
-ANTI-BOT CHALLENGE: `ke.sportpesa.com` (as given in the task) serves a
-JS proof-of-work challenge to plain HTTP requests -- the same category
-of problem the existing OnWin/BetKanyon workers solve with a real
-browser session. This module talks to `www.sportpesa.com` instead
-(confirmed live to serve the identical API with no challenge -- see
-kenyan/parsers/sportpesa_parser.py). If that host ever starts
-challenging requests too, `fetch_json`'s result will fail
-`looks_like_json` and `looks_like_bot_challenge()` will flag it
-explicitly in diagnostics/health (reported as DEGRADED, never
-silently as RUNNING) rather than the worker crash-looping or
-fabricating data.
+ANTI-BOT CHALLENGE: both `www.ke.sportpesa.com` and `www.sportpesa.com`
+currently serve an Imperva "Challenge Validation" HTML page to plain
+HTTP GETs (HTTP 200, non-JSON). This module does not reuse OnWin/
+BetKanyon ZenRows sessions. A challenge is recorded as a failed
+acquisition (`looks_like_bot_challenge`) and health becomes DEGRADED
+after the Kenyan consecutive-failure threshold — never RUNNING just
+because the poll thread is alive, and never by fabricating odds.
 """
 import time
 
@@ -43,6 +39,19 @@ from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
 PREMATCH_PAGE_COUNT = 100
 PREMATCH_MAX_PAGES_PER_CYCLE = 3
+
+# Browser-like Origin/Referer only — never cookies/tokens. Direct HTTP
+# to both www.sportpesa.com and ke.sportpesa.com currently returns an
+# Imperva "Challenge Validation" HTML page (HTTP 200, not JSON); that
+# is recorded as a failed acquisition, not RUNNING.
+SPORTPESA_HEADERS = {
+    "Origin": "https://www.sportpesa.com",
+    "Referer": "https://www.sportpesa.com/",
+}
+
+
+def _fetch(url):
+    return fetch_json(url, headers=SPORTPESA_HEADERS)
 
 
 def _blocked_diagnostics(fetch_result) -> Diagnostics:
@@ -62,7 +71,7 @@ def _blocked_diagnostics(fetch_result) -> Diagnostics:
 
 
 def _poll_live():
-    discovery_result = fetch_json(build_live_discovery_url(limit=50, offset=0))
+    discovery_result = _fetch(build_live_discovery_url(limit=50, offset=0))
 
     if not discovery_result.ok:
         return [], _blocked_diagnostics(discovery_result)
@@ -82,7 +91,7 @@ def _poll_live():
         )
 
     event_ids = [event["event_id"] for event in discovered_events]
-    markets_result = fetch_json(build_live_markets_url(event_ids))
+    markets_result = _fetch(build_live_markets_url(event_ids))
 
     if not markets_result.ok:
         return [], _blocked_diagnostics(markets_result)
@@ -122,7 +131,7 @@ def _poll_prematch():
 
     for page in range(1, PREMATCH_MAX_PAGES_PER_CYCLE + 1):
         url = build_todays_games_url(page_min=page, page_count=PREMATCH_PAGE_COUNT)
-        result = fetch_json(url)
+        result = _fetch(url)
 
         if not result.ok:
             if page == 1:

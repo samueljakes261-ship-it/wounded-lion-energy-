@@ -22,18 +22,40 @@ it here would just mean adding back a `dependencies=[Depends(...)]`
 router (see git history for the exact prior wiring) without touching
 kenyan/access.py itself.
 """
+from datetime import datetime, timezone
+
 from fastapi import APIRouter
 
 from kenyan.config import PREMATCH
+from kenyan.opportunity_store import TrackedKenyanOpportunity, opportunity_identity
 from kenyan.runner import get_runner
 
 router = APIRouter(prefix="/kenyan", tags=["kenyan"])
 
 
+def _iso_utc(epoch_seconds) -> str:
+    return datetime.fromtimestamp(epoch_seconds, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def serialize_opportunities(opportunities) -> list:
     serialized = []
 
-    for opportunity in opportunities:
+    for item in opportunities:
+        if isinstance(item, TrackedKenyanOpportunity):
+            opportunity = item.opportunity
+            identity = item.identity
+            created_at = item.created_at
+            updated_at = item.updated_at
+            is_live = item.is_live
+        else:
+            opportunity = item
+            identity = opportunity_identity(opportunity)
+            created_at = updated_at = None
+            is_live = any(
+                getattr(match, "status", "") == "LIVE"
+                for match in (opportunity.event.matches or [])
+            )
+
         event = opportunity.event
         result = opportunity.result
         plan = opportunity.stake_plan
@@ -41,6 +63,9 @@ def serialize_opportunities(opportunities) -> list:
 
         serialized.append(
             {
+                "opportunityId": identity,
+                "opportunityType": "BACK_BACK",
+                "isLive": is_live,
                 "sport": event.sport,
                 "competition": event.competition,
                 "market": event.market,
@@ -51,6 +76,8 @@ def serialize_opportunities(opportunities) -> list:
                 "guaranteedProfit": plan.guaranteed_profit,
                 "guaranteedReturn": plan.guaranteed_return,
                 "totalStake": plan.total_stake,
+                "createdAt": _iso_utc(created_at) if created_at is not None else None,
+                "updatedAt": _iso_utc(updated_at) if updated_at is not None else None,
                 "home": {
                     "bookmaker": best.home_match.bookmaker,
                     "odds": best.home_odds,

@@ -64,6 +64,8 @@ from resources.aliases import TEAM_ALIASES
 
 LIVE_1X2_MARKET_ID = 194
 PREMATCH_1X2_MARKET_ID = 10
+LIVE_1X2_MARKET_NAMES = frozenset({"1x2", "3 way", "3-way", "match winner"})
+PREMATCH_1X2_MARKET_NAMES = frozenset({"3 way", "3-way", "1x2", "match winner"})
 
 SPORTPESA_BASE_URL = "https://www.sportpesa.com"
 
@@ -75,6 +77,35 @@ def _event_id_key(value) -> str:
     if value is None:
         return ""
     return str(value)
+
+
+def _as_int(value):
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_open_selection(status) -> bool:
+    if status is None or status == "":
+        return True
+    return str(status).strip().lower() == "open"
+
+
+def _is_live_1x2_market(market: dict) -> bool:
+    if _as_int(market.get("id")) == LIVE_1X2_MARKET_ID:
+        return True
+    name = str(market.get("name") or market.get("shortName") or "").strip().lower()
+    return name in LIVE_1X2_MARKET_NAMES
+
+
+def _is_prematch_1x2_market(market: dict) -> bool:
+    if _as_int(market.get("id")) == PREMATCH_1X2_MARKET_ID:
+        return True
+    name = str(market.get("name") or market.get("shortName") or "").strip().lower()
+    return name in PREMATCH_1X2_MARKET_NAMES
 
 
 def _canonical_team(name: str) -> str:
@@ -133,7 +164,7 @@ def extract_live_football_events(discovery_payload: dict) -> list:
             continue
 
         sport = event.get("sport") or {}
-        if not isinstance(sport, dict) or sport.get("id") != 1:
+        if not isinstance(sport, dict) or _as_int(sport.get("id")) != 1:
             continue
 
         competitors = event.get("competitors")
@@ -189,7 +220,7 @@ def _selection_odds(selections: list, *, home_team: str, away_team: str):
             continue
 
         status = selection.get("status")
-        if status != "Open":
+        if not _is_open_selection(status):
             continue
 
         price = parse_decimal_odds(selection.get("odds"))
@@ -201,11 +232,11 @@ def _selection_odds(selections: list, *, home_team: str, away_team: str):
         name_key = _canonical_team(name)
         lowered = name.lower()
 
-        if short_name == "1" or (home_key and name_key == home_key):
+        if short_name == "1" or name == "1" or (home_key and name_key == home_key):
             home_price = price
-        elif short_name == "2" or (away_key and name_key == away_key):
+        elif short_name == "2" or name == "2" or (away_key and name_key == away_key):
             away_price = price
-        elif short_name == "X" or lowered in _DRAW_NAMES:
+        elif short_name == "X" or name == "X" or lowered in _DRAW_NAMES:
             draw_price = price
 
     return home_price, draw_price, away_price
@@ -251,7 +282,7 @@ def parse_live_markets(
 
         market_1x2 = None
         for market in entry.get("markets") or []:
-            if isinstance(market, dict) and market.get("id") == LIVE_1X2_MARKET_ID:
+            if isinstance(market, dict) and _is_live_1x2_market(market):
                 market_1x2 = market
                 break
 
@@ -332,7 +363,7 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
             continue
 
         sport = game.get("sport") or {}
-        if not isinstance(sport, dict) or sport.get("id") != 1:
+        if not isinstance(sport, dict) or _as_int(sport.get("id")) != 1:
             continue
 
         competitors = game.get("competitors")
@@ -352,7 +383,7 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
 
         market_3way = None
         for market in game.get("markets") or []:
-            if isinstance(market, dict) and market.get("id") == PREMATCH_1X2_MARKET_ID:
+            if isinstance(market, dict) and _is_prematch_1x2_market(market):
                 market_3way = market
                 break
 
@@ -363,16 +394,17 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
         for selection in market_3way.get("selections") or []:
             if not isinstance(selection, dict):
                 continue
-            short_name = selection.get("shortName")
+            short_name = (selection.get("shortName") or "").strip()
+            name = (selection.get("name") or "").strip()
             price = parse_decimal_odds(selection.get("odds"))
             if price is None:
                 continue
 
-            if short_name == "1":
+            if short_name == "1" or name == "1":
                 home_odds = price
-            elif short_name == "X":
+            elif short_name == "X" or name == "X":
                 draw_odds = price
-            elif short_name == "2":
+            elif short_name == "2" or name == "2":
                 away_odds = price
 
         if home_odds is None or draw_odds is None or away_odds is None:

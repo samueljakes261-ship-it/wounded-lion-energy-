@@ -15,6 +15,7 @@ import {
   keepLastGoodSnapshot,
   parseOptionalNumber,
 } from "@/lib/opportunity-filters"
+import { StakePlanPanel } from "@/components/stake-plan"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -359,35 +360,6 @@ function CollectorStatusPanel({
   )
 }
 
-// One line in the expanded "Stake Plan" -- values already come
-// straight from the backend's StakeCalculator/ArbitrageOpportunity
-// output (see cached_opportunities.json / api.py), never recomputed
-// here.
-function StakeRow({
-  label,
-  value,
-  emphasize,
-}: {
-  label: string
-  value: number
-  emphasize?: boolean
-}) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-slate-400">{label}</span>
-      <span
-        className={
-          emphasize
-            ? "font-bold text-emerald-400"
-            : "font-medium text-slate-100"
-        }
-      >
-        ${value.toFixed(2)}
-      </span>
-    </div>
-  )
-}
-
 function formatOdds(odds: number): string {
   return odds.toFixed(2)
 }
@@ -562,35 +534,27 @@ function OpportunityCard({
 
         <CollapsibleContent>
           <CardContent className="pt-0 pb-6">
-            <div className="bg-slate-800 rounded-lg p-4 space-y-2">
-              <div className="text-sm font-semibold text-slate-300 mb-1">
-                {t(lang, "stakePlan")}
-              </div>
-
-              <StakeRow label={t(lang, "home")} value={opportunity.home.stake} />
-              <StakeRow label={t(lang, "draw")} value={opportunity.draw.stake} />
-              <StakeRow label={t(lang, "away")} value={opportunity.away.stake} />
-
-              <div className="!my-3 border-t border-slate-700" />
-
-              <StakeRow label={t(lang, "totalStake")} value={opportunity.totalStake} />
-              <StakeRow
-                label={t(lang, "expectedReturn")}
-                value={opportunity.guaranteedReturn}
-              />
-              <StakeRow
-                label={t(lang, "guaranteedProfit")}
-                value={opportunity.guaranteedProfit}
-                emphasize
-              />
-
-              <div className="flex items-center justify-between text-sm pt-1">
-                <span className="text-slate-400">{t(lang, "roi")}</span>
-                <span className="font-bold text-cyan-400">
-                  {opportunity.roi.toFixed(2)}%
-                </span>
-              </div>
-            </div>
+            <StakePlanPanel
+              labels={{
+                title: t(lang, "stakePlan"),
+                home: t(lang, "home"),
+                draw: t(lang, "draw"),
+                away: t(lang, "away"),
+                totalStake: t(lang, "totalStake"),
+                expectedReturn: t(lang, "expectedReturn"),
+                guaranteedProfit: t(lang, "guaranteedProfit"),
+                roi: t(lang, "roi"),
+              }}
+              values={{
+                homeStake: opportunity.home.stake,
+                drawStake: opportunity.draw.stake,
+                awayStake: opportunity.away.stake,
+                totalStake: opportunity.totalStake,
+                guaranteedReturn: opportunity.guaranteedReturn,
+                guaranteedProfit: opportunity.guaranteedProfit,
+                roi: opportunity.roi,
+              }}
+            />
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

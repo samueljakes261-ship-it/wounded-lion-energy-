@@ -196,6 +196,75 @@ def test_worker_never_dies_on_unexpected_exception_in_poll_fn():
         worker.stop()
 
 
+def test_partial_successful_poll_merges_instead_of_replacing():
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    state = {"which": "first"}
+
+    def _event(event_id, home):
+        return KenyanMatchOdds(
+            bookmaker="Test",
+            competition="X",
+            sport="Football",
+            market="1X2",
+            home_team=home,
+            away_team="B",
+            home_odds=2.0,
+            draw_odds=3.0,
+            away_odds=4.0,
+            start_time=now,
+            collected_at=now,
+            event_id=event_id,
+            status="LIVE",
+        )
+
+    def poll_fn():
+        if state["which"] == "first":
+            return [_event("1", "A")], _ok_diagnostics(valid_normalized_events=1)
+        return [_event("2", "C")], _ok_diagnostics(valid_normalized_events=1)
+
+    worker = BaseKenyanWorker("test", poll_fn, poll_interval_seconds=100)
+    worker._run_one_cycle()
+    assert {m.event_id for m in worker.get_matches()} == {"1"}
+
+    state["which"] = "second"
+    worker._run_one_cycle()
+    assert {m.event_id for m in worker.get_matches()} == {"1", "2"}
+
+
+def test_failed_poll_does_not_mark_events_absent():
+    state = {"fail": False}
+
+    def poll_fn():
+        if state["fail"]:
+            return [], Diagnostics(endpoint_status="http_error", parser_error="HTTP 500")
+        return [_match()], _ok_diagnostics(valid_normalized_events=1)
+
+    worker = BaseKenyanWorker("test", poll_fn, poll_interval_seconds=100)
+    worker._run_one_cycle()
+    assert len(worker.get_matches()) == 1
+    state["fail"] = True
+    worker._run_one_cycle()
+    assert len(worker.get_matches()) == 1
+
+
+def test_challenge_failures_report_degraded_not_starting():
+    def poll_fn():
+        return [], Diagnostics(
+            endpoint_status="http_error",
+            parser_error="blocked by anti-bot challenge (non-JSON challenge page returned)",
+            acquired_at=time.time(),
+        )
+
+    worker = BaseKenyanWorker("sportpesa_live", poll_fn, poll_interval_seconds=100)
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    assert worker.get_status()["health"] == WorkerHealth.DEGRADED.value
+    assert worker.get_matches() == []
+
+
 def _wait_until(predicate, timeout=1.0, interval=0.01):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
