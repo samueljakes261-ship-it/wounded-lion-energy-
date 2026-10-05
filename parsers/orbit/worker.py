@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 
 from engine.collector_health import (
+    DEGRADE_AFTER_CONSECUTIVE_FAILURES,
     INPLACE_RETRY_PAUSE_SECONDS,
     MAX_INPLACE_RETRIES,
     is_connection_dead_error,
@@ -57,6 +58,7 @@ class OrbitWorker:
         self._last_health_log_at = 0.0
         self._last_stale_warn_at = 0.0
         self._odds_unhealthy_logged = False
+        self._degraded_logged_reason = None
         self._last_resubscribe_at = 0.0
 
         self._state = {
@@ -294,6 +296,7 @@ class OrbitWorker:
         if recovered and state["feed_healthy"]:
             print("[ORBIT] Feed recovered")
             self._odds_unhealthy_logged = False
+            self._degraded_logged_reason = None
 
     def _refresh_odds_health(self):
         last = self._state.get("last_update_at")
@@ -312,6 +315,7 @@ class OrbitWorker:
                 )
                 print("[ORBIT] Feed marked unhealthy")
                 self._odds_unhealthy_logged = True
+                self._log_degraded("odds_stale")
             return
 
         self._state["feed_healthy"] = True
@@ -358,6 +362,45 @@ class OrbitWorker:
             )
             raise
 
+    def _log_degraded(self, reason: str, extra: str = ""):
+        """
+        One structured line when Orbit becomes untrustworthy.
+
+        Never logs cookies, CSRF, URLs with query strings, or frame
+        bodies -- only counters and ages already held in worker state.
+        """
+        if self._degraded_logged_reason == reason:
+            return
+        self._degraded_logged_reason = reason
+
+        now = time.time()
+        last_odds = self._state.get("last_update_at")
+        last_hb = self._state.get("last_heartbeat_at")
+        last_attempt = self._state.get("last_attempt_at")
+        feed_diag = {}
+        if self._feed is not None and hasattr(self._feed, "diagnostics"):
+            try:
+                feed_diag = self._feed.diagnostics()
+            except Exception:
+                feed_diag = {}
+
+        print(
+            "[ORBIT] ORBIT_DEGRADED "
+            f"reason={reason} "
+            f"last_odds_age={None if last_odds is None else round(now - last_odds, 1)} "
+            f"last_heartbeat_age={None if last_hb is None else round(now - last_hb, 1)} "
+            f"last_attempt_age={None if last_attempt is None else round(now - last_attempt, 1)} "
+            f"socket_connected={feed_diag.get('socket_connected')} "
+            f"socket_age={feed_diag.get('socket_age')} "
+            f"markets_seen={feed_diag.get('markets_with_odds', self._state.get('market_count'))} "
+            f"full_snapshots={feed_diag.get('full_snapshots')} "
+            f"deltas={feed_diag.get('deltas')} "
+            f"skipped_frames={feed_diag.get('skipped_frames')} "
+            f"valid_ladders BACK={self._state.get('back_count')} "
+            f"LAY={self._state.get('lay_count')} "
+            f"{extra}".rstrip()
+        )
+
     def _maybe_log_health(self):
         now = time.monotonic()
         if now - self._last_health_log_at < HEALTH_LOG_SECONDS:
@@ -396,4 +439,9 @@ class OrbitWorker:
         state["failed_count"] += 1
         state["consecutive_successes"] = 0
         state["consecutive_failures"] += 1
+        if state["consecutive_failures"] >= DEGRADE_AFTER_CONSECUTIVE_FAILURES:
+            self._log_degraded(
+                "consecutive_failures",
+                extra=f"error={state['error']}",
+            )
         return state["consecutive_failures"]

@@ -247,3 +247,48 @@ def test_partial_delta_without_market_definition_still_parses():
     assert match.home_odds == 1.85
     assert match.draw_odds == 3.40
     assert match.away_odds == 3.80
+
+
+def test_full_image_without_a_runner_is_genuine_removal_when_cache_is_cleared():
+    """
+    img:true means rc is the complete runner set. OrbitFeed clears the
+    per-market cache before parse(); a runner omitted from that image
+    must not keep its old ladder.
+    """
+    cache: dict = {}
+    full = _full_image_frame(home_back=2.00, draw_back=3.40, away_back=3.80)
+    OrbitParser.parse(full, CATALOGUE, runner_cache=cache)
+    assert HOME_ID in cache and DRAW_ID in cache and AWAY_ID in cache
+
+    cache.clear()
+    removed_draw = {
+        "id": "1.1",
+        "img": True,
+        "marketDefinition": {"eventId": "1", "status": "OPEN", "inPlay": True},
+        "rc": [
+            {"id": HOME_ID, "bdatb": _ladder(2.00), "bdatl": [], "tv": 10},
+            {"id": AWAY_ID, "bdatb": _ladder(3.80), "bdatl": [], "tv": 10},
+        ],
+    }
+    market = OrbitParser.parse(removed_draw, CATALOGUE, runner_cache=cache)
+    match = OrbitAdapter.to_match_odds(market, side="BACK")
+    assert match is None
+    assert DRAW_ID not in cache
+
+
+def test_empty_delta_does_not_wipe_cached_ladders():
+    cache: dict = {}
+    full = _full_image_frame(home_back=2.00, draw_back=3.40, away_back=3.80)
+    OrbitParser.parse(full, CATALOGUE, runner_cache=cache)
+
+    empty_delta = {
+        "id": "1.1",
+        "img": False,
+        "marketDefinition": {"eventId": "1", "status": "OPEN", "inPlay": True},
+        "rc": [],
+    }
+    market = OrbitParser.parse(empty_delta, CATALOGUE, runner_cache=cache)
+    match = OrbitAdapter.to_match_odds(market, side="BACK")
+
+    assert match is not None
+    assert (match.home_odds, match.draw_odds, match.away_odds) == (2.00, 3.40, 3.80)

@@ -2095,6 +2095,9 @@ def _betfair_collector_snapshot(now_dt, now: float) -> dict:
     snapshot["pollInterval"] = (
         status_dict.get("poll_interval") or BETFAIR_POLL_INTERVAL_SECONDS
     )
+    snapshot["health"] = status_dict.get("health")
+    snapshot["lastAuthentication"] = _iso(status_dict.get("last_authentication_at"))
+    snapshot["credentialPresence"] = status_dict.get("credential_presence") or {}
     return snapshot
 
 

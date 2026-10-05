@@ -194,6 +194,41 @@ def test_acquire_once_does_not_treat_http_200_token_error_as_success():
     assert diagnostics.parser_error
 
 
+def test_three_failures_without_success_are_degraded():
+    worker = BetfairValuebetsWorker()
+    worker._poll_fn = lambda: (
+        [],
+        Diagnostics(endpoint_status="auth_error", parser_error="HTTP 401"),
+    )
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    assert worker.get_status()["health"] == "DEGRADED"
+
+
+def test_health_returns_to_running_after_recovery():
+    calls = {"n": 0}
+
+    def poll():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return [], Diagnostics(endpoint_status="ok")
+        if calls["n"] <= 4:
+            return [], Diagnostics(endpoint_status="http_error", parser_error="HTTP 500")
+        return [], Diagnostics(endpoint_status="ok")
+
+    worker = BetfairValuebetsWorker(poll_fn=poll)
+    worker._run_one_cycle()
+    assert worker.get_status()["health"] == "RUNNING"
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    assert worker.get_status()["health"] == "DEGRADED"
+    worker._run_one_cycle()
+    worker._run_one_cycle()
+    assert worker.get_status()["health"] == "RUNNING"
+
+
 def test_worker_loop_does_not_overlap_slow_polls():
     in_flight = {"n": 0, "max": 0}
 

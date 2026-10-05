@@ -415,3 +415,56 @@ async def test_stale_odds_with_heartbeats_resubscribes_without_reconnect(monkeyp
         assert FakeOrbitFeed.instances[0].closed is False
     finally:
         await worker.stop()
+
+
+@pytest.mark.anyio
+async def test_ignored_frames_do_not_refresh_odds_timestamp(monkeypatch):
+    worker = make_worker(
+        monkeypatch,
+        frame_kinds=["odds", "ignored", "ignored", "ignored"],
+    )
+    worker.start()
+    try:
+        assert await wait_until(
+            lambda: worker.get_status()["success_count"] >= 1, timeout=3.0
+        )
+        first_update = worker.get_status()["last_update_at"]
+        await asyncio.sleep(0.15)
+        status = worker.get_status()
+        assert status["last_update_at"] == first_update
+        assert status["success_count"] == 1
+        assert status["consecutive_failures"] == 0
+        assert status["reconnect_count"] == 0
+    finally:
+        await worker.stop()
+
+
+@pytest.mark.anyio
+async def test_odds_success_resets_failure_counter(monkeypatch):
+    monkeypatch.setattr(worker_module, "INPLACE_RETRY_PAUSE_SECONDS", 0.01)
+    worker = make_worker(monkeypatch, fail_transient_receive_calls=1)
+    worker.start()
+    try:
+        assert await wait_until(
+            lambda: worker.get_status()["success_count"] >= 1, timeout=3.0
+        )
+        status = worker.get_status()
+        assert status["consecutive_failures"] == 0
+        assert status["failed_count"] >= 1
+        assert status["reconnect_count"] == 0
+    finally:
+        await worker.stop()
+
+
+def test_degraded_log_has_no_session_secrets(capsys):
+    worker = OrbitWorker()
+    worker._state["consecutive_failures"] = (
+        worker_module.DEGRADE_AFTER_CONSECUTIVE_FAILURES - 1
+    )
+    worker._publish_failure(ConnectionError("socket closed"))
+    out = capsys.readouterr().out
+    assert "ORBIT_DEGRADED" in out
+    assert "reason=consecutive_failures" in out
+    assert "Cookie" not in out
+    assert "CSRF" not in out
+    assert "BIAB_" not in out

@@ -50,6 +50,10 @@ class OrbitFeed:
         # parsers/orbit/parser.py), so this cache is what lets an
         # unrelated runner's frame resolve THIS runner to its real
         # last-known price instead of "unquoted".
+        # market_id -> selection_id -> last known ladder. Draw
+        # selection 58805 is reused across soccer markets (see
+        # tests/sample_market.json), so this MUST be scoped per market
+        # or one match's draw overwrites every other match.
         self._runner_ladders = {}
         # "odds" | "heartbeat" | "ignored" -- set by the most recent
         # receive_next() so the worker can bump odds-freshness only
@@ -57,6 +61,26 @@ class OrbitFeed:
         self.last_frame_kind = "ignored"
         self._last_activity_at = None
         self._closed = False
+        self._full_snapshots = 0
+        self._deltas = 0
+        self._skipped_frames = 0
+        self._last_full_snapshot_at = None
+        self._last_delta_at = None
+
+    def diagnostics(self) -> dict:
+        ws = getattr(self.client, "ws", None)
+        return {
+            "socket_connected": ws is not None and getattr(ws, "close_code", None) is None,
+            "socket_age": self.seconds_since_activity(),
+            "catalogue_markets": len(self._catalogue),
+            "subscribed_markets": len(self._subscribed_ids),
+            "markets_with_odds": len(self._matches_by_market),
+            "full_snapshots": self._full_snapshots,
+            "deltas": self._deltas,
+            "skipped_frames": self._skipped_frames,
+            "last_full_snapshot_at": self._last_full_snapshot_at,
+            "last_delta_at": self._last_delta_at,
+        }
 
     # ------------------------------------------------------------------
     # One-shot legacy flow (unchanged, used by existing reconnaissance
@@ -281,13 +305,26 @@ class OrbitFeed:
 
         if market_id not in self._catalogue:
             self.last_frame_kind = "ignored"
+            self._skipped_frames += 1
             return []
+
+        cache = self._runner_ladders.setdefault(market_id, {})
+        if raw.get("img") is True:
+            # Full image: rc is the complete runner set. Drop cached
+            # ladders for this market so a runner omitted here is a
+            # genuine removal, not "reuse last delta".
+            cache.clear()
+            self._full_snapshots += 1
+            self._last_full_snapshot_at = time.time()
+        elif "rc" in raw:
+            self._deltas += 1
+            self._last_delta_at = time.time()
 
         try:
             parsed = OrbitParser.parse(
                 raw,
                 self._catalogue[market_id],
-                runner_cache=self._runner_ladders,
+                runner_cache=cache,
             )
 
             matches = OrbitAdapter.to_match_odds_both_sides(parsed)
@@ -302,12 +339,19 @@ class OrbitFeed:
                 f"{type(exc).__name__}: {exc}"
             )
             self.last_frame_kind = "ignored"
+            self._skipped_frames += 1
             return []
 
         if matches:
             self._matches_by_market[market_id] = matches
             self.last_frame_kind = "odds"
         else:
+            # A full image is the complete runner set. If it is not
+            # fully quoted, drop this market's last snapshot instead of
+            # keeping a stale 1X2. Deltas with empty matches leave the
+            # previous snapshot (partial rc must not wipe the market).
+            if raw.get("img") is True:
+                self._matches_by_market.pop(market_id, None)
             self.last_frame_kind = "ignored"
 
         return matches

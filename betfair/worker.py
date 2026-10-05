@@ -7,7 +7,6 @@ The latest successful parse is the current snapshot: items the source
 stops returning disappear immediately.
 """
 import json
-import os
 import threading
 import time
 from dataclasses import dataclass
@@ -16,9 +15,9 @@ from typing import Callable, Optional
 
 from betfair.auth import (
     AuthError,
-    ValuebetsAuth,
-    configured_cookie,
-    configured_static_token,
+    VerigoodSessionManager,
+    credential_presence,
+    credential_presence_log,
 )
 from betfair.config import (
     CACHE_FILE,
@@ -29,7 +28,7 @@ from betfair.config import (
     VALUEBETS_URL,
 )
 from betfair.health import HealthState, WorkerHealth
-from betfair.http import FetchResult, auth_headers, fetch_json, optional_cookie_header
+from betfair.http import FetchResult, fetch_json
 from betfair.models import LIVE, PREMATCH, UNKNOWN, BetfairOpportunity
 from betfair.parser import parse_payload
 from betfair.serialize import serialize_snapshot
@@ -39,6 +38,7 @@ from betfair.serialize import serialize_snapshot
 class Diagnostics:
     endpoint_status: str = "unknown"
     http_status_code: Optional[int] = None
+    content_type: Optional[str] = None
     response_size_bytes: int = 0
     elapsed_seconds: float = 0.0
     raw_count: int = 0
@@ -48,6 +48,7 @@ class Diagnostics:
     prematch_count: int = 0
     unknown_count: int = 0
     parser_error: Optional[str] = None
+    is_auth_failure: bool = False
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -56,15 +57,13 @@ def _atomic_write_text(path: Path, text: str) -> None:
     tmp_path.replace(path)
 
 
-def _token() -> Optional[str]:
-    return os.getenv("BETFAIR_VALUEBETS_TOKEN") or os.getenv("VALUEBETS_TOKEN") or None
-
-
 def _result_to_diagnostics(result: FetchResult) -> Diagnostics:
     return Diagnostics(
         http_status_code=result.status_code,
+        content_type=result.content_type,
         response_size_bytes=result.response_size_bytes,
         elapsed_seconds=result.elapsed_seconds,
+        is_auth_failure=result.is_auth_failure,
     )
 
 
@@ -72,9 +71,14 @@ def _apply_parse(result: FetchResult) -> tuple[list[BetfairOpportunity], Diagnos
     diagnostics = _result_to_diagnostics(result)
 
     if not result.ok:
-        diagnostics.endpoint_status = (
-            "invalid_json" if result.error and "invalid JSON" in result.error else "http_error"
-        )
+        if result.error and "invalid JSON" in result.error:
+            diagnostics.endpoint_status = "invalid_json"
+        elif result.error and "HTML" in result.error:
+            diagnostics.endpoint_status = "html_response"
+        elif result.is_auth_failure:
+            diagnostics.endpoint_status = "auth_error"
+        else:
+            diagnostics.endpoint_status = "http_error"
         diagnostics.parser_error = result.error
         return [], diagnostics
 
@@ -99,23 +103,21 @@ def acquire_once(
     *,
     url: str = VALUEBETS_URL,
     fetch_fn: Optional[Callable[..., FetchResult]] = None,
-    auth: Optional[ValuebetsAuth] = None,
+    auth: Optional[VerigoodSessionManager] = None,
 ) -> tuple[list[BetfairOpportunity], Diagnostics]:
     fetcher = fetch_fn or fetch_json
     session = auth.session if auth is not None else None
 
     try:
-        headers = auth.headers() if auth is not None else None
+        headers = auth.headers() if auth is not None else {}
     except AuthError as exc:
         return [], Diagnostics(
             endpoint_status="auth_error",
             parser_error=str(exc),
+            is_auth_failure=True,
         )
 
-    if headers is None:
-        headers = dict(auth_headers(configured_static_token() or _token()))
-        headers.update(optional_cookie_header(configured_cookie()))
-
+    had_bearer = bool((headers or {}).get("Authorization"))
     result = fetcher(
         url,
         headers=headers,
@@ -123,17 +125,20 @@ def acquire_once(
         session=session,
     )
 
-    if result.status_code == 401 and auth is not None:
-        auth.invalidate()
+    if result.is_auth_failure and auth is not None and had_bearer:
+        auth.invalidate(drop_cookies=True)
         try:
             headers = auth.headers()
         except AuthError as exc:
             return [], Diagnostics(
                 endpoint_status="auth_error",
-                http_status_code=401,
+                http_status_code=result.status_code,
+                content_type=result.content_type,
+                response_size_bytes=result.response_size_bytes,
                 parser_error=str(exc),
+                is_auth_failure=True,
             )
-        print("[BETFAIR] token rejected, re-login")
+        print("[BETFAIR] session rejected, re-authenticate")
         result = fetcher(
             url,
             headers=headers,
@@ -145,19 +150,23 @@ def acquire_once(
 
 
 def _log_cycle(diagnostics: Diagnostics) -> None:
-    extra = (
-        f"error={diagnostics.parser_error}"
-        if diagnostics.parser_error
-        else (
-            f"records={diagnostics.raw_count} valid={diagnostics.valid_count} "
-            f"rejected={diagnostics.rejected_count} live={diagnostics.live_count} "
-            f"prematch={diagnostics.prematch_count} unknown={diagnostics.unknown_count}"
+    if diagnostics.parser_error:
+        extra = f"error={diagnostics.parser_error}"
+    else:
+        extra = (
+            f"records={diagnostics.raw_count} "
+            f"valid={diagnostics.valid_count} "
+            f"rejected={diagnostics.rejected_count} "
+            f"live_records={diagnostics.live_count} "
+            f"prematch_records={diagnostics.prematch_count} "
+            f"unknown_records={diagnostics.unknown_count}"
         )
-    )
     print(
-        f"[BETFAIR] status_code={diagnostics.http_status_code} "
+        f"[BETFAIR] status={diagnostics.http_status_code} "
+        f"content_type={diagnostics.content_type} "
+        f"payload_bytes={diagnostics.response_size_bytes} "
         f"elapsed_ms={int(diagnostics.elapsed_seconds * 1000)} "
-        f"payload_bytes={diagnostics.response_size_bytes} {extra}"
+        f"{extra}"
     )
 
 
@@ -169,13 +178,13 @@ class BetfairValuebetsWorker:
         poll_interval_seconds: float = POLL_INTERVAL_SECONDS,
         cache_file: Optional[Path] = None,
         fetch_fn: Optional[Callable[..., FetchResult]] = None,
-        auth: Optional[ValuebetsAuth] = None,
+        auth: Optional[VerigoodSessionManager] = None,
     ):
         self.name = SOURCE_LABEL
         self._poll_interval_seconds = poll_interval_seconds
         self._cache_file = cache_file or CACHE_FILE
         self._fetch_fn = fetch_fn
-        self._auth = auth or ValuebetsAuth()
+        self._auth = auth or VerigoodSessionManager()
         self._poll_fn = poll_fn or self._default_poll
 
         self._lock = threading.Lock()
@@ -197,6 +206,7 @@ class BetfairValuebetsWorker:
     def start(self):
         if self._thread is not None and self._thread.is_alive():
             return
+        print(f"[BETFAIR] {credential_presence_log()}")
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run, name="betfair-valuebets-worker", daemon=True
@@ -320,6 +330,8 @@ class BetfairValuebetsWorker:
             if diagnostics is not None:
                 avg_ms = round(diagnostics.elapsed_seconds * 1000, 1)
 
+            auth_health = self._auth.health()
+
             return {
                 "name": self.name,
                 "status": raw_status,
@@ -327,6 +339,7 @@ class BetfairValuebetsWorker:
                 "error": self._health_state.last_error,
                 "last_update_at": self._last_good_at,
                 "last_attempt_at": self._last_attempt_at,
+                "last_authentication_at": auth_health.get("last_authentication_at"),
                 "consecutive_failures": self._health_state.consecutive_failures,
                 "consecutive_successes": self._health_state.consecutive_successes,
                 "reconnect_count": 0,
@@ -340,4 +353,7 @@ class BetfairValuebetsWorker:
                 "failed_count": self._failed_count,
                 "avg_processing_ms": avg_ms,
                 "age_seconds": age,
+                "credential_presence": auth_health.get("credential_presence")
+                or credential_presence(),
+                "has_access_token": auth_health.get("has_access_token"),
             }

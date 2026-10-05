@@ -158,6 +158,19 @@ def test_direct_websocket_does_not_pass_proxy(monkeypatch):
     assert captured["ping_interval"] is None
 
 
+def test_orbit_proxy_does_not_set_process_wide_proxy_env(monkeypatch):
+    import os
+
+    monkeypatch.setenv("ORBIT_SOCKS5_PROXY", AUTH_PROXY)
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    monkeypatch.delenv("ALL_PROXY", raising=False)
+    requests_proxies()
+    assert "HTTP_PROXY" not in os.environ
+    assert "HTTPS_PROXY" not in os.environ
+    assert "ALL_PROXY" not in os.environ
+
+
 def test_authenticated_url_keeps_userinfo_for_libraries(monkeypatch):
     monkeypatch.setenv("ORBIT_SOCKS5_PROXY", AUTH_PROXY)
     url = configured_proxy_url()
