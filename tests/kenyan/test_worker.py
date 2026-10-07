@@ -233,6 +233,32 @@ def test_partial_successful_poll_merges_instead_of_replacing():
     assert {m.event_id for m in worker.get_matches()} == {"1", "2"}
 
 
+def test_long_poll_snapshot_is_stamped_after_acquisition(monkeypatch):
+    monkeypatch.setattr("kenyan.workers.base.KENYAN_STALE_AFTER_SECONDS", 0.2)
+
+    def poll_fn():
+        time.sleep(0.35)
+        return [_match()], _ok_diagnostics(valid_normalized_events=1)
+
+    worker = BaseKenyanWorker("test", poll_fn, poll_interval_seconds=100)
+    worker._run_one_cycle()
+    assert len(worker.get_matches()) == 1
+
+
+def test_in_flight_poll_keeps_last_good_prematch_visible(monkeypatch):
+    monkeypatch.setattr("kenyan.workers.base.KENYAN_STALE_AFTER_SECONDS", 0.05)
+    worker = BaseKenyanWorker(
+        "test",
+        lambda: ([_match()], _ok_diagnostics(valid_normalized_events=1)),
+        poll_interval_seconds=100,
+    )
+    worker._run_one_cycle()
+    assert len(worker.get_matches()) == 1
+    worker._poll_in_flight = True
+    time.sleep(0.12)
+    assert len(worker.get_matches()) == 1
+
+
 def test_failed_poll_does_not_mark_events_absent():
     state = {"fail": False}
 

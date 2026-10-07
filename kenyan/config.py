@@ -24,12 +24,11 @@ KENYAN_LIVE_POLL_INTERVAL_SECONDS = float(
 )
 
 # How long a worker's last-good snapshot is still trusted after its
-# most recent successful acquisition, before being treated as stale
-# and dropped from the arbitrage calculation. Several multiples of the
-# 5s poll interval so a single missed cycle (or two) doesn't instantly
-# blank out otherwise-valid odds, while a feed that has genuinely gone
-# quiet for a long time still gets excluded.
-KENYAN_STALE_AFTER_SECONDS = float(os.getenv("KENYAN_STALE_AFTER_SECONDS", "45"))
+# most recent successful acquisition. Uncapped prematch walks many
+# VZip/Betika pages and routinely takes longer than 45s, so the window
+# must outlast one full prematch cycle or the snapshot is born expired
+# and /kenyan/opportunities?mode=prematch stays empty.
+KENYAN_STALE_AFTER_SECONDS = float(os.getenv("KENYAN_STALE_AFTER_SECONDS", "180"))
 
 # How long a computed Kenyan opportunity is retained after a poll no
 # longer returns it. Defaults to the same window as odds staleness

@@ -95,6 +95,7 @@ class BaseKenyanWorker:
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._poll_in_flight = False
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -130,12 +131,14 @@ class BaseKenyanWorker:
             self._stop_event.wait(max(0.0, self._poll_interval_seconds - elapsed))
 
     def _run_one_cycle(self):
-        now = time.time()
-
+        with self._lock:
+            self._poll_in_flight = True
         try:
             matches, diagnostics = self._poll_fn()
         except Exception as exc:  # noqa: BLE001 -- worker must never die
+            now = time.time()
             with self._lock:
+                self._poll_in_flight = False
                 self._last_attempt_at = now
                 self._health_state.record_failure(f"{type(exc).__name__}: {exc}")
                 self._last_diagnostics = Diagnostics(
@@ -145,7 +148,9 @@ class BaseKenyanWorker:
                 )
             return
 
+        now = time.time()
         with self._lock:
+            self._poll_in_flight = False
             self._last_attempt_at = now
             self._last_diagnostics = diagnostics
 
@@ -193,6 +198,8 @@ class BaseKenyanWorker:
             now = time.time()
             if not self._match_records:
                 return []
+            if self._poll_in_flight and self._last_good_at is not None:
+                now = self._last_good_at
             return visible_matches(
                 self._match_records,
                 now=now,
@@ -202,6 +209,8 @@ class BaseKenyanWorker:
     def get_status(self) -> dict:
         with self._lock:
             now = time.time()
+            if self._poll_in_flight and self._last_good_at is not None:
+                now = self._last_good_at
             health = self._health_state.classify(last_good_at=self._last_good_at, now=now)
             age = (now - self._last_good_at) if self._last_good_at else None
 
