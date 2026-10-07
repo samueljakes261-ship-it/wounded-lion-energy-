@@ -34,6 +34,11 @@ describe("Kenyan opportunity click opens the shared BACK vs BACK stake plan", ()
     expect(SOURCE).toMatch(/key=\{opportunity\.opportunityId/)
   })
 
+  it("shows the exact market on each Kenyan card", () => {
+    expect(SOURCE).toMatch(/data-testid="kenyan-market-label"/)
+    expect(SOURCE).toMatch(/opportunity\.marketLabel/)
+  })
+
   it("does not independently retain an empty backend list", () => {
     expect(SOURCE).not.toMatch(/keepLastGoodSnapshot/)
   })

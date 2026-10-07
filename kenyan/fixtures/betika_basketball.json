@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "match_id": 30001,
+      "sport_id": 30,
+      "sport_name": "Basketball",
+      "home_team": "Home Hoops",
+      "away_team": "Away Hoops",
+      "competition_name": "NBA",
+      "start_time": "2026-08-30 16:00:00",
+      "odds": [
+        {
+          "sub_type_id": "1",
+          "name": "1X2",
+          "odds": [
+            {"outcome_id": "1", "display": "1", "odd_key": "Home Hoops", "odd_value": "1.90"},
+            {"outcome_id": "2", "display": "X", "odd_key": "draw", "odd_value": "15.00"},
+            {"outcome_id": "3", "display": "2", "odd_key": "Away Hoops", "odd_value": "2.10"}
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {"total": "1", "limit": "10"}
+}

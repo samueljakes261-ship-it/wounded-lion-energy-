@@ -54,7 +54,7 @@ class KenyanMatchOdds:
     away_team: str
 
     home_odds: float
-    draw_odds: float
+    draw_odds: Optional[float]
     away_odds: float
 
     start_time: datetime
@@ -78,6 +78,10 @@ class KenyanMatchOdds:
     side: Optional[str] = None
     tournament_id: Optional[str] = None
     line: Optional[float] = None
+    market_type: str = ""
+    period: str = "FULL_MATCH"
+    outcome_family: str = ""
+    market_label: str = ""
 
     @property
     def feed_type(self) -> str:
@@ -101,3 +105,54 @@ class KenyanMatchOdds:
             f"Collected : {self.collected_at}\n"
             f"Source : {self.source}"
         )
+
+
+@dataclass
+class KenyanTwoWayBestOdds:
+    home_match: object
+    away_match: object
+
+    @property
+    def home_odds(self) -> float:
+        return self.home_match.home_odds
+
+    @property
+    def away_odds(self) -> float:
+        return self.away_match.away_odds
+
+
+@dataclass
+class KenyanTwoWayResult:
+    best_odds: KenyanTwoWayBestOdds
+    implied_probability: float
+    arbitrage_exists: bool
+    profit_percentage: float
+
+
+@dataclass
+class KenyanTwoWayLeg:
+    outcome: str
+    bookmaker: str
+    odds: float
+    stake: float
+
+
+@dataclass
+class KenyanTwoWayStakePlan:
+    home: KenyanTwoWayLeg
+    away: KenyanTwoWayLeg
+    total_stake: float
+    guaranteed_return: float
+    guaranteed_profit: float
+    roi: float
+    draw: Optional[KenyanTwoWayLeg] = None
+
+
+@dataclass
+class KenyanTwoWayOpportunity:
+    event: object
+    result: KenyanTwoWayResult
+    stake_plan: KenyanTwoWayStakePlan
+    outcome_count: int = 2
+    home_label: str = "HOME"
+    away_label: str = "AWAY"

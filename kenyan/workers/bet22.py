@@ -10,7 +10,7 @@ import time
 from kenyan.config import BET22
 from kenyan.http_utils import fetch_json
 from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
-from kenyan.parsers.bet22_parser import parse_events
+from kenyan.parsers.bet22_parser import parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
 LIVE_URL = (
@@ -22,10 +22,20 @@ PREMATCH_URL = (
     "?count=100&lng=en_GB&tz=3&mode=4&country=87&partner=151&gr=216"
 )
 
+LIVE_EXTRA_URLS = (
+    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=4&count=250&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
+    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=3&count=250&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
+    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=6&count=250&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
+)
+PREMATCH_EXTRA_URLS = (
+    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=4&count=250&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
+    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=3&count=250&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
+    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=6&count=250&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
+)
 
-def _poll(url: str, status: str):
+
+def _poll_one(url: str, status: str):
     fetch_result = fetch_json(url)
-
     if not fetch_result.ok:
         return [], Diagnostics(
             endpoint_status="http_error" if fetch_result.status_code else "exception",
@@ -38,7 +48,6 @@ def _poll(url: str, status: str):
         )
 
     raw_events = (fetch_result.json_body or {}).get("Value") or []
-
     football_events = 0
     one_x_two_events = 0
     for event in raw_events:
@@ -49,7 +58,7 @@ def _poll(url: str, status: str):
             one_x_two_events += 1
 
     try:
-        matches = parse_events(fetch_result.json_body, status=status)
+        matches = parse_all_markets(fetch_result.json_body, status=status)
         parser_error = None
     except Exception as exc:  # noqa: BLE001
         matches = []
@@ -68,19 +77,36 @@ def _poll(url: str, status: str):
         elapsed_seconds=fetch_result.elapsed_seconds,
         acquired_at=time.time(),
     )
-
     return matches, diagnostics
+
+
+def _poll(urls, status: str):
+    combined = []
+    seen = set()
+    last_diagnostics = None
+    for url in urls:
+        matches, diagnostics = _poll_one(url, status)
+        last_diagnostics = diagnostics
+        for match in matches:
+            key = (match.event_id, match.market, match.period, match.line, match.cluster_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(match)
+    if last_diagnostics is not None:
+        last_diagnostics.valid_normalized_events = len(combined)
+    return combined, last_diagnostics or Diagnostics(endpoint_status="exception")
 
 
 def build_live_worker() -> BaseKenyanWorker:
     return BaseKenyanWorker(
         name=f"{BET22}_live",
-        poll_fn=lambda: _poll(LIVE_URL, "LIVE"),
+        poll_fn=lambda: _poll((LIVE_URL,) + LIVE_EXTRA_URLS, "LIVE"),
     )
 
 
 def build_prematch_worker() -> BaseKenyanWorker:
     return BaseKenyanWorker(
         name=f"{BET22}_prematch",
-        poll_fn=lambda: _poll(PREMATCH_URL, "PREMATCH"),
+        poll_fn=lambda: _poll((PREMATCH_URL,) + PREMATCH_EXTRA_URLS, "PREMATCH"),
     )

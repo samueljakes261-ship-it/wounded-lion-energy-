@@ -1,0 +1,30 @@
+[
+  {
+    "id": 759049181,
+    "periodName": "",
+    "mainGameId": 759049181,
+    "startTs": 1788080400,
+    "sport": {"id": 3, "name": "Basketball"},
+    "liga": {"id": 2, "name": "NBA"},
+    "opponent1": {"fullName": "Home Hoops", "id": 21},
+    "opponent2": {"fullName": "Away Hoops", "id": 22},
+    "eventGroups": [
+      {
+        "groupId": 101,
+        "events": [
+          [{"type": 401, "cf": 1.90}],
+          [{"type": 402, "cf": 2.10}]
+        ]
+      },
+      {
+        "groupId": 17,
+        "events": [
+          [{"type": 9, "parameter": 168.5, "cf": 1.95}],
+          [{"type": 10, "parameter": 168.5, "cf": 1.91}],
+          [{"type": 9, "parameter": 165.5, "cf": 2.30}],
+          [{"type": 10, "parameter": 165.5, "cf": 1.80}]
+        ]
+      }
+    ]
+  }
+]

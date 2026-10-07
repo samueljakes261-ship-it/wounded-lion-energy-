@@ -30,11 +30,18 @@ def match_identity(match) -> str:
     status = getattr(match, "status", "") or ""
     market = getattr(match, "market", "") or ""
     event_id = getattr(match, "event_id", "") or ""
+    period = getattr(match, "period", None) or ""
+    line = getattr(match, "line", None)
+    extra = ""
+    if period and period != "FULL_MATCH":
+        extra += f"|{period}"
+    if line is not None:
+        extra += f"|{line}"
     if event_id:
-        return f"{bookmaker}|{status}|{event_id}|{market}"
+        return f"{bookmaker}|{status}|{event_id}|{market}{extra}"
     home = getattr(match, "home_team", "") or ""
     away = getattr(match, "away_team", "") or ""
-    return f"{bookmaker}|{status}|{home}|{away}|{market}"
+    return f"{bookmaker}|{status}|{home}|{away}|{market}{extra}"
 
 
 def merge_match_records(

@@ -1,0 +1,28 @@
+[
+  {
+    "id": 759119674,
+    "periodName": "",
+    "mainGameId": 759119674,
+    "startTs": 1788080400,
+    "sport": {"id": 4, "name": "Tennis"},
+    "liga": {"id": 1, "name": "ATP"},
+    "opponent1": {"fullName": "Player A", "id": 11},
+    "opponent2": {"fullName": "Player B", "id": 12},
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "events": [
+          [{"type": 1, "cf": 1.90}],
+          [{"type": 3, "cf": 2.10}]
+        ]
+      },
+      {
+        "groupId": 17,
+        "events": [
+          [{"type": 9, "parameter": 22.5, "cf": 2.10}],
+          [{"type": 10, "parameter": 22.5, "cf": 2.05}]
+        ]
+      }
+    ]
+  }
+]

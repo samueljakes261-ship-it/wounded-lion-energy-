@@ -34,3 +34,8 @@ def triple_is_valid(home_odds, draw_odds, away_odds) -> bool:
         and is_valid_decimal_odds(draw_odds)
         and is_valid_decimal_odds(away_odds)
     )
+
+
+def pair_is_valid(home_odds, away_odds) -> bool:
+    """Two mutually exclusive back prices; never invents a draw."""
+    return is_valid_decimal_odds(home_odds) and is_valid_decimal_odds(away_odds)

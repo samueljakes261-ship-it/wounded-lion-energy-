@@ -21,7 +21,7 @@ from datetime import timedelta
 
 from engine.normalizer import TeamNameNormalizer
 from kenyan.log import event_label, log_matcher, reset_matcher_log_budget
-from models.markets import arb_group_key
+from kenyan.markets import kenyan_market_key
 from models.matched_event import MatchedEvent
 from resources.aliases import TEAM_ALIASES
 
@@ -129,7 +129,7 @@ class KenyanEventMatcher:
             return "REJECT", REASON_SPORT, ""
         if _feed_key(match1) != _feed_key(match2):
             return "REJECT", REASON_FEED, ""
-        if arb_group_key(match1) != arb_group_key(match2):
+        if kenyan_market_key(match1) != kenyan_market_key(match2):
             return "REJECT", REASON_MARKET, ""
         if not self.start_times_compatible(match1, match2):
             return "REJECT", REASON_START, ""

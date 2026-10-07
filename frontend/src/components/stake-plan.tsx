@@ -61,7 +61,7 @@ export function StakePlanPanel({
       <div className="text-sm font-semibold text-slate-300 mb-1">{labels.title}</div>
 
       <StakeRow label={labels.home} value={values.homeStake} />
-      <StakeRow label={labels.draw} value={values.drawStake} />
+      {labels.draw ? <StakeRow label={labels.draw} value={values.drawStake} /> : null}
       <StakeRow label={labels.away} value={values.awayStake} />
 
       <div className="!my-3 border-t border-slate-700" />

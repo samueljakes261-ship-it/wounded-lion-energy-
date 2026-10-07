@@ -48,14 +48,38 @@ from datetime import datetime, timezone
 
 from kenyan.config import ONEXBET
 from kenyan.date_utils import is_today_in_kenya, unix_seconds_to_datetime
-from kenyan.models import KenyanMatchOdds
 from kenyan.log import log_parse
+from kenyan.markets import (
+    FAMILY_TOTAL,
+    FAMILY_WINNER,
+    MARKET_MATCH_WINNER,
+    MARKET_TOTAL,
+    PERIOD_FULL_MATCH,
+    finalize_match,
+    market_label,
+    normalize_period,
+    sport_display,
+)
+from kenyan.models import KenyanMatchOdds
 from kenyan.parsers._common_1x2 import (
     extract_1x2_clusters_from_event_groups,
     extract_1x2_clusters_from_flat_events,
 )
+from kenyan.parsers._common_markets import (
+    BASKETBALL_MONEYLINE_GROUP_ID,
+    extract_totals_from_event_groups,
+    extract_totals_from_flat_events,
+    extract_two_way_winner_from_event_groups,
+    extract_two_way_winner_from_flat_events,
+)
 
 FOOTBALL_SPORT_ID = 1
+SPORT_BY_ID = {
+    1: "Football",
+    3: "Basketball",
+    4: "Tennis",
+    6: "Volleyball",
+}
 
 _PLACEHOLDER_TEAM_NAMES = {"home", "away"}
 
@@ -238,3 +262,180 @@ def parse_events(payload, *, status: str, reference_now=None) -> list:
             results.append(parsed)
 
     return results
+
+
+def _event_sport_name(event):
+    if "eventGroups" in event:
+        sport = event.get("sport") or {}
+        sport_id = sport.get("id")
+        name = SPORT_BY_ID.get(sport_id)
+        if name:
+            return name, sport_id
+        raw = sport.get("name") or ""
+        return sport_display(raw) if raw else "", sport_id
+    sport_id = event.get("SI")
+    name = SPORT_BY_ID.get(sport_id)
+    if name:
+        return name, sport_id
+    raw = event.get("SN") or ""
+    return sport_display(raw) if raw else "", sport_id
+
+
+def _event_period(event) -> str:
+    mapped = normalize_period(event.get("periodName") or "")
+    return mapped or PERIOD_FULL_MATCH
+
+
+def _event_identity(event):
+    if "eventGroups" in event:
+        home_opp = event.get("opponent1") or {}
+        away_opp = event.get("opponent2") or {}
+        liga = event.get("liga") or {}
+        return {
+            "home_team": home_opp.get("fullName"),
+            "away_team": away_opp.get("fullName"),
+            "competition": liga.get("name") or "",
+            "league_id": "" if liga.get("id") is None else str(liga.get("id")),
+            "event_id": event.get("id"),
+            "parent_event_id": (
+                "" if event.get("mainGameId") is None else str(event.get("mainGameId"))
+            ),
+            "home_team_id": _opponent_id(home_opp),
+            "away_team_id": _opponent_id(away_opp),
+            "start_ts": event.get("startTs"),
+            "grouped": True,
+        }
+    return {
+        "home_team": event.get("O1"),
+        "away_team": event.get("O2"),
+        "competition": event.get("L") or "",
+        "league_id": "",
+        "event_id": event.get("I"),
+        "parent_event_id": "" if event.get("I") is None else str(event.get("I")),
+        "home_team_id": "" if event.get("O1I") is None else str(event.get("O1I")),
+        "away_team_id": "" if event.get("O2I") is None else str(event.get("O2I")),
+        "start_ts": event.get("S"),
+        "grouped": False,
+    }
+
+
+def _base_kwargs(identity, *, sport, status, now, start_time):
+    event_id = identity["event_id"]
+    return dict(
+        bookmaker=ONEXBET,
+        competition=identity["competition"],
+        sport=sport,
+        home_team=identity["home_team"],
+        away_team=identity["away_team"],
+        start_time=start_time,
+        collected_at=now,
+        event_id=str(event_id),
+        parent_event_id=identity["parent_event_id"] or str(event_id),
+        home_team_id=identity["home_team_id"],
+        away_team_id=identity["away_team_id"],
+        league_id=identity["league_id"],
+        status=status,
+        source=f"onexbet_{status.lower()}",
+    )
+
+
+def _parse_extra_one(event, *, status: str, now, today_reference):
+    if not isinstance(event, dict):
+        return []
+    sport, sport_id = _event_sport_name(event)
+    if sport_id not in SPORT_BY_ID:
+        return []
+    identity = _event_identity(event)
+    home_team = identity["home_team"]
+    away_team = identity["away_team"]
+    if not home_team or not away_team or _is_placeholder_fixture(home_team, away_team):
+        return []
+    start_ts = identity["start_ts"]
+    if start_ts is None:
+        return []
+    start_time = unix_seconds_to_datetime(start_ts)
+    if status == "PREMATCH" and not is_today_in_kenya(
+        start_time, reference=today_reference
+    ):
+        return []
+
+    period = _event_period(event)
+    satellite = _is_satellite_event(event)
+    grouped = identity["grouped"]
+    groups = event.get("eventGroups") if grouped else None
+    flat = event.get("E") if not grouped else None
+    results = []
+    base = _base_kwargs(identity, sport=sport, status=status, now=now, start_time=start_time)
+
+    if not satellite and sport != "Football":
+        winner = None
+        if grouped:
+            winner = extract_two_way_winner_from_event_groups(groups)
+            if not winner and sport_id == 3:
+                winner = extract_two_way_winner_from_event_groups(
+                    groups, group_id=BASKETBALL_MONEYLINE_GROUP_ID, home_type=401, away_type=402
+                )
+        else:
+            winner = extract_two_way_winner_from_flat_events(flat)
+            if not winner and sport_id == 3:
+                winner = extract_two_way_winner_from_flat_events(
+                    flat, group_id=BASKETBALL_MONEYLINE_GROUP_ID, home_type=401, away_type=402
+                )
+        if winner:
+            match = KenyanMatchOdds(
+                **base,
+                market="MATCH_WINNER",
+                home_odds=winner["home"],
+                draw_odds=None,
+                away_odds=winner["away"],
+                cluster_id=winner["cluster_id"],
+                market_id=winner["market_id"],
+                market_type=MARKET_MATCH_WINNER,
+                period=PERIOD_FULL_MATCH,
+                outcome_family=FAMILY_WINNER,
+            )
+            results.append(finalize_match(match))
+
+    if satellite and period == PERIOD_FULL_MATCH:
+        return results
+
+    totals = (
+        extract_totals_from_event_groups(groups)
+        if grouped
+        else extract_totals_from_flat_events(flat)
+    )
+    for total in totals:
+        match = KenyanMatchOdds(
+            **base,
+            market="over_under",
+            home_odds=total["over"],
+            draw_odds=None,
+            away_odds=total["under"],
+            cluster_id=total["cluster_id"],
+            market_id=total["market_id"],
+            line=total["line"],
+            market_type=MARKET_TOTAL,
+            period=period,
+            outcome_family=FAMILY_TOTAL,
+        )
+        match.market_label = market_label(match)
+        results.append(finalize_match(match))
+    return results
+
+
+def parse_extra_markets(payload, *, status: str, reference_now=None) -> list:
+    """Football totals plus tennis/basketball/volleyball winner and totals."""
+    now = datetime.now(timezone.utc)
+    reference = reference_now or now
+    results = []
+    for event in iter_events(payload):
+        results.extend(
+            _parse_extra_one(event, status=status, now=now, today_reference=reference)
+        )
+    return results
+
+
+def parse_all_markets(payload, *, status: str, reference_now=None) -> list:
+    return parse_events(payload, status=status, reference_now=reference_now) + parse_extra_markets(
+        payload, status=status, reference_now=reference_now
+    )

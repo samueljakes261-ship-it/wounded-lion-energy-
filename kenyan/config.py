@@ -78,3 +78,10 @@ ALL_KENYAN_BOOKMAKERS = (SPORTPESA, BETIKA, ONEXBET, BET22)
 
 LIVE = "LIVE"
 PREMATCH = "PREMATCH"
+
+SPORTS = {
+    "football": {"1xbet_id": 1, "bet22_id": 1, "betika_id": 14, "betika_name": "soccer"},
+    "tennis": {"1xbet_id": 4, "bet22_id": 4, "betika_id": 28, "betika_name": "tennis"},
+    "basketball": {"1xbet_id": 3, "bet22_id": 3, "betika_id": 30, "betika_name": "basketball"},
+    "volleyball": {"1xbet_id": 6, "bet22_id": 6, "betika_id": 35, "betika_name": "volleyball"},
+}

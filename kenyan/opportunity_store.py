@@ -13,7 +13,9 @@ from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional
 
 from kenyan.config import KENYAN_OPPORTUNITY_RETENTION_SECONDS
+from kenyan.markets import kenyan_market_key
 from kenyan.matcher import KenyanEventMatcher, _feed_key, _sport_key
+from kenyan.models import KenyanTwoWayOpportunity
 
 
 _MATCHER = KenyanEventMatcher()
@@ -29,8 +31,7 @@ class TrackedKenyanOpportunity:
     is_live: bool
 
     def odds_tuple(self):
-        best = self.opportunity.result.best_odds
-        return (best.home_odds, best.draw_odds, best.away_odds)
+        return _odds_tuple(self.opportunity)
 
 
 def _opportunity_feed(opportunity) -> str:
@@ -53,24 +54,37 @@ def opportunity_identity(opportunity, *, matcher: Optional[KenyanEventMatcher] =
     sport = _sport_key(event)
     home = matcher.canonical_team(event.home_team)
     away = matcher.canonical_team(event.away_team)
-    market = (getattr(event, "market", None) or "1X2").strip().lower()
+    sample = (getattr(event, "matches", None) or [None])[0]
+    market_id = (
+        "|".join(str(part) for part in kenyan_market_key(sample))
+        if sample is not None
+        else (getattr(event, "market", None) or "1X2").strip().lower()
+    )
+    if isinstance(opportunity, KenyanTwoWayOpportunity) or getattr(opportunity, "outcome_count", 3) == 2:
+        books = [best.home_match.bookmaker, best.away_match.bookmaker]
+    else:
+        books = [
+            best.home_match.bookmaker,
+            best.draw_match.bookmaker,
+            best.away_match.bookmaker,
+        ]
     return "|".join(
         [
             feed,
             sport,
             home,
             away,
-            market,
+            market_id,
             "BACK_BACK",
-            best.home_match.bookmaker,
-            best.draw_match.bookmaker,
-            best.away_match.bookmaker,
+            *books,
         ]
     )
 
 
 def _odds_tuple(opportunity):
     best = opportunity.result.best_odds
+    if isinstance(opportunity, KenyanTwoWayOpportunity) or getattr(opportunity, "outcome_count", 3) == 2:
+        return (best.home_odds, best.away_odds)
     return (best.home_odds, best.draw_odds, best.away_odds)
 
 

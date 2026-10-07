@@ -31,6 +31,13 @@ type KenyanOpportunity = {
   isLive?: boolean;
   sport: string;
   competition: string;
+  market?: string;
+  marketLabel?: string;
+  line?: number | null;
+  period?: string | null;
+  outcomeCount?: number;
+  homeLabel?: string;
+  awayLabel?: string;
   homeTeam: string;
   awayTeam: string;
   profitPercentage: number;
@@ -39,7 +46,7 @@ type KenyanOpportunity = {
   guaranteedReturn: number;
   totalStake: number;
   home: KenyanLeg;
-  draw: KenyanLeg;
+  draw: KenyanLeg | null;
   away: KenyanLeg;
 };
 
@@ -81,6 +88,10 @@ function OpportunityRow({
 
 function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
   const [open, setOpen] = useState(false);
+  const twoWay = opportunity.outcomeCount === 2 || opportunity.draw == null;
+  const homeLabel = opportunity.homeLabel || "HOME";
+  const awayLabel = opportunity.awayLabel || "AWAY";
+  const marketText = opportunity.marketLabel || opportunity.market || "Match Winner";
 
   return (
     <Card
@@ -97,6 +108,18 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
                     {opportunity.homeTeam} vs {opportunity.awayTeam}
                   </CardTitle>
                   <div className="text-slate-400 text-sm mt-1 truncate">{opportunity.competition}</div>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <Badge variant="outline" className="text-[10px] tracking-wide">
+                      {opportunity.isLive ? "LIVE" : "PREMATCH"}
+                    </Badge>
+                    <Badge
+                      data-testid="kenyan-market-label"
+                      variant="outline"
+                      className="text-[10px] tracking-wide text-cyan-300 border-cyan-700/60"
+                    >
+                      MARKET {marketText}
+                    </Badge>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge className="bg-emerald-500 text-black">
@@ -111,9 +134,11 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <OpportunityRow label="HOME" teamName={opportunity.homeTeam} leg={opportunity.home} />
-              <OpportunityRow label="DRAW" leg={opportunity.draw} />
-              <OpportunityRow label="AWAY" teamName={opportunity.awayTeam} leg={opportunity.away} />
+              <OpportunityRow label={homeLabel} teamName={opportunity.homeTeam} leg={opportunity.home} />
+              {twoWay || !opportunity.draw ? null : (
+                <OpportunityRow label="DRAW" leg={opportunity.draw} />
+              )}
+              <OpportunityRow label={awayLabel} teamName={opportunity.awayTeam} leg={opportunity.away} />
             </CardContent>
           </button>
         </CollapsibleTrigger>
@@ -122,9 +147,9 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
             <StakePlanPanel
               labels={{
                 title: t("en", "stakePlan"),
-                home: t("en", "home"),
-                draw: t("en", "draw"),
-                away: t("en", "away"),
+                home: twoWay ? homeLabel : t("en", "home"),
+                draw: twoWay ? "" : t("en", "draw"),
+                away: twoWay ? awayLabel : t("en", "away"),
                 totalStake: t("en", "totalStake"),
                 expectedReturn: t("en", "expectedReturn"),
                 guaranteedProfit: t("en", "guaranteedProfit"),
@@ -132,7 +157,7 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
               }}
               values={{
                 homeStake: opportunity.home.stake,
-                drawStake: opportunity.draw.stake,
+                drawStake: opportunity.draw?.stake ?? 0,
                 awayStake: opportunity.away.stake,
                 totalStake: opportunity.totalStake,
                 guaranteedReturn: opportunity.guaranteedReturn,
