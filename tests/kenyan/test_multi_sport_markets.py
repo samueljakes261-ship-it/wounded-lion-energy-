@@ -118,11 +118,14 @@ def test_betika_tennis_and_volleyball_are_two_way(fixture_loader):
 
 def test_betika_basketball_keeps_real_draw(fixture_loader):
     matches = parse_all_matches(fixture_loader("betika_basketball.json"), status="LIVE")
-    assert len(matches) == 1
-    match = matches[0]
-    assert match.sport == "Basketball"
-    assert match.draw_odds == 15.0
-    assert match.market == "1X2"
+    three = next(m for m in matches if m.market == "1X2")
+    assert three.sport == "Basketball"
+    assert three.draw_odds == 15.0
+    two = next(m for m in matches if m.market == "MATCH_WINNER")
+    assert two.draw_odds is None
+    assert two.home_odds == 1.85
+    assert two.away_odds == 2.05
+    assert KenyanEventMatcher().is_same_event(three, two) is False
 
 
 def test_betika_non_football_still_ignored_by_football_parser(fixture_loader):

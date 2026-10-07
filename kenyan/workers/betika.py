@@ -2,7 +2,9 @@
 Persistent Betika workers (one for LIVE, one for PREMATCH).
 
 sub_type_id 18 is TOTAL (Over/Under lines such as OVER 2.5 / UNDER 2.5).
-1,186,340 remain winner markets. Pages are walked until meta.total.
+219 is basketball WINNER (INCL. OVERTIME), the two-way moneyline that
+matches 1xBet/22Bet group 101. 1,186,340 remain other winner markets.
+Pages are walked until meta.total.
 """
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -16,7 +18,7 @@ from kenyan.http_utils import fetch_json
 from kenyan.parsers.betika_parser import parse_all_matches
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
-BETIKA_SUB_TYPES = "1,18,186,340"
+BETIKA_SUB_TYPES = "1,18,186,219,340"
 MAX_PAGES = 40
 PAGE_LIMIT = 200
 

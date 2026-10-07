@@ -18,6 +18,8 @@ captured, trimmed real payloads used by this module's tests):
   than which host answered the request.
 - `sub_type_id` on the list request FILTERS which markets appear in
   each match's `odds` array. Omitting 18 drops Over/Under entirely.
+  Omitting 219 drops basketball WINNER (INCL. OVERTIME), the two-way
+  moneyline that 1xBet/22Bet expose as group 101.
   sub_type 18 is named `TOTAL`; one market carries several lines
   (`odd_key`/`display` like `over 2.5`, `special_bet_value` `total=2.5`,
   outcome_id 12=over / 13=under). Lines are grouped, never collapsed.
@@ -55,7 +57,7 @@ from kenyan.odds import parse_decimal_odds
 FOOTBALL_SPORT_NAME = "soccer"
 ONE_X_TWO_SUB_TYPE_ID = 1
 TOTAL_SUB_TYPE_IDS = {"18"}
-WINNER_SUB_TYPE_IDS = {"186", "340", "113"}
+WINNER_SUB_TYPE_IDS = {"186", "219", "340", "113"}
 _TOTAL_LINE_RE = re.compile(r"(\d+(?:\.\d+)?)")
 SUPPORTED_SPORT_KEYS = {"football", "tennis", "basketball", "volleyball"}
 SPORT_ID_TO_NAME = {
@@ -210,7 +212,7 @@ def _extract_two_way_winner(match: dict):
             continue
         sub_type = str(market.get("sub_type_id") or "")
         name = (market.get("name") or "").strip().upper()
-        if sub_type not in WINNER_SUB_TYPE_IDS and name not in {"WINNER", "MATCH WINNER"}:
+        if sub_type not in WINNER_SUB_TYPE_IDS and "WINNER" not in name:
             continue
         outcomes = market.get("odds")
         if not isinstance(outcomes, list):
@@ -357,46 +359,26 @@ def parse_extra_matches(payload: dict, *, status: str, reference_now=None) -> li
                 )
                 if built is not None:
                     results.append(built)
-            else:
-                two_way = _extract_two_way_winner(match)
-                if two_way:
-                    home_odds, away_odds, market_id = two_way
-                    built = _build_betika_match(
-                        match,
-                        sport=sport,
-                        status=status,
-                        now=now,
-                        reference_now=reference_now,
-                        market="MATCH_WINNER",
-                        home_odds=home_odds,
-                        draw_odds=None,
-                        away_odds=away_odds,
-                        market_type=MARKET_MATCH_WINNER,
-                        outcome_family=FAMILY_WINNER,
-                        market_id=market_id,
-                    )
-                    if built is not None:
-                        results.append(built)
-        else:
-            two_way = _extract_two_way_winner(match)
-            if two_way:
-                home_odds, away_odds, market_id = two_way
-                built = _build_betika_match(
-                    match,
-                    sport=sport,
-                    status=status,
-                    now=now,
-                    reference_now=reference_now,
-                    market="MATCH_WINNER",
-                    home_odds=home_odds,
-                    draw_odds=None,
-                    away_odds=away_odds,
-                    market_type=MARKET_MATCH_WINNER,
-                    outcome_family=FAMILY_WINNER,
-                    market_id=market_id,
-                )
-                if built is not None:
-                    results.append(built)
+
+        two_way = _extract_two_way_winner(match)
+        if two_way:
+            home_odds, away_odds, market_id = two_way
+            built = _build_betika_match(
+                match,
+                sport=sport,
+                status=status,
+                now=now,
+                reference_now=reference_now,
+                market="MATCH_WINNER",
+                home_odds=home_odds,
+                draw_odds=None,
+                away_odds=away_odds,
+                market_type=MARKET_MATCH_WINNER,
+                outcome_family=FAMILY_WINNER,
+                market_id=market_id,
+            )
+            if built is not None:
+                results.append(built)
 
         for line, over, under, market_id in _extract_totals(match):
             built = _build_betika_match(

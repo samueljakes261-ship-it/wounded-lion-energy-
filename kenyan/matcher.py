@@ -29,6 +29,7 @@ START_TIME_TOLERANCE = timedelta(minutes=90)
 MIN_FUZZY_TOKEN_LEN = 4
 _PARTICLES = frozenset({"and", "the", "de", "la", "el", "of", "at", "vs", "a"})
 _IGNORABLE_LEFTOVER = frozenset({"town", "united"})
+_EXTRA_SPORTS = frozenset({"tennis", "basketball", "volleyball"})
 
 REASON_SPORT = "SPORT_MISMATCH"
 REASON_FEED = "FEED_TYPE_MISMATCH"
@@ -38,6 +39,35 @@ REASON_TEAMS = "MATCH_IDENTITY_MISMATCH"
 REASON_AMBIGUOUS = "AMBIGUOUS_EVENT_MATCH"
 REASON_BOOKMAKER = "SAME_BOOKMAKER"
 REASON_HOME_AWAY = "HOME_AWAY_ORDER_MISMATCH"
+
+
+def _reorder_comma_name(name: str) -> str:
+    """Betika tennis lists 'Last, First'; 1xBet lists 'First Last'."""
+    if not name or "," not in name:
+        return name
+    last, first = name.split(",", 1)
+    last, first = last.strip(), first.strip()
+    if last and first:
+        return f"{first} {last}"
+    return name
+
+
+def _tokens_equivalent(token: str, candidate: str, *, allow_initial: bool) -> bool:
+    if token == candidate:
+        return True
+    if (
+        len(token) >= MIN_FUZZY_TOKEN_LEN
+        and len(candidate) >= MIN_FUZZY_TOKEN_LEN
+        and (candidate.startswith(token) or token.startswith(candidate))
+    ):
+        return True
+    if allow_initial:
+        shorter, longer = (
+            (token, candidate) if len(token) <= len(candidate) else (candidate, token)
+        )
+        if 1 <= len(shorter) <= 2 and longer.startswith(shorter):
+            return True
+    return False
 
 
 def _sport_key(match) -> str:
@@ -56,7 +86,7 @@ class KenyanEventMatcher:
         self.normalizer = TeamNameNormalizer()
 
     def canonical_team(self, name: str) -> str:
-        value = self.normalizer.normalize(name or "")
+        value = self.normalizer.normalize(_reorder_comma_name(name) or "")
         if not value:
             return ""
         aliased = TEAM_ALIASES.get(value, value)
@@ -69,7 +99,14 @@ class KenyanEventMatcher:
             if word and word not in _PARTICLES
         ]
 
-    def _token_compat(self, left: str, right: str) -> bool:
+    def _token_compat(
+        self,
+        left: str,
+        right: str,
+        *,
+        allow_initial: bool = False,
+        allow_longer_leftover: bool = False,
+    ) -> bool:
         if not left or not right:
             return False
         if left == right:
@@ -87,15 +124,8 @@ class KenyanEventMatcher:
         for token in shorter:
             matched_at = None
             for index, candidate in enumerate(unused):
-                if token == candidate:
-                    matched_at = index
-                    break
-                if (
-                    len(token) >= MIN_FUZZY_TOKEN_LEN
-                    and len(candidate) >= MIN_FUZZY_TOKEN_LEN
-                    and (
-                        candidate.startswith(token) or token.startswith(candidate)
-                    )
+                if _tokens_equivalent(
+                    token, candidate, allow_initial=allow_initial
                 ):
                     matched_at = index
                     break
@@ -103,6 +133,8 @@ class KenyanEventMatcher:
                 return False
             unused.pop(matched_at)
         if unused:
+            if allow_longer_leftover:
+                return True
             return all(token in _IGNORABLE_LEFTOVER for token in unused)
         return True
 
@@ -150,8 +182,19 @@ class KenyanEventMatcher:
         if home1 == away2 and away1 == home2:
             return "REJECT", REASON_HOME_AWAY, ""
 
-        home_ok = home_exact or self._token_compat(home1, home2)
-        away_ok = away_exact or self._token_compat(away1, away2)
+        extra = _sport_key(match1) in _EXTRA_SPORTS
+        home_ok = home_exact or self._token_compat(
+            home1,
+            home2,
+            allow_initial=extra,
+            allow_longer_leftover=extra,
+        )
+        away_ok = away_exact or self._token_compat(
+            away1,
+            away2,
+            allow_initial=extra,
+            allow_longer_leftover=extra,
+        )
         if home_ok and away_ok:
             return "MATCH", "TOKEN_FALLBACK", "TOKEN"
 

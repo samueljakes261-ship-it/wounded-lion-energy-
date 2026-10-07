@@ -110,6 +110,7 @@ def test_betika_requests_total_subtype_and_pages_until_meta_total(monkeypatch):
 
 def test_betika_subtype_list_includes_total():
     assert "18" in betika.BETIKA_SUB_TYPES.split(",")
+    assert "219" in betika.BETIKA_SUB_TYPES.split(",")
 
 
 def test_onexbet_football_games1x2_is_not_capped_at_50():

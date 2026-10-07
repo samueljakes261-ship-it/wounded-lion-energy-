@@ -20,12 +20,14 @@ def _match(
     event_id="",
     cluster_id="",
     status="LIVE",
+    sport="Football",
+    market="1X2",
 ):
     return KenyanMatchOdds(
         bookmaker=bookmaker,
         competition="Premier League",
-        sport="Football",
-        market="1X2",
+        sport=sport,
+        market=market,
         home_team=home,
         away_team=away,
         home_odds=home_odds,
@@ -191,6 +193,104 @@ def test_finder_scales_across_uncapped_kickoffs():
         and len({match.bookmaker for match in event.matches}) == 2
     ]
     assert chelsea
+
+
+def test_tennis_last_first_matches_first_last():
+    matcher = KenyanEventMatcher()
+    left = _match(
+        BETIKA,
+        "Gamracy, Hana",
+        "Read, Hannah",
+        draw_odds=None,
+        sport="Tennis",
+        market="MATCH_WINNER",
+    )
+    right = _match(
+        ONEXBET,
+        "Hana Gamracy",
+        "Hannah Read",
+        draw_odds=None,
+        sport="Tennis",
+        market="MATCH_WINNER",
+    )
+    assert matcher.is_same_event(left, right)
+
+
+def test_volleyball_shared_tokens_match_despite_prefix():
+    matcher = KenyanEventMatcher()
+    left = _match(
+        BETIKA,
+        "Volei Mania Itaqua SP",
+        "Renata",
+        draw_odds=None,
+        sport="Volleyball",
+        market="MATCH_WINNER",
+    )
+    right = _match(
+        ONEXBET,
+        "Mania Itaqua",
+        "Volei Renata",
+        draw_odds=None,
+        sport="Volleyball",
+        market="MATCH_WINNER",
+    )
+    assert matcher.is_same_event(left, right)
+
+
+def test_basketball_initial_and_city_prefix_match():
+    matcher = KenyanEventMatcher()
+    left = _match(
+        BETIKA,
+        "B. Munich",
+        "Milano",
+        draw_odds=None,
+        sport="Basketball",
+        market="MATCH_WINNER",
+    )
+    right = _match(
+        ONEXBET,
+        "Bayern Munich",
+        "Olimpia Milano",
+        draw_odds=None,
+        sport="Basketball",
+        market="MATCH_WINNER",
+    )
+    assert matcher.is_same_event(left, right)
+
+
+def test_football_leftover_still_rejects_unrelated_clubs():
+    matcher = KenyanEventMatcher()
+    left = _match(SPORTPESA, "Arsenal", "Chelsea")
+    right = _match(BETIKA, "Arsenal de Sarandi", "Chelsea")
+    assert matcher.is_same_event(left, right) is False
+
+
+def test_volleyball_name_variants_still_arb():
+    matches = [
+        _match(
+            BETIKA,
+            "Volei Mania Itaqua SP",
+            "Renata",
+            2.20,
+            None,
+            1.70,
+            sport="Volleyball",
+            market="MATCH_WINNER",
+        ),
+        _match(
+            ONEXBET,
+            "Mania Itaqua",
+            "Volei Renata",
+            1.70,
+            None,
+            2.20,
+            sport="Volleyball",
+            market="MATCH_WINNER",
+        ),
+    ]
+    opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000)
+    assert len(opportunities) == 1
+    assert opportunities[0].result.arbitrage_exists is True
 
 
 def test_engine_still_finds_implementable_arb_for_same_event():
