@@ -7,8 +7,17 @@ therefore drops events that were merely off this page, which then
 drops the corresponding arbitrage opportunities. This merge keeps
 per-event last-seen timestamps and expires them using the existing
 KENYAN_STALE_AFTER_SECONDS window.
+
+1xBet/22Bet prematch walks football first, then tennis/basketball/
+volleyball VZip pages in the same sequential cycle. `collected_at` is
+stamped when each URL is parsed, so football rows can already be older
+than KENYAN_STALE_AFTER_SECONDS by the time the worker publishes.
+The engine's stale check reads `collected_at`, not `last_seen`, which
+left the worker snapshot visible and `/kenyan/opportunities?mode=prematch`
+empty. Incoming rows are therefore restamped to the poll-end time.
 """
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Dict, Iterable, Optional
 
 
@@ -58,9 +67,12 @@ def merge_match_records(
 
     records = dict(previous or {})
     seen = set()
+    collected_at = datetime.fromtimestamp(now, tz=timezone.utc)
 
     for match in incoming:
         key = match_identity(match)
+        if hasattr(match, "collected_at"):
+            match.collected_at = collected_at
         records[key] = MatchRecord(match=match, last_seen=now)
         seen.add(key)
 

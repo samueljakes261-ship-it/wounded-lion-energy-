@@ -1,6 +1,10 @@
+import time
+from datetime import datetime, timedelta, timezone
+
+from kenyan.config import BETIKA, ONEXBET
+from kenyan.engine import KenyanArbitrageEngine
 from kenyan.match_snapshot import match_identity, merge_match_records, visible_matches
 from kenyan.models import KenyanMatchOdds
-from datetime import datetime, timezone
 
 
 def _match(event_id, home, away, status="LIVE", odds=2.1):
@@ -56,3 +60,57 @@ def test_odds_update_replaces_same_identity():
     visible = visible_matches(records, now=1005.0, retention_seconds=45)
     assert len(visible) == 1
     assert visible[0].home_odds == 2.20
+
+
+def test_merge_restamps_collected_at_to_poll_end():
+    parse_time = datetime.now(timezone.utc) - timedelta(seconds=200)
+    match = _match("1", "A", "B")
+    match.collected_at = parse_time
+    poll_end = time.time()
+    records = merge_match_records({}, [match], now=poll_end, retention_seconds=180)
+    stored = records[match_identity(match)].match
+    age = abs((stored.collected_at.timestamp() - poll_end))
+    assert age < 1.0
+
+
+def test_prematch_football_still_arbs_after_long_extra_sport_walk():
+    parse_time = datetime.now(timezone.utc) - timedelta(seconds=200)
+    poll_end = time.time()
+    now = datetime.fromtimestamp(poll_end, tz=timezone.utc)
+    matches = [
+        KenyanMatchOdds(
+            bookmaker=ONEXBET,
+            competition="X",
+            sport="Football",
+            market="1X2",
+            home_team="Alpha",
+            away_team="Beta",
+            home_odds=2.10,
+            draw_odds=3.30,
+            away_odds=3.40,
+            start_time=now,
+            collected_at=parse_time,
+            status="PREMATCH",
+        ),
+        KenyanMatchOdds(
+            bookmaker=BETIKA,
+            competition="X",
+            sport="Football",
+            market="1X2",
+            home_team="Alpha",
+            away_team="Beta",
+            home_odds=2.00,
+            draw_odds=3.90,
+            away_odds=4.00,
+            start_time=now,
+            collected_at=parse_time,
+            status="PREMATCH",
+        ),
+    ]
+    records = merge_match_records({}, matches, now=poll_end, retention_seconds=180)
+    visible = visible_matches(records, now=poll_end, retention_seconds=180)
+    opportunities = KenyanArbitrageEngine().compute_opportunities(
+        visible, bankroll=1000, now=now
+    )
+    assert len(opportunities) == 1
+    assert opportunities[0].result.arbitrage_exists is True
