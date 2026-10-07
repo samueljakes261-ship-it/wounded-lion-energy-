@@ -79,11 +79,13 @@ def _poll(urls, status: str):
     combined_rows = []
     seen_ids = set()
     last = None
+    last_ok = None
     parser_error = None
     elapsed = 0.0
     bytes_total = 0
     status_code = None
     content_type = None
+    any_ok = False
     for url in urls:
         payload, fetch_result = _fetch_pages(url)
         last = fetch_result
@@ -92,6 +94,9 @@ def _poll(urls, status: str):
             bytes_total += fetch_result.response_size_bytes
             status_code = fetch_result.status_code
             content_type = fetch_result.content_type
+            if fetch_result.ok:
+                any_ok = True
+                last_ok = fetch_result
             if not fetch_result.ok and not payload.get("data"):
                 continue
         for row in payload.get("data") or []:
@@ -113,19 +118,26 @@ def _poll(urls, status: str):
         for m in combined_rows
         if (m.get("sport_name") or "").strip().lower() == "soccer"
     )
-    ok = last is not None and last.ok and parser_error is None
+    ok = any_ok and parser_error is None
+    failed = last_ok is None and last is not None
     diagnostics = Diagnostics(
         endpoint_status="ok" if ok else (
             "http_error" if last is not None and last.status_code else "exception"
         ) if parser_error is None else "bad_payload",
-        http_status_code=status_code if last is None or last.ok else last.status_code,
-        content_type=content_type,
+        http_status_code=(
+            last_ok.status_code if last_ok is not None else (
+                status_code if last is None or last.ok else last.status_code
+            )
+        ),
+        content_type=content_type if last_ok is None else last_ok.content_type,
         response_size_bytes=bytes_total,
         events_discovered=len(combined_rows),
         football_events=football_events,
         one_x_two_events=football_events,
         valid_normalized_events=len(matches),
-        parser_error=parser_error or (last.error if last is not None and not last.ok else None),
+        parser_error=parser_error or (
+            None if any_ok else (last.error if failed and not last.ok else None)
+        ),
         elapsed_seconds=elapsed,
         acquired_at=time.time(),
     )

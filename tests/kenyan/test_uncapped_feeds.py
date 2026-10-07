@@ -2,6 +2,9 @@ import inspect
 from urllib.parse import parse_qs, urlsplit
 
 from kenyan.api_router import opportunities
+from kenyan.models import KenyanMatchOdds
+from kenyan.workers.base import Diagnostics
+from kenyan.workers.poll_combine import combine_match_polls
 from kenyan.config import (
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
@@ -132,3 +135,33 @@ def test_prematch_workers_poll_faster_than_live():
 def test_opportunities_default_mode_is_prematch():
     default = inspect.signature(opportunities).parameters["mode"].default
     assert default == "prematch"
+
+
+def test_combine_polls_keeps_football_when_a_later_url_fails():
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    match = KenyanMatchOdds(
+        bookmaker="1xBet",
+        competition="L",
+        sport="Football",
+        market="1X2",
+        home_team="A",
+        away_team="B",
+        home_odds=2.0,
+        draw_odds=3.0,
+        away_odds=4.0,
+        start_time=now,
+        collected_at=now,
+        event_id="1",
+        status="PREMATCH",
+    )
+    combined, diagnostics = combine_match_polls(
+        [
+            ([match], Diagnostics(endpoint_status="ok", events_discovered=1, football_events=1)),
+            ([], Diagnostics(endpoint_status="http_error", parser_error="HTTP 400")),
+        ]
+    )
+    assert diagnostics.endpoint_status == "ok"
+    assert diagnostics.parser_error is None
+    assert combined == [match]

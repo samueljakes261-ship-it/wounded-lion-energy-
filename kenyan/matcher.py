@@ -162,6 +162,71 @@ class KenyanEventMatcher:
         return decision == "MATCH"
 
 
+def _start_minute_bucket(start_time):
+    if start_time is None:
+        return None
+    try:
+        return int(start_time.timestamp() // 60)
+    except (OSError, OverflowError, TypeError, ValueError):
+        return str(start_time)
+
+
+def listing_dedupe_key(match, canonical_team) -> tuple:
+    """Same book, market, teams, and kickoff — overlapping catalogue rows."""
+    return (
+        getattr(match, "bookmaker", None),
+        kenyan_market_key(match),
+        canonical_team(getattr(match, "home_team", "") or ""),
+        canonical_team(getattr(match, "away_team", "") or ""),
+        _start_minute_bucket(getattr(match, "start_time", None)),
+    )
+
+
+def dedupe_same_book_listings(matches):
+    """
+    games1x2 + Get1x2_VZip emit the same 1xBet fixture twice. Two partners
+    at one bookmaker make KenyanEventMatcher mark the real pair AMBIGUOUS
+    and drop it. Keep the first listing per book/market/teams/kickoff.
+    """
+    matcher = KenyanEventMatcher()
+    kept = []
+    seen = set()
+    for match in matches:
+        key = listing_dedupe_key(match, matcher.canonical_team)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(match)
+    return kept
+
+
+def _iter_comparable_pairs(matches):
+    """Pairs that can still match under START_TIME_TOLERANCE. O(n * window)."""
+    timed = []
+    untimed = []
+    for index, match in enumerate(matches):
+        if getattr(match, "start_time", None) is None:
+            untimed.append(index)
+        else:
+            timed.append(index)
+    timed.sort(key=lambda index: matches[index].start_time)
+    for position, left in enumerate(timed):
+        start_left = matches[left].start_time
+        for right in timed[position + 1 :]:
+            start_right = matches[right].start_time
+            try:
+                if start_right - start_left > START_TIME_TOLERANCE:
+                    break
+            except TypeError:
+                pass
+            yield left, right
+    for offset, left in enumerate(untimed):
+        for right in untimed[offset + 1 :]:
+            yield left, right
+        for right in timed:
+            yield left, right
+
+
 class KenyanMatchFinder:
     def __init__(self):
         self.matcher = KenyanEventMatcher()
@@ -184,6 +249,16 @@ class KenyanMatchFinder:
         if not matches:
             return []
 
+        buckets = defaultdict(list)
+        for match in matches:
+            buckets[(_feed_key(match), kenyan_market_key(match))].append(match)
+
+        events = []
+        for bucket in buckets.values():
+            events.extend(self._cluster(bucket))
+        return events
+
+    def _cluster(self, matches):
         count = len(matches)
         parent = list(range(count))
 
@@ -201,28 +276,27 @@ class KenyanMatchFinder:
 
         exact_pairs = []
         token_pairs = []
-        for i in range(count):
-            for j in range(i + 1, count):
-                decision, reason, level = self.matcher.evaluate(matches[i], matches[j])
-                if decision != "MATCH":
-                    if reason in (
-                        REASON_START,
-                        REASON_AMBIGUOUS,
-                        REASON_HOME_AWAY,
-                        REASON_TEAMS,
-                    ):
-                        log_matcher(
-                            event_label(matches[i]),
-                            event_label(matches[j]),
-                            "REJECT",
-                            reason,
-                        )
-                    continue
-                pair = (i, j)
-                if level == "EXACT":
-                    exact_pairs.append(pair)
-                else:
-                    token_pairs.append(pair)
+        for i, j in _iter_comparable_pairs(matches):
+            decision, reason, level = self.matcher.evaluate(matches[i], matches[j])
+            if decision != "MATCH":
+                if reason in (
+                    REASON_START,
+                    REASON_AMBIGUOUS,
+                    REASON_HOME_AWAY,
+                    REASON_TEAMS,
+                ):
+                    log_matcher(
+                        event_label(matches[i]),
+                        event_label(matches[j]),
+                        "REJECT",
+                        reason,
+                    )
+                continue
+            pair = (i, j)
+            if level == "EXACT":
+                exact_pairs.append(pair)
+            else:
+                token_pairs.append(pair)
 
         def mark_ambiguous(pairs):
             by_book = defaultdict(lambda: defaultdict(list))

@@ -28,7 +28,12 @@ from kenyan.markets import (
     market_label,
     winner_outcome_labels,
 )
-from kenyan.matcher import START_TIME_TOLERANCE, KenyanMatchFinder, _sport_key
+from kenyan.matcher import (
+    START_TIME_TOLERANCE,
+    KenyanMatchFinder,
+    _sport_key,
+    dedupe_same_book_listings,
+)
 from kenyan.models import (
     KenyanMatchOdds,
     KenyanTwoWayBestOdds,
@@ -156,6 +161,7 @@ class KenyanArbitrageEngine:
             return []
 
         now = now or datetime.now(timezone.utc)
+        matches = dedupe_same_book_listings(matches)
         usable = []
         for match in matches:
             if _is_three_way(match):

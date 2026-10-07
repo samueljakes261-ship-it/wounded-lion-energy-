@@ -158,6 +158,41 @@ def test_swapped_home_away_is_rejected():
     assert reason == "HOME_AWAY_ORDER_MISMATCH"
 
 
+def test_overlapping_1xbet_listings_do_not_block_arbitrage():
+    matches = [
+        _match(BETIKA, "Chelsea", "Brighton", 2.55, 3.20, 3.00, event_id="bk"),
+        _match(ONEXBET, "Chelsea", "Brighton", 2.30, 3.50, 3.20, event_id="1x-games"),
+        _match(ONEXBET, "Chelsea", "Brighton", 2.31, 3.51, 3.21, event_id="1x-vzip"),
+        _match(BET22, "Chelsea", "Brighton", 2.50, 3.40, 3.15, event_id="22"),
+    ]
+    opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000)
+    assert len(opportunities) == 1
+    assert opportunities[0].result.arbitrage_exists is True
+
+
+def test_finder_scales_across_uncapped_kickoffs():
+    finder = KenyanMatchFinder()
+    matches = []
+    for index in range(400):
+        kickoff = NOW + timedelta(hours=index)
+        matches.append(_match(SPORTPESA, f"Home {index}", f"Away {index}", start=kickoff))
+        matches.append(_match(BETIKA, f"Home {index}", f"Away {index}", start=kickoff))
+    matches.extend(
+        [
+            _match(SPORTPESA, "Chelsea FC", "Brighton", start=NOW),
+            _match(BETIKA, "Chelsea", "Brighton", start=NOW),
+        ]
+    )
+    events = finder.find(matches)
+    chelsea = [
+        event
+        for event in events
+        if any("Chelsea" in (match.home_team or "") for match in event.matches)
+        and len({match.bookmaker for match in event.matches}) == 2
+    ]
+    assert chelsea
+
+
 def test_engine_still_finds_implementable_arb_for_same_event():
     matches = [
         _match(SPORTPESA, "Chelsea FC", "Brighton & Hove Albion", 2.40, 3.30, 3.10),

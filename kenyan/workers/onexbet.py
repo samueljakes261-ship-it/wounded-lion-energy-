@@ -16,6 +16,7 @@ from kenyan.parsers._common_1x2 import (
 )
 from kenyan.parsers.onexbet_parser import iter_events, parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
+from kenyan.workers.poll_combine import combine_match_polls
 from kenyan.workers.vzip_pages import fetch_vzip_all
 
 # games1x2 count=1000 / skip= returns HTTP 400. count=250 is the
@@ -106,30 +107,7 @@ def _poll_one(url: str, status: str):
 
 
 def _poll(urls, status: str):
-    combined = []
-    seen = set()
-    last_diagnostics = None
-    for url in urls:
-        matches, diagnostics = _poll_one(url, status)
-        last_diagnostics = diagnostics
-        for match in matches:
-            key = (
-                match.event_id,
-                match.market,
-                match.period,
-                match.line,
-                match.cluster_id,
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            combined.append(match)
-    if last_diagnostics is not None:
-        last_diagnostics.valid_normalized_events = len(combined)
-        last_diagnostics.events_discovered = max(
-            last_diagnostics.events_discovered, len(combined)
-        )
-    return combined, last_diagnostics or Diagnostics(endpoint_status="exception")
+    return combine_match_polls([_poll_one(url, status) for url in urls])
 
 
 def build_live_worker() -> BaseKenyanWorker:
