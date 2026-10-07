@@ -1,16 +1,17 @@
 """
 Walk 1xCorp Get1x2_VZip catalogues with the `after` cursor.
 
-games1x2 `count=1000` and `skip=` return HTTP 400; a single
-`count=400` page still truncates football. `after=<last event I>`
-is the supported way to continue until a short page.
+games1x2 `count=1000` and `skip=` return HTTP 400. Asking for
+`count=400` still returns 50 events (verified live on 1xBet and 22Bet),
+so a page is "full" at the observed size, not the requested count.
+`after=<last event I>` continues until a short page.
 """
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from kenyan.http_utils import FetchResult, fetch_json
 
 PAGE_COUNT = 400
-MAX_PAGES = 20
+MAX_PAGES = 40
 
 
 def with_query(url: str, **updates) -> str:
@@ -35,6 +36,7 @@ def fetch_vzip_all(
     seen = set()
     last = None
     after = None
+    observed_page_size = None
     total_elapsed = 0.0
     total_bytes = 0
 
@@ -68,7 +70,11 @@ def fetch_vzip_all(
             if event_id is not None:
                 new_ids.append(event_id)
 
-        if added == 0 or len(events) < page_count or not new_ids:
+        if observed_page_size is None:
+            observed_page_size = len(events)
+        # Server may ignore count=400 and return 50. Stop only on a
+        # short page, a repeated page, or a missing cursor.
+        if added == 0 or len(events) < observed_page_size or not new_ids:
             break
         after = new_ids[-1]
 

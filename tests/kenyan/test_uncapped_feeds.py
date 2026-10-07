@@ -46,6 +46,31 @@ def test_vzip_walks_after_cursor_until_short_page():
     assert len(calls) == 2
 
 
+def test_vzip_keeps_paging_when_server_caps_below_requested_count():
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        after = parse_qs(urlsplit(url).query).get("after", [None])[0]
+        if after is None:
+            return _ok(url, {"Value": [{"I": i} for i in range(1, 51)]})
+        if after == "50":
+            return _ok(url, {"Value": [{"I": i} for i in range(51, 101)]})
+        if after == "100":
+            return _ok(url, {"Value": [{"I": i} for i in range(101, 121)]})
+        raise AssertionError(after)
+
+    envelope, _ = fetch_vzip_all(
+        "https://example.test/Get1x2_VZip?sports=1&count=400",
+        fetch=fake_fetch,
+        page_count=400,
+    )
+    assert [event["I"] for event in envelope["Value"]] == list(range(1, 121))
+    assert len(calls) == 3
+    assert "after=50" in calls[1]
+    assert "after=100" in calls[2]
+
+
 def test_vzip_stops_when_server_ignores_after_and_repeats():
     def fake_fetch(url):
         return _ok(url, {"Value": [{"I": 10}, {"I": 11}, {"I": 12}]})
