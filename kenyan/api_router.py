@@ -134,7 +134,7 @@ def serialize_opportunities(opportunities) -> list:
 
 
 @router.get("/opportunities")
-def opportunities(mode: str = "live"):
+def opportunities(mode: str = "prematch"):
     runner = get_runner()
 
     if mode.upper() == PREMATCH:

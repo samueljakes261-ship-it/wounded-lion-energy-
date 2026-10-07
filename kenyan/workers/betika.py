@@ -1,37 +1,42 @@
 """
 Persistent Betika workers (one for LIVE, one for PREMATCH).
 
-Each cycle GETs the existing football window plus extra sports pages.
-Pagination is required: limit=10 is a subset (tennis meta.total ~79).
+sub_type_id 18 is TOTAL (Over/Under lines such as OVER 2.5 / UNDER 2.5).
+1,186,340 remain winner markets. Pages are walked until meta.total.
 """
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from kenyan.config import BETIKA
+from kenyan.config import (
+    BETIKA,
+    KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+)
 from kenyan.http_utils import fetch_json
 from kenyan.parsers.betika_parser import parse_all_matches
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
+BETIKA_SUB_TYPES = "1,18,186,340"
+MAX_PAGES = 40
+PAGE_LIMIT = 200
+
 LIVE_URL = (
     "https://live.betika.com/v1/uo/matches"
-    "?page=1&limit=200&sub_type_id=1,186,340&sport=null&sort=1"
+    f"?page=1&limit={PAGE_LIMIT}&sub_type_id={BETIKA_SUB_TYPES}&sport=null&sort=1"
 )
-PREMATCH_URL = (
-    "https://api.betika.com/v1/uo/matches"
-    "?page=1&limit=200&sub_type_id=1,186,340&sport=1"
+PREMATCH_URLS = (
+    f"https://api.betika.com/v1/uo/matches?page=1&limit={PAGE_LIMIT}&sub_type_id={BETIKA_SUB_TYPES}&sport=1",
+    f"https://api.betika.com/v1/uo/matches?page=1&limit={PAGE_LIMIT}&tab=&sub_type_id={BETIKA_SUB_TYPES}&sport_id=28&sort_id=1&period_id=-1&esports=false",
+    f"https://api.betika.com/v1/uo/matches?page=1&limit={PAGE_LIMIT}&tab=&sub_type_id={BETIKA_SUB_TYPES}&sport_id=30&sort_id=1&period_id=-1&esports=false",
+    f"https://api.betika.com/v1/uo/matches?page=1&limit={PAGE_LIMIT}&tab=&sub_type_id={BETIKA_SUB_TYPES}&sport_id=35&sort_id=1&period_id=-1&esports=false",
 )
-PREMATCH_SPORT_URLS = (
-    "https://api.betika.com/v1/uo/matches?page=1&limit=100&tab=&sub_type_id=1,186,340&sport_id=28&sort_id=1&period_id=-1&esports=false",
-    "https://api.betika.com/v1/uo/matches?page=1&limit=100&tab=&sub_type_id=1,186,340&sport_id=30&sort_id=1&period_id=-1&esports=false",
-    "https://api.betika.com/v1/uo/matches?page=1&limit=100&tab=&sub_type_id=1,186,340&sport_id=35&sort_id=1&period_id=-1&esports=false",
-)
-MAX_PAGES = 8
 
 
 def _with_page(url: str, page: int) -> str:
     parts = urlsplit(url)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["page"] = str(page)
+    query["limit"] = str(PAGE_LIMIT)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
@@ -64,18 +69,10 @@ def _fetch_pages(url: str):
             combined.append(row)
         if total and len(combined) >= total:
             break
-        if len(rows) < int(query_limit(url)):
+        if len(rows) < PAGE_LIMIT:
             break
     payload = {"data": combined, "meta": {"total": total}}
     return payload, last
-
-
-def query_limit(url: str) -> int:
-    query = dict(parse_qsl(urlsplit(url).query))
-    try:
-        return max(int(query.get("limit") or 100), 1)
-    except (TypeError, ValueError):
-        return 100
 
 
 def _poll(urls, status: str):
@@ -139,11 +136,13 @@ def build_live_worker() -> BaseKenyanWorker:
     return BaseKenyanWorker(
         name=f"{BETIKA}_live",
         poll_fn=lambda: _poll((LIVE_URL,), "LIVE"),
+        poll_interval_seconds=KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     )
 
 
 def build_prematch_worker() -> BaseKenyanWorker:
     return BaseKenyanWorker(
         name=f"{BETIKA}_prematch",
-        poll_fn=lambda: _poll((PREMATCH_URL,) + PREMATCH_SPORT_URLS, "PREMATCH"),
+        poll_fn=lambda: _poll(PREMATCH_URLS, "PREMATCH"),
+        poll_interval_seconds=KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
     )

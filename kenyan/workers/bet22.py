@@ -7,35 +7,39 @@ data only and unnecessary for this module's purposes.
 """
 import time
 
-from kenyan.config import BET22
-from kenyan.http_utils import fetch_json
+from kenyan.config import (
+    BET22,
+    KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+)
 from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
 from kenyan.parsers.bet22_parser import parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
+from kenyan.workers.vzip_pages import fetch_vzip_all
 
 LIVE_URL = (
     "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip"
-    "?sports=1&count=50&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true"
+    "?sports=1&count=400&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true"
 )
 PREMATCH_URL = (
     "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip"
-    "?count=100&lng=en_GB&tz=3&mode=4&country=87&partner=151&gr=216"
+    "?sports=1&count=400&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216"
 )
 
 LIVE_EXTRA_URLS = (
-    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=4&count=250&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
-    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=3&count=250&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
-    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=6&count=250&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
+    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=4&count=400&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
+    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=3&count=400&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
+    "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=6&count=400&lng=en_GB&gr=216&mode=4&country=87&partner=151&getEmpty=true",
 )
 PREMATCH_EXTRA_URLS = (
-    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=4&count=250&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
-    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=3&count=250&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
-    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=6&count=250&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
+    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=4&count=400&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
+    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=3&count=400&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
+    "https://22bet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=6&count=400&lng=en_GB&tz=3&mode=4&country=87&partner=151&getEmpty=true&gr=216",
 )
 
 
 def _poll_one(url: str, status: str):
-    fetch_result = fetch_json(url)
+    envelope, fetch_result = fetch_vzip_all(url)
     if not fetch_result.ok:
         return [], Diagnostics(
             endpoint_status="http_error" if fetch_result.status_code else "exception",
@@ -47,7 +51,7 @@ def _poll_one(url: str, status: str):
             acquired_at=time.time(),
         )
 
-    raw_events = (fetch_result.json_body or {}).get("Value") or []
+    raw_events = (envelope or {}).get("Value") or []
     football_events = 0
     one_x_two_events = 0
     for event in raw_events:
@@ -58,7 +62,7 @@ def _poll_one(url: str, status: str):
             one_x_two_events += 1
 
     try:
-        matches = parse_all_markets(fetch_result.json_body, status=status)
+        matches = parse_all_markets(envelope, status=status)
         parser_error = None
     except Exception as exc:  # noqa: BLE001
         matches = []
@@ -102,6 +106,7 @@ def build_live_worker() -> BaseKenyanWorker:
     return BaseKenyanWorker(
         name=f"{BET22}_live",
         poll_fn=lambda: _poll((LIVE_URL,) + LIVE_EXTRA_URLS, "LIVE"),
+        poll_interval_seconds=KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     )
 
 
@@ -109,4 +114,5 @@ def build_prematch_worker() -> BaseKenyanWorker:
     return BaseKenyanWorker(
         name=f"{BET22}_prematch",
         poll_fn=lambda: _poll((PREMATCH_URL,) + PREMATCH_EXTRA_URLS, "PREMATCH"),
+        poll_interval_seconds=KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
     )

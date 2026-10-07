@@ -6,16 +6,21 @@ kenyan/fixtures/betika_live.json / betika_prematch.json for the
 captured, trimmed real payloads used by this module's tests):
 
 - LIVE: `https://live.betika.com/v1/uo/matches?page=1&limit=...&
-  sub_type_id=1,186,340&sport=null&sort=1` returns
+  sub_type_id=1,18,186,340&sport=null&sort=1` returns
   `{"data": [{...match...}], "meta": {...}}`.
 - PREMATCH: `https://api.betika.com/v1/uo/matches?page=1&limit=...&
-  sub_type_id=1,186,340&sport=1` returns the SAME shape
+  sub_type_id=1,18,186,340&sport=1` returns the SAME shape
   (`{"data": [...]}`) -- just a different host, and without the
   live-only fields (`current_score`, `match_time`, etc). This module
   therefore shares one parsing function for both, driven only by the
   caller-supplied `status` ("LIVE"/"PREMATCH"), matching how the real
   API itself does not distinguish the two by any payload field other
   than which host answered the request.
+- `sub_type_id` on the list request FILTERS which markets appear in
+  each match's `odds` array. Omitting 18 drops Over/Under entirely.
+  sub_type 18 is named `TOTAL`; one market carries several lines
+  (`odd_key`/`display` like `over 2.5`, `special_bet_value` `total=2.5`,
+  outcome_id 12=over / 13=under). Lines are grouped, never collapsed.
 - Each match carries `sport_name` ("Soccer" for football) and an
   `odds` list of markets, e.g.
   `{"sub_type_id": 1, "name": "1X2", "odds": [{"outcome_id": "1",
@@ -28,10 +33,11 @@ captured, trimmed real payloads used by this module's tests):
   against the HTTP response's `Date` header, run ~3 hours ahead of
   UTC -- i.e. EAT).
 """
+import re
 from datetime import datetime, timezone
 
 from kenyan.config import BETIKA
-from kenyan.date_utils import KENYA_TZ, is_today_in_kenya
+from kenyan.date_utils import KENYA_TZ
 from kenyan.markets import (
     FAMILY_TOTAL,
     FAMILY_WINNER,
@@ -48,7 +54,9 @@ from kenyan.odds import parse_decimal_odds
 
 FOOTBALL_SPORT_NAME = "soccer"
 ONE_X_TWO_SUB_TYPE_ID = 1
+TOTAL_SUB_TYPE_IDS = {"18"}
 WINNER_SUB_TYPE_IDS = {"186", "340", "113"}
+_TOTAL_LINE_RE = re.compile(r"(\d+(?:\.\d+)?)")
 SUPPORTED_SPORT_KEYS = {"football", "tennis", "basketball", "volleyball"}
 SPORT_ID_TO_NAME = {
     "14": "Football",
@@ -122,9 +130,8 @@ def parse_matches(
     payload, since the payload shape does not otherwise distinguish
     the two.
 
-    For PREMATCH, only fixtures scheduled for today (Kenya local date)
-    are kept. For LIVE, every returned match is, by construction of the
-    live endpoint itself, already in progress.
+    Prematch keeps every upcoming fixture in the payload (not Kenya-
+    today only). LIVE matches are already in progress on that host.
     """
 
     now = datetime.now(timezone.utc)
@@ -149,11 +156,6 @@ def parse_matches(
 
         start_time = _parse_kenya_local_datetime(match.get("start_time"))
         if start_time is None:
-            continue
-
-        if status == "PREMATCH" and not is_today_in_kenya(
-            start_time, reference=reference_now or now
-        ):
             continue
 
         home_odds, draw_odds, away_odds = _extract_1x2_odds(match)
@@ -233,45 +235,73 @@ def _extract_two_way_winner(match: dict):
     return None
 
 
+def _outcome_line(outcome: dict):
+    special = outcome.get("special_bet_value")
+    if isinstance(special, str) and "=" in special:
+        try:
+            return round(float(special.split("=")[-1].strip()), 2)
+        except (TypeError, ValueError):
+            pass
+    parsed = outcome.get("parsed_special_bet_value")
+    if isinstance(parsed, dict):
+        for value in parsed.values():
+            try:
+                if value not in (None, ""):
+                    return round(float(value), 2)
+            except (TypeError, ValueError):
+                continue
+    text = f"{outcome.get('odd_key') or ''} {outcome.get('display') or ''}"
+    match = _TOTAL_LINE_RE.search(text)
+    if not match:
+        return None
+    try:
+        return round(float(match.group(1)), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_over_outcome(outcome: dict) -> bool:
+    text = f"{outcome.get('odd_key') or ''} {outcome.get('display') or ''}".strip().lower()
+    if "under" in text:
+        return False
+    if "over" in text:
+        return True
+    return str(outcome.get("outcome_id") or "") == "12"
+
+
 def _extract_totals(match: dict):
+    """Betika TOTAL (sub_type 18): several Over/Under lines in one market."""
     markets = match.get("odds")
     if not isinstance(markets, list):
         return []
-    totals = []
+    by_line = {}
     for market in markets:
         if not isinstance(market, dict):
             continue
         name = (market.get("name") or "").strip().lower()
-        if "over" not in name and "under" not in name and "total" not in name:
+        sub_type = str(market.get("sub_type_id") or "")
+        if sub_type not in TOTAL_SUB_TYPE_IDS and "total" not in name and "over" not in name:
             continue
         outcomes = market.get("odds")
         if not isinstance(outcomes, list):
             continue
-        over = under = line = None
         for outcome in outcomes:
             if not isinstance(outcome, dict):
                 continue
+            line = _outcome_line(outcome)
             price = parse_decimal_odds(outcome.get("odd_value"))
-            if price is None:
+            if line is None or price is None:
                 continue
-            special = outcome.get("special_bet_value") or outcome.get("parsed_special_bet_value")
-            if line is None:
-                candidate = special
-                if isinstance(candidate, dict):
-                    candidate = next(iter(candidate.values()), None)
-                try:
-                    if candidate not in (None, ""):
-                        line = round(float(candidate), 2)
-                except (TypeError, ValueError):
-                    line = None
-            key = (outcome.get("odd_key") or outcome.get("display") or "").strip().lower()
-            if "over" in key or str(outcome.get("display") or "").lower() in {"over", "o"}:
-                over = price
-            elif "under" in key or str(outcome.get("display") or "").lower() in {"under", "u"}:
-                under = price
-        if over is not None and under is not None and line is not None:
-            totals.append((line, over, under, str(market.get("sub_type_id") or "total")))
-    return totals
+            slot = by_line.setdefault((line, sub_type or "18"), {})
+            if _is_over_outcome(outcome):
+                slot.setdefault("over", price)
+            else:
+                slot.setdefault("under", price)
+    results = []
+    for (line, market_id), prices in sorted(by_line.items()):
+        if "over" in prices and "under" in prices:
+            results.append((line, prices["over"], prices["under"], market_id))
+    return results
 
 
 def parse_extra_matches(payload: dict, *, status: str, reference_now=None) -> list:
@@ -407,10 +437,6 @@ def _build_betika_match(
 ):
     start_time = _parse_kenya_local_datetime(match.get("start_time"))
     if start_time is None:
-        return None
-    if status == "PREMATCH" and not is_today_in_kenya(
-        start_time, reference=reference_now or now
-    ):
         return None
     event_id = match.get("match_id") or match.get("game_id") or ""
     competition = match.get("competition_name") or match.get("competition") or ""

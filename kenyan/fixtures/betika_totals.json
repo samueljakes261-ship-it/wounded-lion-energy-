@@ -20,10 +20,14 @@
         },
         {
           "sub_type_id": "18",
-          "name": "Over/Under",
+          "name": "TOTAL",
           "odds": [
-            {"outcome_id": "12", "display": "Over", "odd_key": "Over", "odd_value": "2.10", "special_bet_value": "2.5"},
-            {"outcome_id": "13", "display": "Under", "odd_key": "Under", "odd_value": "2.05", "special_bet_value": "2.5"}
+            {"outcome_id": "12", "odd_key": "over 1.5", "display": "OVER 1.5", "special_bet_value": "total=1.5", "odd_value": "1.35"},
+            {"outcome_id": "12", "odd_key": "over 2.5", "display": "OVER 2.5", "special_bet_value": "total=2.5", "odd_value": "2.10"},
+            {"outcome_id": "12", "odd_key": "over 3.5", "display": "OVER 3.5", "special_bet_value": "total=3.5", "odd_value": "2.30"},
+            {"outcome_id": "13", "odd_key": "under 1.5", "display": "UNDER 1.5", "special_bet_value": "total=1.5", "odd_value": "2.80"},
+            {"outcome_id": "13", "odd_key": "under 2.5", "display": "UNDER 2.5", "special_bet_value": "total=2.5", "odd_value": "2.05"},
+            {"outcome_id": "13", "odd_key": "under 3.5", "display": "UNDER 3.5", "special_bet_value": "total=3.5", "odd_value": "1.80"}
           ]
         }
       ]

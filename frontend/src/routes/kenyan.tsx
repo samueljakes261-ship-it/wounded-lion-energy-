@@ -173,7 +173,7 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
 }
 
 function KenyanDashboard() {
-  const [mode, setMode] = useState<KenyanMode>("live");
+  const [mode, setMode] = useState<KenyanMode>("prematch");
   const [opportunities, setOpportunities] = useState<KenyanOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

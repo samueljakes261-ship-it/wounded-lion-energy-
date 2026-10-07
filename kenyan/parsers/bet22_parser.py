@@ -35,7 +35,7 @@ used by this module's tests):
 from datetime import datetime, timezone
 
 from kenyan.config import BET22
-from kenyan.date_utils import is_today_in_kenya, unix_seconds_to_datetime
+from kenyan.date_utils import unix_seconds_to_datetime
 from kenyan.log import log_parse
 from kenyan.markets import (
     FAMILY_TOTAL,
@@ -119,11 +119,6 @@ def parse_events(payload, *, status: str, reference_now=None) -> list:
 
         start_time = unix_seconds_to_datetime(start_ts)
 
-        if status == "PREMATCH" and not is_today_in_kenya(
-            start_time, reference=reference
-        ):
-            continue
-
         clusters = extract_1x2_clusters_from_flat_events(event.get("E"))
         if not clusters:
             continue
@@ -196,10 +191,6 @@ def parse_extra_markets(payload, *, status: str, reference_now=None) -> list:
         if start_ts is None:
             continue
         start_time = unix_seconds_to_datetime(start_ts)
-        if status == "PREMATCH" and not is_today_in_kenya(
-            start_time, reference=reference
-        ):
-            continue
 
         sport = SPORT_BY_ID[sport_id]
         competition = event.get("L") or ""

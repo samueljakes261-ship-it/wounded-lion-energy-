@@ -18,7 +18,7 @@ def test_parse_live_matches_from_real_fixture(fixture_loader):
     assert sunderland.away_odds == 40.00
 
 
-def test_parse_prematch_today_only(fixture_loader):
+def test_parse_prematch_upcoming_fixtures(fixture_loader):
     payload = fixture_loader("betika_prematch.json")
     reference_now = datetime(2026, 8, 30, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -33,12 +33,12 @@ def test_parse_prematch_today_only(fixture_loader):
     assert man_utd.away_odds == 7.60
 
 
-def test_parse_prematch_rejects_events_not_today(fixture_loader):
+def test_parse_prematch_keeps_upcoming_fixtures_not_only_today(fixture_loader):
     payload = fixture_loader("betika_prematch.json")
     reference_far_future = datetime(2027, 3, 1, tzinfo=timezone.utc)
 
     matches = parse_matches(payload, status="PREMATCH", reference_now=reference_far_future)
-    assert matches == []
+    assert len(matches) == 4
 
 
 def test_parse_matches_ignores_non_football():

@@ -47,7 +47,7 @@ captured, trimmed real payloads used by this module's tests):
 from datetime import datetime, timezone
 
 from kenyan.config import ONEXBET
-from kenyan.date_utils import is_today_in_kenya, unix_seconds_to_datetime
+from kenyan.date_utils import unix_seconds_to_datetime
 from kenyan.log import log_parse
 from kenyan.markets import (
     FAMILY_TOTAL,
@@ -203,11 +203,6 @@ def _parse_one_event(event, *, status: str, now, today_reference):
 
     start_time = unix_seconds_to_datetime(start_ts)
 
-    if status == "PREMATCH" and not is_today_in_kenya(
-        start_time, reference=today_reference
-    ):
-        return None
-
     match = KenyanMatchOdds(
         bookmaker=ONEXBET,
         competition=competition,
@@ -354,10 +349,6 @@ def _parse_extra_one(event, *, status: str, now, today_reference):
     if start_ts is None:
         return []
     start_time = unix_seconds_to_datetime(start_ts)
-    if status == "PREMATCH" and not is_today_in_kenya(
-        start_time, reference=today_reference
-    ):
-        return []
 
     period = _event_period(event)
     satellite = _is_satellite_event(event)

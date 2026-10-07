@@ -50,20 +50,11 @@ def test_type_1_2_3_mapping_matches_1xbet_convention(fixture_loader):
     assert chelsea.away_odds == 51.0
 
 
-def test_parse_prematch_today_only(fixture_loader):
+def test_parse_prematch_keeps_upcoming_fixtures(fixture_loader):
     payload = fixture_loader("bet22_prematch1x2.json")
 
-    # These fixture events are genuinely scheduled for 2026-09-23 (a
-    # real future AFCON qualifying date, not "today" relative to when
-    # this fixture was captured) -- confirms today-only filtering
-    # actually rejects real non-today fixtures, not just synthetic ones.
     reference_when_captured = datetime(2026, 8, 30, 12, 0, 0, tzinfo=timezone.utc)
-    assert parse_events(payload, status="PREMATCH", reference_now=reference_when_captured) == []
-
-    reference_matching_fixture_date = datetime(2026, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
-    matches = parse_events(
-        payload, status="PREMATCH", reference_now=reference_matching_fixture_date
-    )
+    matches = parse_events(payload, status="PREMATCH", reference_now=reference_when_captured)
     assert len(matches) == 5
     assert {(m.home_team, m.away_team) for m in matches} >= {("Kenya", "Eritrea")}
 

@@ -11,12 +11,17 @@ import os
 # ------------------------------------------------------------------
 # Polling.
 #
-# Every one of the four Kenyan bookmakers is polled every 5 seconds,
-# per the explicit product requirement. This is intentionally a
-# separate constant from the existing engine's timings so a future
-# change to either one can never accidentally affect the other.
+# Prematch is the practical execution surface, so it stays on the 5s
+# cadence. Live is slower (15s) so it does not starve prematch polling
+# or chase prices that move before a stake can be placed.
 # ------------------------------------------------------------------
 KENYAN_POLL_INTERVAL_SECONDS = float(os.getenv("KENYAN_POLL_INTERVAL_SECONDS", "5"))
+KENYAN_PREMATCH_POLL_INTERVAL_SECONDS = float(
+    os.getenv("KENYAN_PREMATCH_POLL_INTERVAL_SECONDS", str(KENYAN_POLL_INTERVAL_SECONDS))
+)
+KENYAN_LIVE_POLL_INTERVAL_SECONDS = float(
+    os.getenv("KENYAN_LIVE_POLL_INTERVAL_SECONDS", "15")
+)
 
 # How long a worker's last-good snapshot is still trusted after its
 # most recent successful acquisition, before being treated as stale

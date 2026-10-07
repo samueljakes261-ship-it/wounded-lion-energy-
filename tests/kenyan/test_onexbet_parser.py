@@ -60,12 +60,12 @@ def test_parse_prematch_events_from_real_fixture_uses_same_grouped_shape(fixture
         assert match.market == "1X2"
 
 
-def test_parse_prematch_events_rejects_events_not_today(fixture_loader):
+def test_parse_prematch_events_keeps_upcoming_fixtures_not_only_today(fixture_loader):
     payload = fixture_loader("onexbet_prematch.json")
     reference_far_future = datetime(2027, 6, 1, tzinfo=timezone.utc)
 
     matches = parse_events(payload, status="PREMATCH", reference_now=reference_far_future)
-    assert matches == []
+    assert len(matches) >= 1
 
 
 def test_blocked_odds_are_excluded():

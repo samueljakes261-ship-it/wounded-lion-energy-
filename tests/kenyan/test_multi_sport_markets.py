@@ -136,10 +136,11 @@ def test_betika_totals_extract_when_present(fixture_loader):
     assert len(football) == 1
     assert football[0].market == "1X2"
     totals = [m for m in extra if m.market_type == MARKET_TOTAL]
-    assert len(totals) == 1
-    assert totals[0].line == 2.5
-    assert totals[0].home_odds == 2.10
-    assert totals[0].away_odds == 2.05
+    assert sorted(m.line for m in totals) == [1.5, 2.5, 3.5]
+    two_five = next(m for m in totals if m.line == 2.5)
+    assert two_five.home_odds == 2.10
+    assert two_five.away_odds == 2.05
+    assert KenyanEventMatcher().is_same_event(totals[0], totals[1]) is False
 
 
 def test_bet22_tennis_basketball_volleyball(fixture_loader):

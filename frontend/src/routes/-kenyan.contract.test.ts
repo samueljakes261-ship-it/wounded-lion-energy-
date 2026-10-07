@@ -42,4 +42,8 @@ describe("Kenyan opportunity click opens the shared BACK vs BACK stake plan", ()
   it("does not independently retain an empty backend list", () => {
     expect(SOURCE).not.toMatch(/keepLastGoodSnapshot/)
   })
+
+  it("opens on PREMATCH because those markets are more stable to execute", () => {
+    expect(SOURCE).toMatch(/useState<KenyanMode>\("prematch"\)/)
+  })
 })

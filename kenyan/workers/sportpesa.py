@@ -25,7 +25,11 @@ because the poll thread is alive, and never by fabricating odds.
 """
 import time
 
-from kenyan.config import SPORTPESA
+from kenyan.config import (
+    KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    SPORTPESA,
+)
 from kenyan.http_utils import fetch_json, looks_like_bot_challenge
 from kenyan.parsers.sportpesa_parser import (
     build_live_discovery_url,
@@ -38,7 +42,7 @@ from kenyan.parsers.sportpesa_parser import (
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
 PREMATCH_PAGE_COUNT = 100
-PREMATCH_MAX_PAGES_PER_CYCLE = 3
+PREMATCH_MAX_PAGES_PER_CYCLE = 20
 
 # Browser-like Origin/Referer only — never cookies/tokens. Direct HTTP
 # to both www.sportpesa.com and ke.sportpesa.com currently returns an
@@ -184,8 +188,16 @@ def _poll_prematch():
 
 
 def build_live_worker() -> BaseKenyanWorker:
-    return BaseKenyanWorker(name=f"{SPORTPESA}_live", poll_fn=_poll_live)
+    return BaseKenyanWorker(
+        name=f"{SPORTPESA}_live",
+        poll_fn=_poll_live,
+        poll_interval_seconds=KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    )
 
 
 def build_prematch_worker() -> BaseKenyanWorker:
-    return BaseKenyanWorker(name=f"{SPORTPESA}_prematch", poll_fn=_poll_prematch)
+    return BaseKenyanWorker(
+        name=f"{SPORTPESA}_prematch",
+        poll_fn=_poll_prematch,
+        poll_interval_seconds=KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    )

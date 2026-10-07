@@ -31,9 +31,11 @@ def test_opportunities_endpoint_is_publicly_accessible(monkeypatch):
 
     live_result = opportunities(mode="live")
     prematch_result = opportunities(mode="prematch")
+    default_result = opportunities()
 
     assert live_result == []  # runner never started -> no opportunities, not an error
     assert prematch_result == []
+    assert default_result == []
 
 
 def test_status_endpoint_reflects_runner_state(monkeypatch):
