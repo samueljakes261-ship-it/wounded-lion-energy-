@@ -1,4 +1,9 @@
 import requests
+from requests import HTTPError
+
+from config import ORBIT_COOKIES, ORBIT_CSRF_TOKEN
+from parsers.orbit.access import OrbitAccessError, classify_http_status
+from parsers.orbit.proxy import requests_proxies
 
 BASE_URL = "https://www.orbitxch.com"
 
@@ -11,19 +16,8 @@ HEADERS = {
     "Origin": "https://www.orbitxch.com",
     "Referer": "https://www.orbitxch.com/customer/inplay/highlights",
     "Content-Type": "application/json",
-
-    "x-csrf-token": "a95b617c-c16d-4297-885d-476f7061fccb",
-
-    "Cookie": (
-        "BIAB_LANGUAGE=en; "
-        "COLLAPSE_SIDEBAR=false; "
-        "BIAB_TZ=-180; "
-        "COLLAPSE-LEFT_PANEL_COLLAPSE_GROUP-SPORT_COLLAPSE=true; "
-        "BIAB_AN=ead97c02-9101-47f3-99cf-e1deb0b5c955; "
-        "CSRF-TOKEN=a95b617c-c16d-4297-885d-476f7061fccb; "
-        "AWSALB=HdmCBwOUUaHiryv2FwtUtmeoZyCcUU//29ixkbam8bxfDJcxspQJUidEchidJtC6nYAyeXIGSCfPUHG9HHD3MGA8Xo+1Y2wDcjPu0MtrkXOkCrSzT1ZGZQdFiQ0F; "
-        "AWSALBCORS=HdmCBwOUUaHiryv2FwtUtmeoZyCcUU//29ixkbam8bxfDJcxspQJUidEchidJtC6nYAyeXIGSCfPUHG9HHD3MGA8Xo+1Y2wDcjPu0MtrkXOkCrSzT1ZGZQdFiQ0F"
-    ),
+    "x-csrf-token": ORBIT_CSRF_TOKEN,
+    "Cookie": ORBIT_COOKIES,
 }
 
 
@@ -38,16 +32,41 @@ def _download_page(page, sports):
         "eventTypeIds": sports
     }
 
-    response = requests.post(
-        url,
-        json=payload,
-        headers=HEADERS,
-        timeout=20,
-    )
+    try:
+        post_kwargs = {
+            "json": payload,
+            "headers": HEADERS,
+            "timeout": 20,
+        }
+        proxies = requests_proxies()
+        if proxies is not None:
+            post_kwargs["proxies"] = proxies
+        response = requests.post(url, **post_kwargs)
+    except requests.RequestException as exc:
+        raise OrbitAccessError(
+            "network",
+            None,
+            type(exc).__name__,
+        ) from exc
 
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except HTTPError as exc:
+        status = getattr(exc.response, "status_code", None)
+        raise OrbitAccessError(
+            classify_http_status(status or 0),
+            status,
+            "rest_highlights",
+        ) from exc
 
-    return response.json()
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise OrbitAccessError(
+            "non_json_body",
+            response.status_code,
+            "rest_highlights",
+        ) from exc
 
 
 def get_all_live_markets():
@@ -81,8 +100,6 @@ def get_all_live_markets():
 
     while True:
 
-        print(f"Downloading page {page}...")
-
         data = _download_page(page, sports)
 
         markets = data["marketCatalogueList"]["content"]
@@ -93,7 +110,5 @@ def get_all_live_markets():
         all_markets.extend(markets)
 
         page += 1
-
-    print(f"\nDownloaded {len(all_markets)} markets.\n")
 
     return all_markets

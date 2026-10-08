@@ -1,0 +1,197 @@
+[
+  {
+    "id": 15867147,
+    "betgeniusId": 0,
+    "betradarId": 72041100,
+    "smsId": 3842,
+    "hasCustomBet": 0,
+    "competition": {
+      "id": 318,
+      "name": "Eredivisie"
+    },
+    "country": {
+      "id": 110,
+      "name": "Netherlands",
+      "iso": "nld"
+    },
+    "sport": {
+      "id": 1,
+      "name": "Football"
+    },
+    "competitors": [
+      {
+        "id": 3460,
+        "name": "SC Telstar"
+      },
+      {
+        "id": 6546,
+        "name": "Ajax"
+      }
+    ],
+    "dateTimestamp": 1788101100000,
+    "date": "2026-08-30T14:45:00.000Z",
+    "state": {},
+    "marketsCount": 25,
+    "markets": [
+      {
+        "id": 10,
+        "name": "3 Way",
+        "columns": 3,
+        "columnsApp": 3,
+        "selections": [
+          {
+            "id": 2631432807,
+            "name": "SC Telstar",
+            "odds": "5.40",
+            "shortName": "1",
+            "specValue": 0
+          },
+          {
+            "id": 2631432821,
+            "name": "Draw",
+            "odds": "4.90",
+            "shortName": "X",
+            "specValue": 0
+          },
+          {
+            "id": 2631432835,
+            "name": "Ajax",
+            "odds": "1.51",
+            "shortName": "2",
+            "specValue": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 15875411,
+    "betgeniusId": 0,
+    "betradarId": 72044608,
+    "smsId": 2220,
+    "hasCustomBet": 0,
+    "competition": {
+      "id": 418,
+      "name": "Eerste Divisie"
+    },
+    "country": {
+      "id": 110,
+      "name": "Netherlands",
+      "iso": "nld"
+    },
+    "sport": {
+      "id": 1,
+      "name": "Football"
+    },
+    "competitors": [
+      {
+        "id": 4380,
+        "name": "VVV Venlo"
+      },
+      {
+        "id": 3424,
+        "name": "Emmen"
+      }
+    ],
+    "dateTimestamp": 1788101100000,
+    "date": "2026-08-30T14:45:00.000Z",
+    "state": {},
+    "marketsCount": 20,
+    "markets": [
+      {
+        "id": 10,
+        "name": "3 Way",
+        "columns": 3,
+        "columnsApp": 3,
+        "selections": [
+          {
+            "id": 2631907951,
+            "name": "VVV Venlo",
+            "odds": "2.48",
+            "shortName": "1",
+            "specValue": 0
+          },
+          {
+            "id": 2631907965,
+            "name": "Draw",
+            "odds": "3.65",
+            "shortName": "X",
+            "specValue": 0
+          },
+          {
+            "id": 2631907973,
+            "name": "Emmen",
+            "odds": "2.36",
+            "shortName": "2",
+            "specValue": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 15898875,
+    "betgeniusId": 0,
+    "betradarId": 72313154,
+    "smsId": 2511,
+    "hasCustomBet": 0,
+    "competition": {
+      "id": 20924,
+      "name": "2. MFL"
+    },
+    "country": {
+      "id": 57,
+      "name": "Macedonia",
+      "iso": "mkd"
+    },
+    "sport": {
+      "id": 1,
+      "name": "Football"
+    },
+    "competitors": [
+      {
+        "id": 60962,
+        "name": "FK Ohrid"
+      },
+      {
+        "id": 35810,
+        "name": "FK Kozuf Gevgelija"
+      }
+    ],
+    "dateTimestamp": 1788101100000,
+    "date": "2026-08-30T14:45:00.000Z",
+    "state": {},
+    "marketsCount": 10,
+    "markets": [
+      {
+        "id": 10,
+        "name": "3 Way",
+        "columns": 3,
+        "columnsApp": 3,
+        "selections": [
+          {
+            "id": 2633020383,
+            "name": "FK Ohrid",
+            "odds": "1.28",
+            "shortName": "1",
+            "specValue": 0
+          },
+          {
+            "id": 2633020399,
+            "name": "Draw",
+            "odds": "4.80",
+            "shortName": "X",
+            "specValue": 0
+          },
+          {
+            "id": 2633020409,
+            "name": "FK Kozuf Gevgelija",
+            "odds": "9.20",
+            "shortName": "2",
+            "specValue": 0
+          }
+        ]
+      }
+    ]
+  }
+]

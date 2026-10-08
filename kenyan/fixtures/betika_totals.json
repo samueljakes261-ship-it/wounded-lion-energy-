@@ -1,0 +1,36 @@
+{
+  "data": [
+    {
+      "match_id": 14001,
+      "sport_id": 14,
+      "sport_name": "Soccer",
+      "home_team": "Home FC",
+      "away_team": "Away FC",
+      "competition_name": "Test League",
+      "start_time": "2026-08-30 16:00:00",
+      "odds": [
+        {
+          "sub_type_id": "1",
+          "name": "1X2",
+          "odds": [
+            {"outcome_id": "1", "display": "1", "odd_key": "Home FC", "odd_value": "2.10"},
+            {"outcome_id": "2", "display": "X", "odd_key": "draw", "odd_value": "3.30"},
+            {"outcome_id": "3", "display": "2", "odd_key": "Away FC", "odd_value": "3.40"}
+          ]
+        },
+        {
+          "sub_type_id": "18",
+          "name": "TOTAL",
+          "odds": [
+            {"outcome_id": "12", "odd_key": "over 1.5", "display": "OVER 1.5", "special_bet_value": "total=1.5", "odd_value": "1.35"},
+            {"outcome_id": "12", "odd_key": "over 2.5", "display": "OVER 2.5", "special_bet_value": "total=2.5", "odd_value": "2.10"},
+            {"outcome_id": "12", "odd_key": "over 3.5", "display": "OVER 3.5", "special_bet_value": "total=3.5", "odd_value": "2.30"},
+            {"outcome_id": "13", "odd_key": "under 1.5", "display": "UNDER 1.5", "special_bet_value": "total=1.5", "odd_value": "2.80"},
+            {"outcome_id": "13", "odd_key": "under 2.5", "display": "UNDER 2.5", "special_bet_value": "total=2.5", "odd_value": "2.05"},
+            {"outcome_id": "13", "odd_key": "under 3.5", "display": "UNDER 3.5", "special_bet_value": "total=3.5", "odd_value": "1.80"}
+          ]
+        }
+      ]
+    }
+  ]
+}

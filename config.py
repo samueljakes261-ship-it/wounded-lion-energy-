@@ -1,4 +1,11 @@
-# Orbit Exchange WebSocket endpoint
+# Orbit Exchange WebSocket endpoint.
+#
+# NOTE: this hardcodes a specific SockJS server-id/session-id pair
+# captured from one past browser session. SockJS sessions are
+# single-use, so parsers/orbit/client.py no longer imports this
+# constant -- it generates a fresh server-id/session-id pair on the
+# same base path for every connect() call instead. Left here
+# unmodified/unused rather than deleted.
 ORBIT_WS_URL = (
     "wss://www.orbitxch.com/"
     "customer/ws/multiple-market-prices/"

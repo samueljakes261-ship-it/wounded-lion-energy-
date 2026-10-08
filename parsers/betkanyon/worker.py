@@ -1,28 +1,10 @@
 """
-Persistent BetKanyon acquisition worker.
+Persistent BetKanyon LIVE acquisition worker.
 
-BetKanyon's existing acquisition mechanism (parsers/betkanyon/feed.py ->
-fetcher.py -> browser.py -> decryptor.py -> parser.py -> adapter.py) is
-NOT event-driven like OnWin's find_event_snapshots feed -- it's a pull:
-call fetch() on the already-open, already-authenticated page and get
-back one fresh encrypted payload.
-
-That is actually convenient here: BetkanyonFetcher already lazily opens
-its browser/session once (see BetkanyonFetcher._connect()/initialized)
-and already has its own reconnect-on-failure logic
-(BetkanyonFetcher._reset_browser()). All that was missing was something
-that keeps ONE BetkanyonFeed alive and calls collect_once() on a tight,
-non-overlapping schedule instead of creating/destroying a feed (and its
-browser) every 20 seconds.
-
-Threading, not another process:
-Playwright's sync API is not compatible with a thread that is *also*
-running an asyncio event loop. BetKanyon's polling loop has no such
-loop -- it's just fetch -> decrypt (subprocess) -> parse -> adapt in a
-tight sequential cycle -- so this can safely run as a plain background
-thread inside the same process as the collector, sharing memory with a
-lock instead of needing multiprocessing IPC like OnWin required for its
-continuous Playwright event-listener architecture.
+Acquisition is a direct HTTP pull (parsers/betkanyon/feed.py ->
+fetcher.py -> decryptor.py -> parser.py -> adapter.py). The worker
+keeps ONE BetkanyonFeed alive and calls collect_once() on a tight,
+non-overlapping schedule.
 """
 
 import os
@@ -37,17 +19,19 @@ from engine.collector_health import (
 )
 from credentials.errors import AllCredentialsUnavailableError
 from parsers.betkanyon.feed import BetkanyonFeed
+from parsers.betkanyon.fetcher import EmptyAcquisitionError
 
 
-# How often BetKanyon should acquire a fresh payload.
-#
-# This is a target MINIMUM spacing between the start of one cycle and
-# the next, not a mandatory wait: if a cycle (fetch + decrypt + parse)
-# takes longer than this, the next poll starts immediately afterward
-# instead of waiting further. Configurable via env var rather than
-# hard-coded in multiple places (worker + any caller that wants to
-# reason about expected freshness).
-BETKANYON_POLL_INTERVAL = float(os.getenv("BETKANYON_POLL_INTERVAL", "3"))
+# How often BetKanyon LIVE should acquire a fresh payload.
+# BETKANYON_LIVE_POLL_INTERVAL wins; BETKANYON_POLL_INTERVAL is the
+# legacy alias. Default is 5 seconds.
+BETKANYON_POLL_INTERVAL = float(
+    os.getenv(
+        "BETKANYON_LIVE_POLL_INTERVAL",
+        os.getenv("BETKANYON_POLL_INTERVAL", "5"),
+    )
+)
+BETKANYON_LIVE_POLL_INTERVAL = BETKANYON_POLL_INTERVAL
 
 # Reconnect backoff: starts here after the first failure and doubles
 # on each consecutive failure, capped at MAX_BACKOFF_SECONDS, so a
@@ -64,7 +48,7 @@ MAX_CREDENTIAL_WAIT_SECONDS = 3600
 
 class BetkanyonWorker:
     """
-    Owns exactly ONE persistent BetKanyon browser/session (via one
+    Owns exactly ONE persistent BetKanyon HTTP session (via one
     long-lived BetkanyonFeed) and polls it on a background thread.
 
     Thread-safe reads: get_matches()/get_status() copy out of a small
@@ -189,31 +173,54 @@ class BetkanyonWorker:
 
                 matches = self._feed.collect_once()
                 elapsed_ms = (time.monotonic() - cycle_start) * 1000
+                stats = getattr(self._feed, "last_stats", {}) or {}
 
-                first_success = self._state["success_count"] == 0
-
-                self._publish_success(matches, elapsed_ms)
-
-                if first_success:
-                    print("[BETKANYON] STARTING")
-                    print("[BETKANYON] BROWSER CONNECTED")
-                    print("[BETKANYON] PAGE READY")
-                    print("[BETKANYON] Encrypted feed active")
+                if getattr(self._feed, "last_cycle_empty", False):
+                    consecutive = self._publish_empty(elapsed_ms, stats)
                     print(
-                        "[BETKANYON] Worker: ALIVE | Browser: ALIVE | "
-                        "Status: HEALTHY"
+                        f"[BETKANYON] empty cycle "
+                        f"http_status={stats.get('http_status')} "
+                        f"content_type={stats.get('content_type')} "
+                        f"payload_bytes={stats.get('payload_bytes', 0)} "
+                        f"events_discovered={stats.get('events', 0)} "
+                        f"matchodds_created={stats.get('odds', 0)} "
+                        f"consecutive_empty={consecutive}"
                     )
+                    backoff = INITIAL_BACKOFF_SECONDS
+                else:
+                    first_success = self._state["success_count"] == 0
+                    self._publish_success(matches, elapsed_ms)
+                    if first_success:
+                        print("[BETKANYON] STARTING")
+                        print("[BETKANYON] HTTP SESSION READY")
+                        print("[BETKANYON] Encrypted feed active")
+                        print(
+                            "[BETKANYON] Worker: ALIVE | HTTP: ALIVE | "
+                            "Status: HEALTHY"
+                        )
+                    now_str = datetime.now().strftime("%H:%M:%S")
+                    print(
+                        f"[BETKANYON] {now_str} | PAYLOAD RECEIVED | "
+                        f"http_status={stats.get('http_status')} "
+                        f"payload_bytes={stats.get('payload_bytes', 0)} | "
+                        f"PARSED: {self._feed.get_parsed_event_count()} EVENTS | "
+                        f"odds={len(matches)} | {elapsed_ms:.0f}ms | "
+                        f"LAST UPDATE: 0.0s AGO"
+                    )
+                    backoff = INITIAL_BACKOFF_SECONDS
 
-                now_str = datetime.now().strftime("%H:%M:%S")
-
+            except EmptyAcquisitionError as exc:
+                elapsed_ms = (time.monotonic() - cycle_start) * 1000
+                stats = getattr(self._feed, "last_stats", {}) or {}
+                consecutive = self._publish_empty(elapsed_ms, stats, exc)
                 print(
-                    f"[BETKANYON] {now_str} | PAYLOAD RECEIVED | "
-                    f"PARSED: {self._feed.get_parsed_event_count()} EVENTS | "
-                    f"odds={len(matches)} | {elapsed_ms:.0f}ms | "
-                    f"LAST UPDATE: 0.0s AGO"
+                    f"[BETKANYON] empty acquisition "
+                    f"({type(exc).__name__}: {exc}) "
+                    f"consecutive_empty={consecutive}"
                 )
-
-                backoff = INITIAL_BACKOFF_SECONDS  # reset after a clean cycle
+                if self._stop_event.wait(timeout=INPLACE_RETRY_PAUSE_SECONDS):
+                    break
+                continue
 
             except AllCredentialsUnavailableError as exc:
                 consecutive_failures = self._publish_failure(exc)
@@ -317,11 +324,31 @@ class BetkanyonWorker:
             # so we go straight into the next poll (no overlapping
             # requests, just no artificial extra delay either).
 
+    def _publish_empty(self, elapsed_ms, stats=None, exc=None) -> int:
+        """Record an exception-free empty cycle. Not a healthy success."""
+        stats = stats or {}
+        with self._lock:
+            state = self._state
+            state["error"] = (
+                f"{type(exc).__name__}: {exc}"
+                if exc is not None
+                else "EmptyAcquisitionError: no events this cycle"
+            )
+            state["poll_count"] += 1
+            state["failed_count"] += 1
+            state["consecutive_successes"] = 0
+            state["consecutive_failures"] += 1
+            state["last_processing_ms"] = elapsed_ms
+            state["last_event_count"] = stats.get("events", 0)
+            state["last_odds_count"] = stats.get("odds", 0)
+            return state["consecutive_failures"]
+
     def _publish_success(self, matches, elapsed_ms):
         with self._lock:
             state = self._state
 
-            state["matches"] = matches
+            if matches or not state["matches"]:
+                state["matches"] = matches
             state["status"] = "running"
             state["error"] = None
             state["last_update_at"] = time.time()
