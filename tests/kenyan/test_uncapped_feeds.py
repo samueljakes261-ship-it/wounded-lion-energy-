@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlsplit
 from kenyan.api_router import opportunities
 from kenyan.models import KenyanMatchOdds
 from kenyan.workers.base import Diagnostics
-from kenyan.workers.poll_combine import combine_match_polls
+from kenyan.workers.poll_combine import combine_match_polls, map_polls
 from kenyan.config import (
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
@@ -166,3 +166,15 @@ def test_combine_polls_keeps_football_when_a_later_url_fails():
     assert diagnostics.endpoint_status == "ok"
     assert diagnostics.parser_error is None
     assert combined == [match]
+
+
+def test_map_polls_runs_every_url():
+    seen = []
+
+    def poll_one(url, status):
+        seen.append((url, status))
+        return [], Diagnostics(endpoint_status="ok", events_discovered=0)
+
+    map_polls(poll_one, ("https://a.test", "https://b.test"), "PREMATCH")
+    assert sorted(url for url, _status in seen) == ["https://a.test", "https://b.test"]
+    assert {status for _url, status in seen} == {"PREMATCH"}

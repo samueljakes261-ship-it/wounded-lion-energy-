@@ -16,7 +16,7 @@ from kenyan.parsers._common_1x2 import (
 )
 from kenyan.parsers.onexbet_parser import iter_events, parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
-from kenyan.workers.poll_combine import combine_match_polls
+from kenyan.workers.poll_combine import map_polls
 from kenyan.workers.vzip_pages import fetch_vzip_all
 
 # games1x2 count=1000 / skip= returns HTTP 400. count=250 is the
@@ -107,7 +107,7 @@ def _poll_one(url: str, status: str):
 
 
 def _poll(urls, status: str):
-    return combine_match_polls([_poll_one(url, status) for url in urls])
+    return map_polls(_poll_one, urls, status)
 
 
 def build_live_worker() -> BaseKenyanWorker:

@@ -51,6 +51,10 @@ class KenyanEngineRunner:
         self._prematch_store = KenyanOpportunityStore()
         self._started = False
         self._started_at = None
+        self._live_compute_lock = threading.Lock()
+        self._prematch_compute_lock = threading.Lock()
+        self._live_cache = ([], 0.0)
+        self._prematch_cache = ([], 0.0)
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -102,13 +106,32 @@ class KenyanEngineRunner:
 
         return matches
 
+    def _compute_cached(self, lock, cache_attr, compute_fn):
+        with lock:
+            cached, stamped = getattr(self, cache_attr)
+            if stamped and (time.time() - stamped) < 4:
+                return cached
+            result = compute_fn()
+            setattr(self, cache_attr, (result, time.time()))
+            return result
+
     def get_live_opportunities(self):
-        computed = self._live_engine.compute_opportunities(self._matches_for(LIVE))
-        return self._live_store.apply(computed)
+        def compute():
+            computed = self._live_engine.compute_opportunities(self._matches_for(LIVE))
+            return self._live_store.apply(computed)
+
+        return self._compute_cached(self._live_compute_lock, "_live_cache", compute)
 
     def get_prematch_opportunities(self):
-        computed = self._prematch_engine.compute_opportunities(self._matches_for(PREMATCH))
-        return self._prematch_store.apply(computed)
+        def compute():
+            computed = self._prematch_engine.compute_opportunities(
+                self._matches_for(PREMATCH)
+            )
+            return self._prematch_store.apply(computed)
+
+        return self._compute_cached(
+            self._prematch_compute_lock, "_prematch_cache", compute
+        )
 
     def get_worker_statuses(self) -> Dict[str, dict]:
         with self._lock:
@@ -122,15 +145,15 @@ class KenyanEngineRunner:
             started_at = self._started_at
 
         worker_statuses = self.get_worker_statuses()
+        live_cached, _live_stamped = self._live_cache
+        prematch_cached, _prematch_stamped = self._prematch_cache
 
         return {
             "started": started,
             "started_at": started_at,
             "workers": worker_statuses,
-            "live_opportunity_count": len(self.get_live_opportunities()) if started else 0,
-            "prematch_opportunity_count": (
-                len(self.get_prematch_opportunities()) if started else 0
-            ),
+            "live_opportunity_count": len(live_cached) if started else 0,
+            "prematch_opportunity_count": len(prematch_cached) if started else 0,
         }
 
 

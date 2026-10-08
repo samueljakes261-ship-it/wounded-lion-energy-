@@ -10,7 +10,7 @@ from kenyan.models import KenyanMatchOdds
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
 
-def _match(bookmaker="Test"):
+def _match(bookmaker="Test", home_odds=2.0, draw_odds=3.0, away_odds=4.0):
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
@@ -21,11 +21,12 @@ def _match(bookmaker="Test"):
         market="1X2",
         home_team="A",
         away_team="B",
-        home_odds=2.0,
-        draw_odds=3.0,
-        away_odds=4.0,
+        home_odds=home_odds,
+        draw_odds=draw_odds,
+        away_odds=away_odds,
         start_time=now,
         collected_at=now,
+        status="PREMATCH",
     )
 
 
@@ -243,6 +244,38 @@ def test_long_poll_snapshot_is_stamped_after_acquisition(monkeypatch):
     worker = BaseKenyanWorker("test", poll_fn, poll_interval_seconds=100)
     worker._run_one_cycle()
     assert len(worker.get_matches()) == 1
+
+
+def test_in_flight_snapshot_stays_fresh_enough_for_engine(monkeypatch):
+    from kenyan.config import BETIKA, ONEXBET
+    from kenyan.engine import KenyanArbitrageEngine
+
+    monkeypatch.setattr("kenyan.workers.base.KENYAN_STALE_AFTER_SECONDS", 0.05)
+    monkeypatch.setattr("kenyan.engine.KENYAN_STALE_AFTER_SECONDS", 0.05)
+
+    def poll_left():
+        return (
+            [_match(ONEXBET, home_odds=2.10, draw_odds=3.30, away_odds=3.40)],
+            _ok_diagnostics(valid_normalized_events=1),
+        )
+
+    def poll_right():
+        return (
+            [_match(BETIKA, home_odds=2.00, draw_odds=3.90, away_odds=4.00)],
+            _ok_diagnostics(valid_normalized_events=1),
+        )
+
+    left = BaseKenyanWorker("left", poll_left, poll_interval_seconds=100)
+    right = BaseKenyanWorker("right", poll_right, poll_interval_seconds=100)
+    left._run_one_cycle()
+    right._run_one_cycle()
+    left._poll_in_flight = True
+    right._poll_in_flight = True
+    time.sleep(0.12)
+    matches = left.get_matches() + right.get_matches()
+    opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000)
+    assert len(opportunities) == 1
+    assert opportunities[0].result.arbitrage_exists is True
 
 
 def test_in_flight_poll_keeps_last_good_prematch_visible(monkeypatch):

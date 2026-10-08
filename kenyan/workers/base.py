@@ -31,6 +31,7 @@ nothing here can affect the existing bookmakers' staleness handling.
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from kenyan.config import KENYAN_POLL_INTERVAL_SECONDS, KENYAN_STALE_AFTER_SECONDS
@@ -200,11 +201,21 @@ class BaseKenyanWorker:
                 return []
             if self._poll_in_flight and self._last_good_at is not None:
                 now = self._last_good_at
-            return visible_matches(
+            matches = visible_matches(
                 self._match_records,
                 now=now,
                 retention_seconds=KENYAN_STALE_AFTER_SECONDS,
             )
+            # The engine stale-checks collected_at against wall time.
+            # Prematch 1xBet/22Bet walks extra sports for longer than
+            # KENYAN_STALE_AFTER_SECONDS, so a still-visible snapshot
+            # would otherwise be dropped mid-cycle. Restamp served
+            # rows to now; last_seen still expires the snapshot.
+            served_at = datetime.now(timezone.utc)
+            for match in matches:
+                if hasattr(match, "collected_at"):
+                    match.collected_at = served_at
+            return matches
 
     def get_status(self) -> dict:
         with self._lock:

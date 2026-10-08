@@ -7,6 +7,7 @@ matches 1xBet/22Bet group 101. 1,186,340 remain other winner markets.
 Pages are walked until meta.total.
 """
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from kenyan.config import (
@@ -88,8 +89,13 @@ def _poll(urls, status: str):
     status_code = None
     content_type = None
     any_ok = False
-    for url in urls:
-        payload, fetch_result = _fetch_pages(url)
+    urls = tuple(urls)
+    if len(urls) <= 1:
+        fetched = [_fetch_pages(urls[0])] if urls else []
+    else:
+        with ThreadPoolExecutor(max_workers=len(urls)) as pool:
+            fetched = list(pool.map(_fetch_pages, urls))
+    for payload, fetch_result in fetched:
         last = fetch_result
         if fetch_result is not None:
             elapsed += fetch_result.elapsed_seconds

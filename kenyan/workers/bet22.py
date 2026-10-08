@@ -15,7 +15,7 @@ from kenyan.config import (
 from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
 from kenyan.parsers.bet22_parser import parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
-from kenyan.workers.poll_combine import combine_match_polls
+from kenyan.workers.poll_combine import map_polls
 from kenyan.workers.vzip_pages import fetch_vzip_all
 
 LIVE_URL = (
@@ -86,7 +86,7 @@ def _poll_one(url: str, status: str):
 
 
 def _poll(urls, status: str):
-    return combine_match_polls([_poll_one(url, status) for url in urls])
+    return map_polls(_poll_one, urls, status)
 
 
 def build_live_worker() -> BaseKenyanWorker:
