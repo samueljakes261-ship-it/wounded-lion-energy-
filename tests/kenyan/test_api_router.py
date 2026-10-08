@@ -48,3 +48,15 @@ def test_status_endpoint_reflects_runner_state(monkeypatch):
 
 def test_get_runner_is_a_singleton():
     assert get_runner() is get_runner()
+
+
+def test_prematch_endpoint_reads_cache_without_computing(monkeypatch):
+    sentinel = object()
+    fresh_runner = KenyanEngineRunner()
+    fresh_runner._prematch_cache = ([sentinel], 1.0)
+
+    def fail_compute(*_args, **_kwargs):
+        raise AssertionError("prematch GET must not recompute")
+
+    monkeypatch.setattr(fresh_runner, "_prematch_engine", type("E", (), {"compute_opportunities": fail_compute})())
+    assert fresh_runner.get_prematch_opportunities() == [sentinel]

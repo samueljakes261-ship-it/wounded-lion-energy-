@@ -18,6 +18,7 @@ from typing import Dict, List
 
 from kenyan.config import LIVE, PREMATCH
 from kenyan.engine import KenyanArbitrageEngine
+from kenyan.log import log_arb
 from kenyan.opportunity_store import KenyanOpportunityStore
 from kenyan.workers import bet22, betika, onexbet, sportpesa
 from kenyan.workers.base import BaseKenyanWorker
@@ -40,6 +41,10 @@ class KenyanEngineRunner:
     returned SEPARATELY (two independent engine runs) so they can
     never be mixed into one combined list, per the task's explicit
     requirement.
+
+    Prematch catalogues are large enough that matching on the HTTP
+    request path times out and the UI shows an empty list. A background
+    thread refreshes the caches; GET /kenyan/opportunities only reads.
     """
 
     def __init__(self):
@@ -55,6 +60,8 @@ class KenyanEngineRunner:
         self._prematch_compute_lock = threading.Lock()
         self._live_cache = ([], 0.0)
         self._prematch_cache = ([], 0.0)
+        self._compute_stop = threading.Event()
+        self._compute_thread = None
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -74,15 +81,29 @@ class KenyanEngineRunner:
             for worker in self._workers.values():
                 worker.start()
 
+            self._compute_stop.clear()
+            self._compute_thread = threading.Thread(
+                target=self._compute_loop,
+                name="kenyan-compute",
+                daemon=True,
+            )
+            self._compute_thread.start()
+
             self._started = True
             self._started_at = time.time()
 
     def stop(self):
+        self._compute_stop.set()
+        thread = self._compute_thread
         with self._lock:
-            for worker in self._workers.values():
-                worker.stop()
+            workers = list(self._workers.values())
             self._workers.clear()
             self._started = False
+            self._compute_thread = None
+        if thread is not None:
+            thread.join(timeout=8)
+        for worker in workers:
+            worker.stop()
 
     def is_started(self) -> bool:
         with self._lock:
@@ -106,32 +127,54 @@ class KenyanEngineRunner:
 
         return matches
 
-    def _compute_cached(self, lock, cache_attr, compute_fn):
+    def _store_cache(self, lock, cache_attr, result):
         with lock:
-            cached, stamped = getattr(self, cache_attr)
-            if stamped and (time.time() - stamped) < 4:
-                return cached
-            result = compute_fn()
             setattr(self, cache_attr, (result, time.time()))
-            return result
+
+    def _read_cache(self, lock, cache_attr):
+        with lock:
+            cached, _stamped = getattr(self, cache_attr)
+            return cached
+
+    def _refresh_opportunities(self, status, engine, store, lock, cache_attr):
+        try:
+            computed = engine.compute_opportunities(self._matches_for(status))
+            result = store.apply(computed)
+        except Exception as exc:  # noqa: BLE001
+            log_arb(
+                event=status,
+                market="ALL",
+                decision="REJECT",
+                reason=f"COMPUTE_ERROR:{type(exc).__name__}",
+            )
+            return
+        self._store_cache(lock, cache_attr, result)
+
+    def _compute_loop(self):
+        while not self._compute_stop.is_set():
+            self._refresh_opportunities(
+                LIVE,
+                self._live_engine,
+                self._live_store,
+                self._live_compute_lock,
+                "_live_cache",
+            )
+            if self._compute_stop.is_set():
+                break
+            self._refresh_opportunities(
+                PREMATCH,
+                self._prematch_engine,
+                self._prematch_store,
+                self._prematch_compute_lock,
+                "_prematch_cache",
+            )
+            self._compute_stop.wait(1.0)
 
     def get_live_opportunities(self):
-        def compute():
-            computed = self._live_engine.compute_opportunities(self._matches_for(LIVE))
-            return self._live_store.apply(computed)
-
-        return self._compute_cached(self._live_compute_lock, "_live_cache", compute)
+        return self._read_cache(self._live_compute_lock, "_live_cache")
 
     def get_prematch_opportunities(self):
-        def compute():
-            computed = self._prematch_engine.compute_opportunities(
-                self._matches_for(PREMATCH)
-            )
-            return self._prematch_store.apply(computed)
-
-        return self._compute_cached(
-            self._prematch_compute_lock, "_prematch_cache", compute
-        )
+        return self._read_cache(self._prematch_compute_lock, "_prematch_cache")
 
     def get_worker_statuses(self) -> Dict[str, dict]:
         with self._lock:

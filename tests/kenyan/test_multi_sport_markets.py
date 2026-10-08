@@ -195,6 +195,51 @@ def test_two_way_winner_arbitrage_does_not_invent_draw():
     assert implied < 1
 
 
+def test_three_way_selector_error_does_not_drop_two_way_arb(monkeypatch):
+    from engine.best_odds_selector import BestOddsSelector
+
+    monkeypatch.setattr(
+        BestOddsSelector,
+        "select",
+        lambda self, event: (_ for _ in ()).throw(TypeError("draw_odds")),
+    )
+    matches = [
+        KenyanMatchOdds(
+            bookmaker=ONEXBET,
+            competition="X",
+            sport="Football",
+            market="1X2",
+            home_team="Club A",
+            away_team="Club B",
+            home_odds=2.10,
+            draw_odds=3.30,
+            away_odds=3.40,
+            start_time=NOW,
+            collected_at=NOW,
+            status="PREMATCH",
+        ),
+        KenyanMatchOdds(
+            bookmaker=BETIKA,
+            competition="X",
+            sport="Football",
+            market="1X2",
+            home_team="Club A",
+            away_team="Club B",
+            home_odds=2.00,
+            draw_odds=3.90,
+            away_odds=4.00,
+            start_time=NOW,
+            collected_at=NOW,
+            status="PREMATCH",
+        ),
+        _two_way(ONEXBET, "Tennis", MARKET_MATCH_WINNER, 1.90, 2.20),
+        _two_way(BET22, "Tennis", MARKET_MATCH_WINNER, 2.20, 1.90),
+    ]
+    opps = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000, now=NOW)
+    assert len(opps) == 1
+    assert isinstance(opps[0], KenyanTwoWayOpportunity)
+
+
 def test_over_under_same_line_arbs_different_line_does_not():
     same = [
         _two_way(ONEXBET, "Football", MARKET_TOTAL, 2.10, 1.70, line=2.5),

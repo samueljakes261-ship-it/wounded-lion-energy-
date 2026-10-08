@@ -190,16 +190,26 @@ class KenyanArbitrageEngine:
         opportunities = []
 
         for event in matched_events:
-            distinct_bookmakers = {match.bookmaker for match in event.matches}
-            if len(distinct_bookmakers) < MIN_BOOKMAKERS_FOR_ARBITRAGE:
-                continue
+            opportunity = None
+            try:
+                distinct_bookmakers = {match.bookmaker for match in event.matches}
+                if len(distinct_bookmakers) < MIN_BOOKMAKERS_FOR_ARBITRAGE:
+                    continue
 
-            sample = event.matches[0]
-            if _is_three_way(sample):
-                opportunity = self._compute_three_way(event, bankroll=bankroll, now=now)
-            elif _is_two_way(sample):
-                opportunity = self._compute_two_way(event, bankroll=bankroll, now=now)
-            else:
+                sample = event.matches[0]
+                if _is_three_way(sample):
+                    opportunity = self._compute_three_way(event, bankroll=bankroll, now=now)
+                elif _is_two_way(sample):
+                    opportunity = self._compute_two_way(event, bankroll=bankroll, now=now)
+                else:
+                    continue
+            except Exception:
+                log_arb(
+                    event=f"{event.home_team} vs {event.away_team}",
+                    market=getattr(event, "market", ""),
+                    decision="REJECT",
+                    reason="COMPUTE_ERROR",
+                )
                 continue
             if opportunity is not None:
                 opportunities.append(opportunity)
@@ -209,7 +219,7 @@ class KenyanArbitrageEngine:
     def _compute_three_way(self, event, *, bankroll, now):
         try:
             best = self._selector.select(event)
-        except NoBackableOddsError:
+        except (NoBackableOddsError, TypeError):
             return None
 
         reason = validate_opportunity(event, best, now)
