@@ -43,6 +43,12 @@ describe("Kenyan opportunity click opens the shared BACK vs BACK stake plan", ()
     expect(SOURCE).not.toMatch(/keepLastGoodSnapshot/)
   })
 
+  it("shows a freshness indicator without remounting cards on odds updates", () => {
+    expect(SOURCE).toMatch(/data-testid="kenyan-freshness"/)
+    expect(SOURCE).toMatch(/key=\{opportunity\.opportunityId/)
+    expect(SOURCE).toMatch(/Keep the last successful list/)
+  })
+
   it("opens on PREMATCH because those markets are more stable to execute", () => {
     expect(SOURCE).toMatch(/useState<KenyanMode>\("prematch"\)/)
   })

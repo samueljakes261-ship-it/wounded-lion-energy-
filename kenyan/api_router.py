@@ -64,6 +64,20 @@ def serialize_opportunities(opportunities) -> list:
                 opportunity, "outcome_count", 3
             ) == 2
 
+            collected = getattr(sample, "collected_at", None) if sample is not None else None
+            collected_iso = None
+            odds_age = None
+            if collected is not None:
+                try:
+                    if collected.tzinfo is None:
+                        collected = collected.replace(tzinfo=timezone.utc)
+                    collected_iso = collected.isoformat().replace("+00:00", "Z")
+                    odds_age = max(0, (datetime.now(timezone.utc) - collected).total_seconds())
+                except (TypeError, AttributeError):
+                    collected_iso = None
+                    odds_age = None
+            last_updated = _iso_utc(updated_at) if updated_at is not None else collected_iso
+
             row = {
                 "opportunityId": identity,
                 "opportunityType": "BACK_BACK",
@@ -83,7 +97,10 @@ def serialize_opportunities(opportunities) -> list:
                 "guaranteedReturn": plan.guaranteed_return,
                 "totalStake": plan.total_stake,
                 "createdAt": _iso_utc(created_at) if created_at is not None else None,
-                "updatedAt": _iso_utc(updated_at) if updated_at is not None else None,
+                "updatedAt": last_updated,
+                "lastUpdated": last_updated,
+                "collectedAt": collected_iso,
+                "oddsAgeSeconds": None if odds_age is None else round(odds_age, 1),
             }
 
             if two_way:

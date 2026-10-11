@@ -5,7 +5,9 @@ import time
 
 from kenyan.config import (
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    KENYAN_LIVE_STALE_AFTER_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     ONEXBET,
 )
 from kenyan.http_utils import fetch_json
@@ -65,6 +67,9 @@ def _poll_one(url: str, status: str):
             parser_error=fetch_result.error,
             elapsed_seconds=fetch_result.elapsed_seconds,
             acquired_at=time.time(),
+            pages_fetched=getattr(fetch_result, "pages_fetched", 1),
+            page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
+            snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
         )
 
     raw_events = iter_events(json_body)
@@ -102,6 +107,9 @@ def _poll_one(url: str, status: str):
         parser_error=parser_error,
         elapsed_seconds=fetch_result.elapsed_seconds,
         acquired_at=time.time(),
+        pages_fetched=getattr(fetch_result, "pages_fetched", 1),
+        page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
+        snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
     )
     return matches, diagnostics
 
@@ -115,6 +123,7 @@ def build_live_worker() -> BaseKenyanWorker:
         name=f"{ONEXBET}_live",
         poll_fn=lambda: _poll((LIVE_URL,) + LIVE_EXTRA_URLS, "LIVE"),
         poll_interval_seconds=KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+        retention_seconds=KENYAN_LIVE_STALE_AFTER_SECONDS,
     )
 
 
@@ -123,4 +132,5 @@ def build_prematch_worker() -> BaseKenyanWorker:
         name=f"{ONEXBET}_prematch",
         poll_fn=lambda: _poll((PREMATCH_URL,) + PREMATCH_EXTRA_URLS, "PREMATCH"),
         poll_interval_seconds=KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+        retention_seconds=KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     )

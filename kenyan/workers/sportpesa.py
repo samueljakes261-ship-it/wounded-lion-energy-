@@ -27,7 +27,12 @@ import time
 
 from kenyan.config import (
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    KENYAN_LIVE_STALE_AFTER_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_STALE_AFTER_SECONDS,
+    KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT,
+    KENYAN_SPORTPESA_LIVE_MAX_PAGES,
+    KENYAN_SPORTPESA_PREMATCH_MAX_PAGES,
     SPORTPESA,
 )
 from kenyan.http_utils import fetch_json, looks_like_bot_challenge
@@ -42,7 +47,9 @@ from kenyan.parsers.sportpesa_parser import (
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
 PREMATCH_PAGE_COUNT = 100
-PREMATCH_MAX_PAGES_PER_CYCLE = 20
+PREMATCH_MAX_PAGES_PER_CYCLE = KENYAN_SPORTPESA_PREMATCH_MAX_PAGES
+LIVE_DISCOVERY_LIMIT = KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT
+LIVE_DISCOVERY_MAX_PAGES = KENYAN_SPORTPESA_LIVE_MAX_PAGES
 
 # Browser-like Origin/Referer only — never cookies/tokens. Direct HTTP
 # to both www.sportpesa.com and ke.sportpesa.com currently returns an
@@ -75,30 +82,75 @@ def _blocked_diagnostics(fetch_result) -> Diagnostics:
 
 
 def _poll_live():
-    discovery_result = _fetch(build_live_discovery_url(limit=50, offset=0))
+    discovered_events = []
+    seen_ids = set()
+    pages_fetched = 0
+    total_size = 0
+    total_elapsed = 0.0
+    last_ok = None
+    snapshot_complete = True
+    page_cap_hit = False
 
-    if not discovery_result.ok:
-        return [], _blocked_diagnostics(discovery_result)
-
-    discovered_events = extract_live_football_events(discovery_result.json_body)
+    for page in range(LIVE_DISCOVERY_MAX_PAGES):
+        offset = page * LIVE_DISCOVERY_LIMIT
+        discovery_result = _fetch(
+            build_live_discovery_url(limit=LIVE_DISCOVERY_LIMIT, offset=offset)
+        )
+        pages_fetched += 1
+        total_elapsed += discovery_result.elapsed_seconds
+        total_size += discovery_result.response_size_bytes
+        if not discovery_result.ok:
+            if page == 0:
+                return [], _blocked_diagnostics(discovery_result)
+            snapshot_complete = False
+            break
+        last_ok = discovery_result
+        page_events = extract_live_football_events(discovery_result.json_body)
+        raw = discovery_result.json_body.get("events") if isinstance(discovery_result.json_body, dict) else []
+        raw_count = len(raw) if isinstance(raw, list) else 0
+        added = 0
+        for event in page_events:
+            event_id = event.get("event_id")
+            if event_id in seen_ids:
+                continue
+            seen_ids.add(event_id)
+            discovered_events.append(event)
+            added += 1
+        if raw_count < LIVE_DISCOVERY_LIMIT:
+            break
+        if added == 0:
+            break
+    else:
+        page_cap_hit = True
+        snapshot_complete = False
 
     if not discovered_events:
         return [], Diagnostics(
             endpoint_status="ok",
-            http_status_code=discovery_result.status_code,
-            content_type=discovery_result.content_type,
-            response_size_bytes=discovery_result.response_size_bytes,
+            http_status_code=last_ok.status_code if last_ok is not None else None,
+            content_type=last_ok.content_type if last_ok is not None else None,
+            response_size_bytes=total_size,
             events_discovered=0,
             football_events=0,
-            elapsed_seconds=discovery_result.elapsed_seconds,
+            elapsed_seconds=total_elapsed,
             acquired_at=time.time(),
+            pages_fetched=pages_fetched,
+            page_cap_hit=page_cap_hit,
+            snapshot_complete=snapshot_complete,
         )
 
     event_ids = [event["event_id"] for event in discovered_events]
     markets_result = _fetch(build_live_markets_url(event_ids))
+    pages_fetched += 1
+    total_elapsed += markets_result.elapsed_seconds
+    total_size += markets_result.response_size_bytes
 
     if not markets_result.ok:
-        return [], _blocked_diagnostics(markets_result)
+        blocked = _blocked_diagnostics(markets_result)
+        blocked.pages_fetched = pages_fetched
+        blocked.page_cap_hit = page_cap_hit
+        blocked.snapshot_complete = False
+        return [], blocked
 
     try:
         matches = parse_live_markets(markets_result.json_body, discovered_events)
@@ -111,14 +163,17 @@ def _poll_live():
         endpoint_status="ok" if parser_error is None else "bad_payload",
         http_status_code=markets_result.status_code,
         content_type=markets_result.content_type,
-        response_size_bytes=markets_result.response_size_bytes,
+        response_size_bytes=total_size,
         events_discovered=len(discovered_events),
         football_events=len(discovered_events),
         one_x_two_events=len((markets_result.json_body or {}).get("markets") or []),
         valid_normalized_events=len(matches),
         parser_error=parser_error,
-        elapsed_seconds=discovery_result.elapsed_seconds + markets_result.elapsed_seconds,
+        elapsed_seconds=total_elapsed,
         acquired_at=time.time(),
+        pages_fetched=pages_fetched,
+        page_cap_hit=page_cap_hit,
+        snapshot_complete=snapshot_complete and parser_error is None,
     )
 
     return matches, diagnostics
@@ -133,13 +188,21 @@ def _poll_prematch():
     last_status_code = None
     last_content_type = None
 
+    pages_fetched = 0
+    snapshot_complete = True
+    page_cap_hit = False
     for page in range(1, PREMATCH_MAX_PAGES_PER_CYCLE + 1):
         url = build_todays_games_url(page_min=page, page_count=PREMATCH_PAGE_COUNT)
         result = _fetch(url)
+        pages_fetched += 1
 
         if not result.ok:
             if page == 1:
-                return [], _blocked_diagnostics(result)
+                blocked = _blocked_diagnostics(result)
+                blocked.pages_fetched = pages_fetched
+                blocked.snapshot_complete = False
+                return [], blocked
+            snapshot_complete = False
             break  # keep whatever earlier pages already produced
 
         last_status_code = result.status_code
@@ -166,10 +229,15 @@ def _poll_prematch():
                 parser_error=f"{type(exc).__name__}: {exc}",
                 elapsed_seconds=total_elapsed,
                 acquired_at=time.time(),
+                pages_fetched=pages_fetched,
+                snapshot_complete=False,
             )
 
         if len(page_games) < PREMATCH_PAGE_COUNT:
             break  # last page
+    else:
+        page_cap_hit = True
+        snapshot_complete = False
 
     diagnostics = Diagnostics(
         endpoint_status="ok",
@@ -182,6 +250,9 @@ def _poll_prematch():
         valid_normalized_events=len(all_matches),
         elapsed_seconds=total_elapsed,
         acquired_at=time.time(),
+        pages_fetched=pages_fetched,
+        page_cap_hit=page_cap_hit,
+        snapshot_complete=snapshot_complete,
     )
 
     return all_matches, diagnostics
@@ -192,6 +263,7 @@ def build_live_worker() -> BaseKenyanWorker:
         name=f"{SPORTPESA}_live",
         poll_fn=_poll_live,
         poll_interval_seconds=KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+        retention_seconds=KENYAN_LIVE_STALE_AFTER_SECONDS,
     )
 
 
@@ -200,4 +272,5 @@ def build_prematch_worker() -> BaseKenyanWorker:
         name=f"{SPORTPESA}_prematch",
         poll_fn=_poll_prematch,
         poll_interval_seconds=KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+        retention_seconds=KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     )

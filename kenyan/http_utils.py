@@ -10,6 +10,7 @@ bookmakers. If a Kenyan bookmaker ever needs an anti-bot-bypass session
 (see kenyan/workers/sportpesa.py), it is expected to plug in via the
 `session` parameter here rather than by modifying this module.
 """
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -17,6 +18,16 @@ from typing import Any, Optional
 import requests
 
 from kenyan.config import KENYAN_HTTP_TIMEOUT_SECONDS, KENYAN_USER_AGENT
+
+_THREAD_SESSIONS = threading.local()
+
+
+def _thread_session() -> requests.Session:
+    session = getattr(_THREAD_SESSIONS, "session", None)
+    if session is None:
+        session = requests.Session()
+        _THREAD_SESSIONS.session = session
+    return session
 
 DEFAULT_HEADERS = {
     "User-Agent": KENYAN_USER_AGENT,
@@ -42,6 +53,9 @@ class FetchResult:
     json_body: Any = None
     text_body: str = ""
     error: Optional[str] = None
+    pages_fetched: int = 1
+    page_cap_hit: bool = False
+    snapshot_complete: bool = True
 
     @property
     def looks_like_json(self) -> bool:
@@ -70,7 +84,7 @@ def fetch_json(
         merged_headers.update(headers)
 
     start = time.monotonic()
-    client = session or requests
+    client = session or _thread_session()
 
     try:
         response = client.get(url, headers=merged_headers, timeout=timeout)

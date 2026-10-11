@@ -16,9 +16,15 @@ import threading
 import time
 from typing import Dict, List
 
-from kenyan.config import LIVE, PREMATCH
+from kenyan.config import (
+    KENYAN_LIVE_OPPORTUNITY_RETENTION_SECONDS,
+    KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS,
+    LIVE,
+    PREMATCH,
+)
 from kenyan.engine import KenyanArbitrageEngine
 from kenyan.log import log_arb
+from kenyan.metrics import log_cycle
 from kenyan.opportunity_store import KenyanOpportunityStore
 from kenyan.workers import bet22, betika, onexbet, sportpesa
 from kenyan.workers.base import BaseKenyanWorker
@@ -52,8 +58,12 @@ class KenyanEngineRunner:
         self._workers: Dict[str, BaseKenyanWorker] = {}
         self._live_engine = KenyanArbitrageEngine()
         self._prematch_engine = KenyanArbitrageEngine()
-        self._live_store = KenyanOpportunityStore()
-        self._prematch_store = KenyanOpportunityStore()
+        self._live_store = KenyanOpportunityStore(
+            retention_seconds=KENYAN_LIVE_OPPORTUNITY_RETENTION_SECONDS
+        )
+        self._prematch_store = KenyanOpportunityStore(
+            retention_seconds=KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS
+        )
         self._started = False
         self._started_at = None
         self._live_compute_lock = threading.Lock()
@@ -61,7 +71,12 @@ class KenyanEngineRunner:
         self._live_cache = ([], 0.0)
         self._prematch_cache = ([], 0.0)
         self._compute_stop = threading.Event()
-        self._compute_thread = None
+        self._live_compute_thread = None
+        self._prematch_compute_thread = None
+        self._live_compute_seq = 0
+        self._prematch_compute_seq = 0
+        self._live_applied_seq = 0
+        self._prematch_applied_seq = 0
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -82,26 +97,35 @@ class KenyanEngineRunner:
                 worker.start()
 
             self._compute_stop.clear()
-            self._compute_thread = threading.Thread(
-                target=self._compute_loop,
-                name="kenyan-compute",
+            self._live_compute_thread = threading.Thread(
+                target=self._compute_loop_live,
+                name="kenyan-compute-live",
                 daemon=True,
             )
-            self._compute_thread.start()
+            self._prematch_compute_thread = threading.Thread(
+                target=self._compute_loop_prematch,
+                name="kenyan-compute-prematch",
+                daemon=True,
+            )
+            self._live_compute_thread.start()
+            self._prematch_compute_thread.start()
 
             self._started = True
             self._started_at = time.time()
 
     def stop(self):
         self._compute_stop.set()
-        thread = self._compute_thread
+        live_thread = self._live_compute_thread
+        prematch_thread = self._prematch_compute_thread
         with self._lock:
             workers = list(self._workers.values())
             self._workers.clear()
             self._started = False
-            self._compute_thread = None
-        if thread is not None:
-            thread.join(timeout=8)
+            self._live_compute_thread = None
+            self._prematch_compute_thread = None
+        for thread in (live_thread, prematch_thread):
+            if thread is not None:
+                thread.join(timeout=8)
         for worker in workers:
             worker.stop()
 
@@ -127,16 +151,24 @@ class KenyanEngineRunner:
 
         return matches
 
-    def _store_cache(self, lock, cache_attr, result):
-        with lock:
-            setattr(self, cache_attr, (result, time.time()))
-
     def _read_cache(self, lock, cache_attr):
         with lock:
             cached, _stamped = getattr(self, cache_attr)
             return cached
 
-    def _refresh_opportunities(self, status, engine, store, lock, cache_attr):
+    def _refresh_opportunities(
+        self,
+        status,
+        engine,
+        store,
+        lock,
+        cache_attr,
+        seq_attr,
+        applied_attr,
+    ):
+        with lock:
+            seq = getattr(self, seq_attr) + 1
+            setattr(self, seq_attr, seq)
         try:
             computed = engine.compute_opportunities(self._matches_for(status))
             result = store.apply(computed)
@@ -148,9 +180,19 @@ class KenyanEngineRunner:
                 reason=f"COMPUTE_ERROR:{type(exc).__name__}",
             )
             return
-        self._store_cache(lock, cache_attr, result)
+        with lock:
+            if seq < getattr(self, applied_attr):
+                return
+            setattr(self, applied_attr, seq)
+            setattr(self, cache_attr, (result, time.time()))
+        log_cycle(
+            mode=status,
+            computed=len(computed),
+            retained=len(result),
+            compute_seq=seq,
+        )
 
-    def _compute_loop(self):
+    def _compute_loop_live(self):
         while not self._compute_stop.is_set():
             self._refresh_opportunities(
                 LIVE,
@@ -158,15 +200,21 @@ class KenyanEngineRunner:
                 self._live_store,
                 self._live_compute_lock,
                 "_live_cache",
+                "_live_compute_seq",
+                "_live_applied_seq",
             )
-            if self._compute_stop.is_set():
-                break
+            self._compute_stop.wait(1.0)
+
+    def _compute_loop_prematch(self):
+        while not self._compute_stop.is_set():
             self._refresh_opportunities(
                 PREMATCH,
                 self._prematch_engine,
                 self._prematch_store,
                 self._prematch_compute_lock,
                 "_prematch_cache",
+                "_prematch_compute_seq",
+                "_prematch_applied_seq",
             )
             self._compute_stop.wait(1.0)
 

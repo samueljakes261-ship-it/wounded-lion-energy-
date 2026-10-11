@@ -17,8 +17,14 @@ from engine.arbitrage_detector import ArbitrageDetector
 from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
 from engine.over_under import calculate_two_way_stakes
 from engine.stake_calculator import StakeCalculator
-from kenyan.config import KENYAN_BANKROLL, KENYAN_STALE_AFTER_SECONDS
+from kenyan.config import (
+    KENYAN_BANKROLL,
+    KENYAN_LIVE_STALE_AFTER_SECONDS,
+    KENYAN_PREMATCH_STALE_AFTER_SECONDS,
+    LIVE,
+)
 from kenyan.log import event_label, log_arb
+from kenyan.metrics import log_cycle
 from kenyan.markets import (
     FAMILY_TOTAL,
     MARKET_MATCH_WINNER,
@@ -49,6 +55,13 @@ from models.markets import is_1x2_market
 MIN_BOOKMAKERS_FOR_ARBITRAGE = 2
 
 
+def _stale_after_seconds(match) -> float:
+    status = (getattr(match, "status", "") or "").upper()
+    if status == LIVE:
+        return KENYAN_LIVE_STALE_AFTER_SECONDS
+    return KENYAN_PREMATCH_STALE_AFTER_SECONDS
+
+
 def _is_stale(match, now) -> bool:
     collected = getattr(match, "collected_at", None)
     if collected is None:
@@ -57,7 +70,7 @@ def _is_stale(match, now) -> bool:
         age = (now - collected).total_seconds()
     except TypeError:
         return False
-    return age > KENYAN_STALE_AFTER_SECONDS
+    return age > _stale_after_seconds(match)
 
 
 def _is_three_way(match) -> bool:
@@ -163,12 +176,15 @@ class KenyanArbitrageEngine:
         now = now or datetime.now(timezone.utc)
         matches = dedupe_same_book_listings(matches)
         usable = []
+        invalid_odds = 0
+        stale_odds = 0
         for match in matches:
             if _is_three_way(match):
                 pass
             elif _is_two_way(match):
                 pass
             else:
+                invalid_odds += 1
                 log_arb(
                     event=event_label(match),
                     market=getattr(match, "market", "1X2"),
@@ -177,6 +193,7 @@ class KenyanArbitrageEngine:
                 )
                 continue
             if _is_stale(match, now):
+                stale_odds += 1
                 log_arb(
                     event=event_label(match),
                     market=getattr(match, "market", "1X2"),
@@ -188,22 +205,32 @@ class KenyanArbitrageEngine:
 
         matched_events = self._finder.find(usable)
         opportunities = []
+        winner_events = 0
+        total_events = 0
+        rejected = 0
 
         for event in matched_events:
             opportunity = None
             try:
                 distinct_bookmakers = {match.bookmaker for match in event.matches}
                 if len(distinct_bookmakers) < MIN_BOOKMAKERS_FOR_ARBITRAGE:
+                    rejected += 1
                     continue
 
                 sample = event.matches[0]
+                if infer_family(sample) == FAMILY_TOTAL:
+                    total_events += 1
+                else:
+                    winner_events += 1
                 if _is_three_way(sample):
                     opportunity = self._compute_three_way(event, bankroll=bankroll, now=now)
                 elif _is_two_way(sample):
                     opportunity = self._compute_two_way(event, bankroll=bankroll, now=now)
                 else:
+                    rejected += 1
                     continue
             except Exception:
+                rejected += 1
                 log_arb(
                     event=f"{event.home_team} vs {event.away_team}",
                     market=getattr(event, "market", ""),
@@ -213,6 +240,22 @@ class KenyanArbitrageEngine:
                 continue
             if opportunity is not None:
                 opportunities.append(opportunity)
+            else:
+                rejected += 1
+
+        sample_mode = (getattr(usable[0], "status", "") or "UNKNOWN") if usable else "EMPTY"
+        log_cycle(
+            mode=sample_mode,
+            raw_matches=len(matches),
+            usable=len(usable),
+            invalid_odds=invalid_odds,
+            stale_odds=stale_odds,
+            matched_events=len(matched_events),
+            winner_events=winner_events,
+            total_events=total_events,
+            opportunities=len(opportunities),
+            rejected=rejected,
+        )
 
         return opportunities
 

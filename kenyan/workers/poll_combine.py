@@ -14,12 +14,20 @@ def combine_match_polls(results):
     football = 0
     elapsed = 0.0
     bytes_total = 0
+    pages_fetched = 0
+    page_cap_hit = False
+    snapshot_complete = True
 
     for matches, diagnostics in results:
         discovered += diagnostics.events_discovered
         football += diagnostics.football_events
         elapsed += diagnostics.elapsed_seconds
         bytes_total += diagnostics.response_size_bytes
+        pages_fetched += getattr(diagnostics, "pages_fetched", 0) or 0
+        page_cap_hit = page_cap_hit or bool(getattr(diagnostics, "page_cap_hit", False))
+        snapshot_complete = snapshot_complete and bool(
+            getattr(diagnostics, "snapshot_complete", True)
+        )
         if diagnostics.endpoint_status == "ok" and diagnostics.parser_error is None:
             ok_diagnostics = diagnostics
         else:
@@ -44,6 +52,9 @@ def combine_match_polls(results):
     chosen.football_events = max(chosen.football_events, football)
     chosen.elapsed_seconds = elapsed
     chosen.response_size_bytes = bytes_total
+    chosen.pages_fetched = pages_fetched
+    chosen.page_cap_hit = page_cap_hit
+    chosen.snapshot_complete = snapshot_complete
     if combined and ok_diagnostics is not None:
         chosen.endpoint_status = "ok"
         chosen.parser_error = None

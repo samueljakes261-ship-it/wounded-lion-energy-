@@ -251,7 +251,7 @@ def test_in_flight_snapshot_stays_fresh_enough_for_engine(monkeypatch):
     from kenyan.engine import KenyanArbitrageEngine
 
     monkeypatch.setattr("kenyan.workers.base.KENYAN_STALE_AFTER_SECONDS", 0.05)
-    monkeypatch.setattr("kenyan.engine.KENYAN_STALE_AFTER_SECONDS", 0.05)
+    monkeypatch.setattr("kenyan.engine.KENYAN_PREMATCH_STALE_AFTER_SECONDS", 180)
 
     def poll_left():
         return (
@@ -265,15 +265,20 @@ def test_in_flight_snapshot_stays_fresh_enough_for_engine(monkeypatch):
             _ok_diagnostics(valid_normalized_events=1),
         )
 
-    left = BaseKenyanWorker("left", poll_left, poll_interval_seconds=100)
-    right = BaseKenyanWorker("right", poll_right, poll_interval_seconds=100)
+    left = BaseKenyanWorker("left", poll_left, poll_interval_seconds=100, retention_seconds=0.05)
+    right = BaseKenyanWorker("right", poll_right, poll_interval_seconds=100, retention_seconds=0.05)
     left._run_one_cycle()
     right._run_one_cycle()
+    collected = left.get_matches()[0].collected_at
     left._poll_in_flight = True
     right._poll_in_flight = True
     time.sleep(0.12)
     matches = left.get_matches() + right.get_matches()
-    opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000)
+    assert len(matches) == 2
+    assert matches[0].collected_at == collected
+    opportunities = KenyanArbitrageEngine().compute_opportunities(
+        matches, bankroll=1000, now=collected
+    )
     assert len(opportunities) == 1
     assert opportunities[0].result.arbitrage_exists is True
 

@@ -30,13 +30,13 @@ nothing here can affect the existing bookmakers' staleness handling.
 """
 import threading
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from kenyan.config import KENYAN_POLL_INTERVAL_SECONDS, KENYAN_STALE_AFTER_SECONDS
 from kenyan.health import HealthState, WorkerHealth
 from kenyan.match_snapshot import merge_match_records, visible_matches
+from kenyan.metrics import log_cycle
 
 
 @dataclass
@@ -60,6 +60,9 @@ class Diagnostics:
     parser_error: Optional[str] = None
     acquired_at: Optional[float] = None
     elapsed_seconds: float = 0.0
+    pages_fetched: int = 0
+    page_cap_hit: bool = False
+    snapshot_complete: bool = True
 
 
 class BaseKenyanWorker:
@@ -81,10 +84,14 @@ class BaseKenyanWorker:
         poll_fn: Callable[[], "tuple"],
         *,
         poll_interval_seconds: float = KENYAN_POLL_INTERVAL_SECONDS,
+        retention_seconds: Optional[float] = None,
     ):
         self.name = name
         self._poll_fn = poll_fn
         self._poll_interval_seconds = poll_interval_seconds
+        self._retention_seconds = (
+            KENYAN_STALE_AFTER_SECONDS if retention_seconds is None else retention_seconds
+        )
 
         self._lock = threading.Lock()
         self._matches = []
@@ -93,6 +100,7 @@ class BaseKenyanWorker:
         self._last_attempt_at: Optional[float] = None
         self._last_diagnostics: Optional[Diagnostics] = None
         self._health_state = HealthState()
+        self._acquired_seq = 0
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -156,16 +164,18 @@ class BaseKenyanWorker:
             self._last_diagnostics = diagnostics
 
             if diagnostics.endpoint_status == "ok" and diagnostics.parser_error is None:
+                self._acquired_seq += 1
                 self._match_records = merge_match_records(
                     self._match_records,
                     matches,
                     now=now,
-                    retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                    retention_seconds=self._retention_seconds,
+                    acquired_seq=self._acquired_seq,
                 )
                 self._matches = visible_matches(
                     self._match_records,
                     now=now,
-                    retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                    retention_seconds=self._retention_seconds,
                 )
                 if matches:
                     self._last_good_at = now
@@ -180,6 +190,18 @@ class BaseKenyanWorker:
                 self._health_state.record_failure(
                     diagnostics.parser_error or f"endpoint_status={diagnostics.endpoint_status}"
                 )
+        log_cycle(
+            bookmaker=self.name,
+            mode="ok" if diagnostics.endpoint_status == "ok" else diagnostics.endpoint_status,
+            events=diagnostics.events_discovered,
+            normalized=diagnostics.valid_normalized_events,
+            bytes=diagnostics.response_size_bytes,
+            elapsed=round(diagnostics.elapsed_seconds, 3),
+            pages=diagnostics.pages_fetched,
+            page_cap_hit=int(diagnostics.page_cap_hit),
+            snapshot_complete=int(diagnostics.snapshot_complete),
+            error=diagnostics.parser_error or "",
+        )
 
     # ------------------------------------------------------------
     # Readers (safe to call from any thread, cheap, no network/IO)
@@ -201,21 +223,14 @@ class BaseKenyanWorker:
                 return []
             if self._poll_in_flight and self._last_good_at is not None:
                 now = self._last_good_at
-            matches = visible_matches(
+            # Do not restamp collected_at here. Merge already stamps
+            # poll-end confirmation time; rewriting it on every read
+            # presents stale odds as current.
+            return visible_matches(
                 self._match_records,
                 now=now,
-                retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                retention_seconds=self._retention_seconds,
             )
-            # The engine stale-checks collected_at against wall time.
-            # Prematch 1xBet/22Bet walks extra sports for longer than
-            # KENYAN_STALE_AFTER_SECONDS, so a still-visible snapshot
-            # would otherwise be dropped mid-cycle. Restamp served
-            # rows to now; last_seen still expires the snapshot.
-            served_at = datetime.now(timezone.utc)
-            for match in matches:
-                if hasattr(match, "collected_at"):
-                    match.collected_at = served_at
-            return matches
 
     def get_status(self) -> dict:
         with self._lock:
@@ -235,9 +250,10 @@ class BaseKenyanWorker:
                     visible_matches(
                         self._match_records,
                         now=now,
-                        retention_seconds=KENYAN_STALE_AFTER_SECONDS,
+                        retention_seconds=self._retention_seconds,
                     )
                 ),
+                "acquired_seq": self._acquired_seq,
                 "error": self._health_state.last_error,
                 "diagnostics": _diagnostics_to_dict(self._last_diagnostics),
             }
@@ -258,4 +274,7 @@ def _diagnostics_to_dict(diagnostics: Optional[Diagnostics]) -> Optional[dict]:
         "parser_error": diagnostics.parser_error,
         "acquired_at": diagnostics.acquired_at,
         "elapsed_seconds": diagnostics.elapsed_seconds,
+        "pages_fetched": diagnostics.pages_fetched,
+        "page_cap_hit": diagnostics.page_cap_hit,
+        "snapshot_complete": diagnostics.snapshot_complete,
     }

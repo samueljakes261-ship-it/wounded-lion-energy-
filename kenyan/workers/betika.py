@@ -12,15 +12,18 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from kenyan.config import (
     BETIKA,
+    KENYAN_BETIKA_MAX_PAGES,
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+    KENYAN_LIVE_STALE_AFTER_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_STALE_AFTER_SECONDS,
 )
 from kenyan.http_utils import fetch_json
 from kenyan.parsers.betika_parser import parse_all_matches
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
 BETIKA_SUB_TYPES = "1,18,186,219,340"
-MAX_PAGES = 40
+MAX_PAGES = KENYAN_BETIKA_MAX_PAGES
 PAGE_LIMIT = 200
 
 LIVE_URL = (
@@ -48,10 +51,15 @@ def _fetch_pages(url: str):
     seen_ids = set()
     last = None
     total = None
+    pages_fetched = 0
+    snapshot_complete = True
+    page_cap_hit = False
     for page in range(1, MAX_PAGES + 1):
         fetch_result = fetch_json(_with_page(url, page))
         last = fetch_result
+        pages_fetched += 1
         if not fetch_result.ok:
+            snapshot_complete = page > 1 and bool(combined)
             break
         body = fetch_result.json_body if isinstance(fetch_result.json_body, dict) else {}
         rows = body.get("data") or []
@@ -74,6 +82,13 @@ def _fetch_pages(url: str):
             break
         if len(rows) < PAGE_LIMIT:
             break
+    else:
+        page_cap_hit = True
+        snapshot_complete = False
+    if last is not None:
+        last.pages_fetched = pages_fetched
+        last.page_cap_hit = page_cap_hit
+        last.snapshot_complete = snapshot_complete
     payload = {"data": combined, "meta": {"total": total}}
     return payload, last
 
@@ -128,6 +143,11 @@ def _poll(urls, status: str):
     )
     ok = any_ok and parser_error is None
     failed = last_ok is None and last is not None
+    pages_fetched = sum(getattr(result, "pages_fetched", 0) or 0 for _payload, result in fetched if result)
+    page_cap_hit = any(getattr(result, "page_cap_hit", False) for _payload, result in fetched if result)
+    snapshot_complete = all(
+        getattr(result, "snapshot_complete", True) for _payload, result in fetched if result
+    ) if fetched else True
     diagnostics = Diagnostics(
         endpoint_status="ok" if ok else (
             "http_error" if last is not None and last.status_code else "exception"
@@ -148,6 +168,9 @@ def _poll(urls, status: str):
         ),
         elapsed_seconds=elapsed,
         acquired_at=time.time(),
+        pages_fetched=pages_fetched,
+        page_cap_hit=page_cap_hit,
+        snapshot_complete=snapshot_complete,
     )
     return matches, diagnostics
 
@@ -157,6 +180,7 @@ def build_live_worker() -> BaseKenyanWorker:
         name=f"{BETIKA}_live",
         poll_fn=lambda: _poll((LIVE_URL,), "LIVE"),
         poll_interval_seconds=KENYAN_LIVE_POLL_INTERVAL_SECONDS,
+        retention_seconds=KENYAN_LIVE_STALE_AFTER_SECONDS,
     )
 
 
@@ -165,4 +189,5 @@ def build_prematch_worker() -> BaseKenyanWorker:
         name=f"{BETIKA}_prematch",
         poll_fn=lambda: _poll(PREMATCH_URLS, "PREMATCH"),
         poll_interval_seconds=KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+        retention_seconds=KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     )

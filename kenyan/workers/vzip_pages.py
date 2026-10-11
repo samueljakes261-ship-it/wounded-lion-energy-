@@ -8,10 +8,11 @@ so a page is "full" at the observed size, not the requested count.
 """
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from kenyan.config import KENYAN_VZIP_MAX_PAGES
 from kenyan.http_utils import FetchResult, fetch_json
 
 PAGE_COUNT = 400
-MAX_PAGES = 40
+MAX_PAGES = KENYAN_VZIP_MAX_PAGES
 
 
 def with_query(url: str, **updates) -> str:
@@ -39,16 +40,21 @@ def fetch_vzip_all(
     observed_page_size = None
     total_elapsed = 0.0
     total_bytes = 0
+    pages_fetched = 0
+    snapshot_complete = True
+    page_cap_hit = False
 
     for page in range(max_pages):
         page_url = with_query(url, count=page_count, after=after)
         result = fetch(page_url)
         last = result
+        pages_fetched += 1
         total_elapsed += result.elapsed_seconds
         total_bytes += result.response_size_bytes
         if not result.ok:
             if page == 0:
                 return {"Success": False, "Value": []}, result
+            snapshot_complete = False
             break
 
         body = result.json_body if isinstance(result.json_body, dict) else {}
@@ -77,6 +83,9 @@ def fetch_vzip_all(
         if added == 0 or len(events) < observed_page_size or not new_ids:
             break
         after = new_ids[-1]
+    else:
+        page_cap_hit = True
+        snapshot_complete = False
 
     aggregated = FetchResult(
         url=url,
@@ -88,4 +97,7 @@ def fetch_vzip_all(
         json_body={"Success": True, "Value": combined},
         error=None if combined or (last is not None and last.ok) else (last.error if last else None),
     )
+    aggregated.pages_fetched = pages_fetched
+    aggregated.page_cap_hit = page_cap_hit
+    aggregated.snapshot_complete = snapshot_complete
     return aggregated.json_body, aggregated

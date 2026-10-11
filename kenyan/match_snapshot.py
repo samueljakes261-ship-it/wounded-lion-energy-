@@ -5,16 +5,16 @@ LIVE endpoints for 1xBet/22Bet/SportPesa are count/limit windows, not
 guaranteed full catalogues. Replacing `self._matches = latest_poll`
 therefore drops events that were merely off this page, which then
 drops the corresponding arbitrage opportunities. This merge keeps
-per-event last-seen timestamps and expires them using the existing
-KENYAN_STALE_AFTER_SECONDS window.
+per-event last-seen timestamps and expires them using the feed's
+stale window.
 
-1xBet/22Bet prematch walks football first, then tennis/basketball/
-volleyball VZip pages in the same sequential cycle. `collected_at` is
-stamped when each URL is parsed, so football rows can already be older
-than KENYAN_STALE_AFTER_SECONDS by the time the worker publishes.
-The engine's stale check reads `collected_at`, not `last_seen`, which
-left the worker snapshot visible and `/kenyan/opportunities?mode=prematch`
-empty. Incoming rows are therefore restamped to the poll-end time.
+`collected_at` is the time those odds were last confirmed present in a
+completed poll (restamped to poll-end for rows in that poll). Readers
+must not restamp it again on every serve -- that would present stale
+odds as current.
+
+`acquired_seq` is the worker poll generation. A delayed older poll
+cannot overwrite a newer snapshot even if it finishes later.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,6 +25,7 @@ from typing import Dict, Iterable, Optional
 class MatchRecord:
     match: object
     last_seen: float
+    acquired_seq: int = 0
 
 
 def match_identity(match) -> str:
@@ -59,10 +60,13 @@ def merge_match_records(
     *,
     now: float,
     retention_seconds: float,
+    acquired_seq: int = 0,
 ) -> Dict[str, MatchRecord]:
     """
     Update records present in `incoming`. Records missing from this
     poll are kept until `now - last_seen > retention_seconds`.
+    An incoming row with a lower `acquired_seq` than the stored row
+    is ignored so a delayed poll cannot overwrite newer odds.
     """
 
     records = dict(previous or {})
@@ -71,9 +75,16 @@ def merge_match_records(
 
     for match in incoming:
         key = match_identity(match)
+        existing = records.get(key)
+        if existing is not None and existing.acquired_seq > acquired_seq:
+            continue
         if hasattr(match, "collected_at"):
             match.collected_at = collected_at
-        records[key] = MatchRecord(match=match, last_seen=now)
+        records[key] = MatchRecord(
+            match=match,
+            last_seen=now,
+            acquired_seq=acquired_seq,
+        )
         seen.add(key)
 
     expired = [

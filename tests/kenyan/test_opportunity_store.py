@@ -108,6 +108,9 @@ def test_serialize_includes_back_back_stake_plan():
     assert row["away"]["stake"] > 0
     assert row["totalStake"] == 1000
     assert row["guaranteedProfit"] > 0
+    assert row["lastUpdated"]
+    assert row["updatedAt"]
+    assert "oddsAgeSeconds" in row
     implied = (
         1 / row["home"]["odds"] + 1 / row["draw"]["odds"] + 1 / row["away"]["odds"]
     )

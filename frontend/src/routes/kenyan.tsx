@@ -45,10 +45,31 @@ type KenyanOpportunity = {
   guaranteedProfit: number;
   guaranteedReturn: number;
   totalStake: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  lastUpdated?: string | null;
+  collectedAt?: string | null;
+  oddsAgeSeconds?: number | null;
   home: KenyanLeg;
   draw: KenyanLeg | null;
   away: KenyanLeg;
 };
+
+function freshnessLabel(opportunity: KenyanOpportunity): string {
+  const age = opportunity.oddsAgeSeconds;
+  if (typeof age === "number") {
+    if (age < 15) return "fresh";
+    if (age < 45) return `${Math.round(age)}s ago`;
+    return `${Math.round(age)}s stale`;
+  }
+  const stamp = opportunity.lastUpdated || opportunity.updatedAt;
+  if (!stamp) return "";
+  const then = Date.parse(stamp);
+  if (Number.isNaN(then)) return "";
+  const seconds = Math.max(0, (Date.now() - then) / 1000);
+  if (seconds < 15) return "fresh";
+  return `${Math.round(seconds)}s ago`;
+}
 
 type KenyanMode = "live" | "prematch";
 
@@ -119,6 +140,15 @@ function OpportunityCard({ opportunity }: { opportunity: KenyanOpportunity }) {
                     >
                       MARKET {marketText}
                     </Badge>
+                    {freshnessLabel(opportunity) ? (
+                      <Badge
+                        data-testid="kenyan-freshness"
+                        variant="outline"
+                        className="text-[10px] tracking-wide text-slate-400"
+                      >
+                        {freshnessLabel(opportunity)}
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -194,6 +224,7 @@ function KenyanDashboard() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load opportunities");
+      // Keep the last successful list. A failed fetch is not an empty market.
     } finally {
       setLoading(false);
     }

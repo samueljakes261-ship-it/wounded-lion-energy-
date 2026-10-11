@@ -30,12 +30,54 @@ KENYAN_LIVE_POLL_INTERVAL_SECONDS = float(
 # and /kenyan/opportunities?mode=prematch stays empty.
 KENYAN_STALE_AFTER_SECONDS = float(os.getenv("KENYAN_STALE_AFTER_SECONDS", "180"))
 
+# LIVE odds age out after three live poll intervals (15s * 3). Longer
+# retention left outdated live prices actionable. PREMATCH keeps the
+# catalogue-walk window above. KENYAN_STALE_AFTER_SECONDS remains the
+# shared/prematch default so existing env files keep working.
+KENYAN_LIVE_STALE_AFTER_SECONDS = float(
+    os.getenv("KENYAN_LIVE_STALE_AFTER_SECONDS", "45")
+)
+KENYAN_PREMATCH_STALE_AFTER_SECONDS = float(
+    os.getenv(
+        "KENYAN_PREMATCH_STALE_AFTER_SECONDS",
+        str(KENYAN_STALE_AFTER_SECONDS),
+    )
+)
+
 # How long a computed Kenyan opportunity is retained after a poll no
-# longer returns it. Defaults to the same window as odds staleness
-# (nine 5s poll intervals) so one or two incomplete LIVE pages do not
-# wipe the card, but a fixture that has actually left the feed expires.
+# longer returns it. LIVE uses the live stale window so cards do not
+# stay actionable after the odds are outdated. PREMATCH keeps the
+# longer catalogue-walk grace.
 KENYAN_OPPORTUNITY_RETENTION_SECONDS = float(
     os.getenv("KENYAN_OPPORTUNITY_RETENTION_SECONDS", str(KENYAN_STALE_AFTER_SECONDS))
+)
+KENYAN_LIVE_OPPORTUNITY_RETENTION_SECONDS = float(
+    os.getenv(
+        "KENYAN_LIVE_OPPORTUNITY_RETENTION_SECONDS",
+        str(KENYAN_LIVE_STALE_AFTER_SECONDS),
+    )
+)
+KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS = float(
+    os.getenv(
+        "KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS",
+        str(KENYAN_PREMATCH_STALE_AFTER_SECONDS),
+    )
+)
+
+# Pagination safety ceilings. Workers page until a short page / meta
+# total, then stop. These caps exist only to bound memory and time;
+# hitting one is recorded as page_cap_hit, never treated as a complete
+# catalogue.
+KENYAN_VZIP_MAX_PAGES = int(os.getenv("KENYAN_VZIP_MAX_PAGES", "80"))
+KENYAN_BETIKA_MAX_PAGES = int(os.getenv("KENYAN_BETIKA_MAX_PAGES", "80"))
+KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT = int(
+    os.getenv("KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT", "50")
+)
+KENYAN_SPORTPESA_LIVE_MAX_PAGES = int(
+    os.getenv("KENYAN_SPORTPESA_LIVE_MAX_PAGES", "40")
+)
+KENYAN_SPORTPESA_PREMATCH_MAX_PAGES = int(
+    os.getenv("KENYAN_SPORTPESA_PREMATCH_MAX_PAGES", "40")
 )
 
 # Consecutive-failure / consecutive-success hysteresis for flipping a

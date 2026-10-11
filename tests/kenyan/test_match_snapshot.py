@@ -62,6 +62,16 @@ def test_odds_update_replaces_same_identity():
     assert visible[0].home_odds == 2.20
 
 
+def test_older_acquired_seq_cannot_overwrite_newer_odds():
+    first = _match("1", "A", "B", odds=2.20)
+    records = merge_match_records({}, [first], now=1005.0, retention_seconds=45, acquired_seq=2)
+    older = _match("1", "A", "B", odds=2.10)
+    records = merge_match_records(records, [older], now=1010.0, retention_seconds=45, acquired_seq=1)
+    visible = visible_matches(records, now=1010.0, retention_seconds=45)
+    assert len(visible) == 1
+    assert visible[0].home_odds == 2.20
+
+
 def test_merge_restamps_collected_at_to_poll_end():
     parse_time = datetime.now(timezone.utc) - timedelta(seconds=200)
     match = _match("1", "A", "B")
