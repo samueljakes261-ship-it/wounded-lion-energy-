@@ -1,30 +1,28 @@
 """
 Verigood authenticated-session manager.
 
-Discovered from the public mOddshift OpenAPI spec (verigood.top/openapi.json):
+Preferred auth is a captured browser session from GET /valuebets:
 
-    POST /api/auth/login
-        Content-Type: application/json
-        {email, password, remember_me}
-        -> {access_token, token_type, expires_in}
+    Authorization: Bearer <jwt>
+    Cookie: sm_token=<jwt>
 
-    GET /valuebets
-        security: HTTPBearer
+That state is loaded from BETFAIR_VALUEBETS_TOKEN / COOKIE or
+verigood_session.json. Login (POST /api/auth/login) is only a fallback
+when no captured session is present — it is not used to refresh a
+captured session, because that flow has been unreliable.
 
-There is no refresh-token schema and no cookie security scheme. Session
-cookies, if the login response sets them, stay in the requests cookie
-jar. Access tokens live in memory only and are dropped on process exit.
-
-Credentials come from VERIGOOD_USERNAME / VERIGOOD_PASSWORD. This module
-never logs those values, never writes them to disk, and never puts
-cookies or tokens into source or .env as a session substitute.
+There is no refresh-token schema. Captured JWTs live until they expire
+or the endpoint returns 401. Values are never logged.
 """
 from __future__ import annotations
 
+import base64
+import json
 import math
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 import requests
@@ -34,11 +32,14 @@ from betfair.config import (
     AUTH_RETRY_MAX_SECONDS,
     HTTP_TIMEOUT_SECONDS,
     LOGIN_URL,
+    SESSION_FILE,
     USER_AGENT,
 )
 from betfair.http import auth_headers
 
 REFRESH_SKEW_SECONDS = 60
+SM_TOKEN_COOKIE = "sm_token"
+COOKIE_DOMAIN = "verigood.top"
 
 
 class AuthError(Exception):
@@ -53,6 +54,72 @@ def _env(name: str) -> Optional[str]:
     return trimmed or None
 
 
+def strip_bearer(value: str) -> str:
+    text = (value or "").strip()
+    if text.lower().startswith("bearer "):
+        return text[7:].strip()
+    return text
+
+
+def token_from_cookie_header(header: str) -> Optional[str]:
+    for part in (header or "").split(";"):
+        name, _, value = part.strip().partition("=")
+        if name.strip() == SM_TOKEN_COOKIE and value.strip():
+            return strip_bearer(value.strip())
+    raw = strip_bearer(header)
+    if raw.count(".") == 2:
+        return raw
+    return None
+
+
+def jwt_exp_unix(token: str) -> Optional[int]:
+    parts = (token or "").split(".")
+    if len(parts) != 3:
+        return None
+    padded = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    exp = payload.get("exp")
+    try:
+        return int(exp)
+    except (TypeError, ValueError):
+        return None
+
+
+def session_file_path() -> Path:
+    override = _env("BETFAIR_VALUEBETS_SESSION_FILE")
+    if override:
+        return Path(override)
+    return SESSION_FILE
+
+
+def load_session_file(path: Optional[Path] = None) -> dict:
+    file_path = path or session_file_path()
+    if not file_path.is_file():
+        return {}
+    try:
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def token_from_session_file(path: Optional[Path] = None) -> Optional[str]:
+    data = load_session_file(path)
+    for key in ("authorization", "access_token", "token", "Authorization"):
+        raw = data.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return strip_bearer(raw)
+    cookie = data.get("cookie") or data.get("Cookie")
+    if isinstance(cookie, str):
+        return token_from_cookie_header(cookie)
+    return None
+
+
 def configured_email() -> Optional[str]:
     return (
         _env("VERIGOOD_USERNAME")
@@ -65,8 +132,29 @@ def configured_password() -> Optional[str]:
     return _env("VERIGOOD_PASSWORD") or _env("BETFAIR_VALUEBETS_PASSWORD")
 
 
+def configured_cookie() -> Optional[str]:
+    return _env("BETFAIR_VALUEBETS_COOKIE") or _env("VERIGOOD_COOKIE")
+
+
 def configured_static_token() -> Optional[str]:
-    return _env("BETFAIR_VALUEBETS_TOKEN") or _env("VALUEBETS_TOKEN")
+    for name in (
+        "BETFAIR_VALUEBETS_TOKEN",
+        "VALUEBETS_TOKEN",
+        "VERIGOOD_ACCESS_TOKEN",
+    ):
+        raw = _env(name)
+        if raw:
+            return strip_bearer(raw)
+    cookie = configured_cookie()
+    if cookie:
+        from_cookie = token_from_cookie_header(cookie)
+        if from_cookie:
+            return from_cookie
+    return token_from_session_file()
+
+
+def has_captured_session() -> bool:
+    return bool(configured_static_token())
 
 
 def credential_presence() -> dict[str, str]:
@@ -74,9 +162,10 @@ def credential_presence() -> dict[str, str]:
     presence = {
         "VERIGOOD_USERNAME": "PRESENT" if configured_email() else "MISSING",
         "VERIGOOD_PASSWORD": "PRESENT" if configured_password() else "MISSING",
+        "BETFAIR_VALUEBETS_TOKEN": "PRESENT" if configured_static_token() else "MISSING",
+        "BETFAIR_VALUEBETS_COOKIE": "PRESENT" if configured_cookie() else "MISSING",
+        "VERIGOOD_SESSION_FILE": "PRESENT" if session_file_path().is_file() else "MISSING",
     }
-    if configured_static_token():
-        presence["BETFAIR_VALUEBETS_TOKEN"] = "PRESENT"
     return presence
 
 
@@ -113,6 +202,8 @@ class VerigoodSessionManager:
         self._lock = threading.Lock()
         self._access_token: Optional[str] = None
         self._expires_at: float = 0.0
+        self._captured = False
+        self._captured_rejected = False
         self._backoff_seconds = max(1.0, float(backoff_initial))
         self._backoff_initial = max(1.0, float(backoff_initial))
         self._backoff_max = max(self._backoff_initial, float(backoff_max))
@@ -121,10 +212,18 @@ class VerigoodSessionManager:
         self._last_auth_error: Optional[str] = None
         self._auth_success_count = 0
         self._auth_failure_count = 0
+        self._seed_captured_session()
+
+    def uses_captured_session(self) -> bool:
+        return self._captured or has_captured_session()
 
     def headers(self) -> dict[str, str]:
         """Return Authorization headers. May POST /api/auth/login."""
-        return dict(auth_headers(self._ensure_token()))
+        token = self._ensure_token()
+        headers = dict(auth_headers(token))
+        if token and (self._captured or has_captured_session()):
+            headers["Cookie"] = f"{SM_TOKEN_COOKIE}={token}"
+        return headers
 
     def invalidate(self, *, drop_cookies: bool = False) -> None:
         """Drop the cached access token. Optionally clear the cookie jar."""
@@ -133,10 +232,16 @@ class VerigoodSessionManager:
             self._expires_at = 0.0
             if drop_cookies:
                 self.session.cookies.clear()
-            # A previously successful login is allowed to retry immediately
-            # (401 on /valuebets). Failed logins keep their backoff.
-            if self._last_auth_error is None:
+            if self._captured:
+                self._captured_rejected = True
+            if self._last_auth_error is None and not self._captured:
                 self._next_login_at = 0.0
+
+    def mark_captured_rejected(self) -> None:
+        with self._lock:
+            self._captured_rejected = True
+            self._access_token = None
+            self._expires_at = 0.0
 
     def clear_session(self) -> None:
         """Drop token and cookies after a confirmed invalid session."""
@@ -148,17 +253,59 @@ class VerigoodSessionManager:
             "last_auth_error": self._last_auth_error,
             "auth_success_count": self._auth_success_count,
             "auth_failure_count": self._auth_failure_count,
-            "has_access_token": bool(self._access_token or configured_static_token()),
+            "has_access_token": bool(
+                self._access_token or (has_captured_session() and not self._captured_rejected)
+            ),
+            "captured_session": self.uses_captured_session(),
             "credential_presence": credential_presence(),
         }
 
-    def _ensure_token(self) -> Optional[str]:
-        static = configured_static_token()
-        if static:
-            return static
+    def _seed_captured_session(self) -> None:
+        token = configured_static_token()
+        if not token:
+            return
+        with self._lock:
+            self._apply_captured_unlocked(token)
 
+    def _apply_captured_unlocked(self, token: str) -> None:
+        now = self._clock()
+        exp = jwt_exp_unix(token)
+        self._access_token = token
+        self._captured = True
+        self._captured_rejected = False
+        self._expires_at = float(exp) if exp is not None else now + 7 * 24 * 3600
+        self._last_auth_at = now
+        self._last_auth_error = None
+        self._auth_success_count += 1
+        self.session.cookies.set(
+            SM_TOKEN_COOKIE, token, domain=COOKIE_DOMAIN, path="/"
+        )
+
+    def _ensure_token(self) -> Optional[str]:
         with self._lock:
             now = self._clock()
+            if self._captured or has_captured_session():
+                if self._captured_rejected:
+                    self._last_auth_error = "captured Verigood session rejected"
+                    self._auth_failure_count += 1
+                    raise AuthError(self._last_auth_error)
+                if not self._access_token:
+                    token = configured_static_token()
+                    if not token:
+                        self._last_auth_error = "captured Verigood session missing"
+                        self._auth_failure_count += 1
+                        raise AuthError(self._last_auth_error)
+                    self._apply_captured_unlocked(token)
+                    now = self._clock()
+                if now >= (self._expires_at - REFRESH_SKEW_SECONDS):
+                    self._last_auth_error = (
+                        "captured Verigood session expired; paste a fresh "
+                        "/valuebets Authorization header"
+                    )
+                    self._auth_failure_count += 1
+                    raise AuthError(self._last_auth_error)
+                return self._access_token
+
             if self._access_token and now < (self._expires_at - REFRESH_SKEW_SECONDS):
                 return self._access_token
             if now < self._next_login_at:

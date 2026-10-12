@@ -47,6 +47,8 @@ def test_fetch_json_success_uses_minimum_headers():
     assert captured["allow_redirects"] is False
     assert captured["headers"]["Accept"] == "application/json"
     assert captured["headers"]["Authorization"] == "Bearer tok"
+    assert captured["headers"]["Referer"] == "https://verigood.top/app"
+    assert captured["headers"]["Origin"] == "https://verigood.top"
     assert "sec-ch-ua" not in captured["headers"]
 
 
@@ -65,7 +67,7 @@ def test_fetch_json_401_is_auth_failure():
     assert result.ok is False
     assert result.status_code == 401
     assert result.is_auth_failure is True
-    assert result.error == "HTTP 401"
+    assert result.error == "HTTP 401: Token gerekli"
 
 
 def test_fetch_json_invalid_json():

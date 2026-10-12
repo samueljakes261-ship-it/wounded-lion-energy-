@@ -15,6 +15,9 @@ env/
 # Environment variables
 .env
 
+# Captured Verigood browser session (Bearer / sm_token). Never commit.
+verigood_session.json
+
 # ==========================
 # CREDENTIAL MANAGEMENT
 # ==========================

@@ -126,6 +126,18 @@ def acquire_once(
     )
 
     if result.is_auth_failure and auth is not None and had_bearer:
+        if auth.uses_captured_session():
+            auth.invalidate(drop_cookies=True)
+            auth.mark_captured_rejected()
+            diagnostics = _result_to_diagnostics(result)
+            diagnostics.endpoint_status = "auth_error"
+            diagnostics.parser_error = (
+                result.error
+                or "captured Verigood session rejected; paste a fresh "
+                "/valuebets Authorization header"
+            )
+            diagnostics.is_auth_failure = True
+            return [], diagnostics
         auth.invalidate(drop_cookies=True)
         try:
             headers = auth.headers()

@@ -5,11 +5,19 @@ from typing import Any, Optional
 
 import requests
 
-from betfair.config import HTTP_TIMEOUT_SECONDS, USER_AGENT, VALUEBETS_URL
+from betfair.config import (
+    HTTP_TIMEOUT_SECONDS,
+    USER_AGENT,
+    VALUEBETS_REFERER,
+    VALUEBETS_URL,
+)
 
 DEFAULT_HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": "https://verigood.top",
+    "Referer": VALUEBETS_REFERER,
 }
 
 # Phrases observed on Verigood 401 bodies, plus unambiguous English
@@ -131,6 +139,20 @@ def fetch_json(
     )
 
     if response.status_code < 200 or response.status_code >= 300:
+        detail = None
+        try:
+            failed_body = response.json()
+            if isinstance(failed_body, dict):
+                raw_detail = failed_body.get("detail")
+                if isinstance(raw_detail, str) and raw_detail.strip():
+                    lowered = raw_detail.lower()
+                    if "bearer " not in lowered and "eyj" not in lowered:
+                        detail = raw_detail.strip()[:160]
+        except ValueError:
+            detail = None
+        error = f"HTTP {response.status_code}"
+        if detail:
+            error = f"{error}: {detail}"
         return FetchResult(
             url=url,
             ok=False,
@@ -138,7 +160,7 @@ def fetch_json(
             content_type=content_type,
             response_size_bytes=size,
             elapsed_seconds=elapsed,
-            error=f"HTTP {response.status_code}",
+            error=error,
             is_auth_failure=auth_failure,
             redirect_location=location,
         )

@@ -1,6 +1,8 @@
 """Betfair/Verigood authenticated session. HTTP is mocked; secrets never logged."""
 import io
+import json
 import logging
+from pathlib import Path
 
 from betfair.auth import (
     AuthError,
@@ -38,9 +40,15 @@ def _clear_auth_env(monkeypatch):
         "BETFAIR_VALUEBETS_PASSWORD",
         "BETFAIR_VALUEBETS_TOKEN",
         "VALUEBETS_TOKEN",
+        "VERIGOOD_ACCESS_TOKEN",
         "BETFAIR_VALUEBETS_COOKIE",
+        "VERIGOOD_COOKIE",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        "BETFAIR_VALUEBETS_SESSION_FILE",
+        str(Path(__file__).resolve().parent / "_missing_verigood_session.json"),
+    )
 
 
 def _ok_fetch(body=None, headers=None, session=None):
@@ -206,7 +214,102 @@ def test_static_token_skips_login(monkeypatch):
         raise AssertionError("login must not run when TOKEN is set")
 
     auth = VerigoodSessionManager(post_fn=post_fn)
-    assert auth.headers()["Authorization"] == "Bearer static-token"
+    headers = auth.headers()
+    assert headers["Authorization"] == "Bearer static-token"
+    assert headers["Cookie"] == "sm_token=static-token"
+    assert auth.uses_captured_session() is True
+    assert auth.session.cookies.get("sm_token", domain="verigood.top") == "static-token"
+
+
+def test_cookie_header_supplies_bearer_without_login(monkeypatch):
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv(
+        "BETFAIR_VALUEBETS_COOKIE",
+        "sm_token=cookie-jwt.part.sig",
+    )
+    monkeypatch.setenv("VERIGOOD_USERNAME", "myuser")
+    monkeypatch.setenv("VERIGOOD_PASSWORD", "secret-pass-xyz")
+
+    def post_fn(*args, **kwargs):
+        raise AssertionError("login must not run when COOKIE is set")
+
+    auth = VerigoodSessionManager(post_fn=post_fn)
+    assert auth.headers()["Authorization"] == "Bearer cookie-jwt.part.sig"
+
+
+def test_session_file_skips_login(monkeypatch, tmp_path):
+    _clear_auth_env(monkeypatch)
+    session_path = tmp_path / "verigood_session.json"
+    session_path.write_text(
+        json.dumps(
+            {
+                "authorization": "Bearer file-jwt.part.sig",
+                "cookie": "sm_token=file-jwt.part.sig",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BETFAIR_VALUEBETS_SESSION_FILE", str(session_path))
+    monkeypatch.setenv("VERIGOOD_USERNAME", "myuser")
+    monkeypatch.setenv("VERIGOOD_PASSWORD", "secret-pass-xyz")
+
+    def post_fn(*args, **kwargs):
+        raise AssertionError("login must not run when session file is set")
+
+    auth = VerigoodSessionManager(post_fn=post_fn)
+    assert auth.headers()["Authorization"] == "Bearer file-jwt.part.sig"
+
+
+def test_captured_session_401_does_not_login(monkeypatch):
+    _clear_auth_env(monkeypatch)
+    monkeypatch.setenv("BETFAIR_VALUEBETS_TOKEN", "captured-jwt")
+    monkeypatch.setenv("VERIGOOD_USERNAME", "myuser")
+    monkeypatch.setenv("VERIGOOD_PASSWORD", "secret-pass-xyz")
+    posts = {"n": 0}
+
+    def post_fn(*args, **kwargs):
+        posts["n"] += 1
+        raise AssertionError("captured 401 must not POST /api/auth/login")
+
+    def fetch_fn(url, headers=None, timeout=None, session=None):
+        return FetchResult(
+            url=url,
+            ok=False,
+            status_code=401,
+            content_type="application/json",
+            response_size_bytes=20,
+            elapsed_seconds=0.01,
+            error="HTTP 401",
+            is_auth_failure=True,
+        )
+
+    auth = VerigoodSessionManager(post_fn=post_fn)
+    opportunities, diagnostics = acquire_once(fetch_fn=fetch_fn, auth=auth)
+    assert opportunities == []
+    assert diagnostics.endpoint_status == "auth_error"
+    assert "401" in (diagnostics.parser_error or "")
+    assert posts["n"] == 0
+
+
+def test_expired_captured_jwt_does_not_login(monkeypatch):
+    import base64
+
+    _clear_auth_env(monkeypatch)
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": 100}).encode()).rstrip(b"=").decode()
+    header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode()
+    monkeypatch.setenv("BETFAIR_VALUEBETS_TOKEN", f"{header}.{payload}.x")
+    monkeypatch.setenv("VERIGOOD_USERNAME", "myuser")
+    monkeypatch.setenv("VERIGOOD_PASSWORD", "secret-pass-xyz")
+
+    def post_fn(*args, **kwargs):
+        raise AssertionError("expired captured session must not login")
+
+    auth = VerigoodSessionManager(post_fn=post_fn, clock=lambda: 1_000.0)
+    try:
+        auth.headers()
+        raise AssertionError("expected AuthError")
+    except AuthError as exc:
+        assert "expired" in str(exc)
 
 
 def test_missing_credentials_are_an_auth_error_not_a_silent_401(monkeypatch):

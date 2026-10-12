@@ -53,7 +53,21 @@ CACHE_FILE = Path(
 SOURCE_ID = "betfair"
 SOURCE_LABEL = "Betfair"
 
+SESSION_FILE = Path(
+    os.getenv(
+        "BETFAIR_VALUEBETS_SESSION_FILE",
+        str(_ROOT / "verigood_session.json"),
+    )
+)
+
+# Match the browser GET /valuebets that returns JSON through Cloudflare.
 USER_AGENT = os.getenv(
     "BETFAIR_USER_AGENT",
-    "WoundedLionEnergy/2.0 (Betfair valuebets feed)",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+)
+
+VALUEBETS_REFERER = os.getenv(
+    "BETFAIR_VALUEBETS_REFERER",
+    "https://verigood.top/app",
 )
