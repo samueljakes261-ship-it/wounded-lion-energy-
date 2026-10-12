@@ -37,6 +37,15 @@ export default defineConfig({
       // on the existing Turkish/client-facing behavior.
       allowedHosts: true,
       proxy: {
+        // Same-origin fallback when the dashboard is served from a
+        // Vite port that is not listed in api.py CORS (8081 when 8080
+        // is already taken). Absolute VITE_API_URL still talks to
+        // :8000 directly; this proxy covers relative /opportunities
+        // and /status fetches.
+        "^/(opportunities|status)$": {
+          target: process.env.KENYAN_API_PROXY_TARGET ?? "http://localhost:8000",
+          changeOrigin: true,
+        },
         // Matches the Kenyan backend's actual sub-routes
         // (/kenyan/auth, /kenyan/opportunities, /kenyan/status) but
         // deliberately NOT the bare "/kenyan" path itself, which is
