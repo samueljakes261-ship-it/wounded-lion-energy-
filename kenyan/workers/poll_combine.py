@@ -1,5 +1,6 @@
 """Combine multi-URL Kenyan polls without letting one failed extra sport blank the cycle."""
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from kenyan.workers.base import Diagnostics
@@ -64,10 +65,16 @@ def combine_match_polls(results):
 def map_polls(poll_one, urls, status: str):
     """Run each catalogue URL concurrently, then combine like sequential polls."""
     urls = tuple(urls)
+    started = time.monotonic()
     if not urls:
         return combine_match_polls([])
     if len(urls) == 1:
-        return combine_match_polls([poll_one(urls[0], status)])
+        combined, diagnostics = combine_match_polls([poll_one(urls[0], status)])
+        diagnostics.elapsed_seconds = time.monotonic() - started
+        return combined, diagnostics
     with ThreadPoolExecutor(max_workers=len(urls)) as pool:
         results = list(pool.map(lambda url: poll_one(url, status), urls))
-    return combine_match_polls(results)
+    combined, diagnostics = combine_match_polls(results)
+    # Wall-clock of the concurrent fan-out, not the sum of each URL.
+    diagnostics.elapsed_seconds = time.monotonic() - started
+    return combined, diagnostics

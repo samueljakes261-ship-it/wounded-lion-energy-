@@ -11,16 +11,25 @@ import os
 # ------------------------------------------------------------------
 # Polling.
 #
-# Prematch is the practical execution surface, so it stays on the 5s
-# cadence. Live is slower (15s) so it does not starve prematch polling
-# or chase prices that move before a stake can be placed.
+# Prematch stays on the 5s catalogue cadence. LIVE workers are
+# independent threads, so they no longer need a 15s gap to avoid
+# starving prematch. 2s is the floor between LIVE polls: a slow
+# bookmaker still cannot overlap itself, and a fast one is not
+# hammered every 200ms.
 # ------------------------------------------------------------------
 KENYAN_POLL_INTERVAL_SECONDS = float(os.getenv("KENYAN_POLL_INTERVAL_SECONDS", "5"))
 KENYAN_PREMATCH_POLL_INTERVAL_SECONDS = float(
     os.getenv("KENYAN_PREMATCH_POLL_INTERVAL_SECONDS", str(KENYAN_POLL_INTERVAL_SECONDS))
 )
 KENYAN_LIVE_POLL_INTERVAL_SECONDS = float(
-    os.getenv("KENYAN_LIVE_POLL_INTERVAL_SECONDS", "15")
+    os.getenv("KENYAN_LIVE_POLL_INTERVAL_SECONDS", "2")
+)
+
+# LIVE matching wakes immediately when a worker publishes. This idle
+# timeout only covers the case where no bookmaker has published, so
+# stale cards can still expire.
+KENYAN_LIVE_COMPUTE_IDLE_SECONDS = float(
+    os.getenv("KENYAN_LIVE_COMPUTE_IDLE_SECONDS", "1")
 )
 
 # How long a worker's last-good snapshot is still trusted after its
@@ -30,8 +39,9 @@ KENYAN_LIVE_POLL_INTERVAL_SECONDS = float(
 # and /kenyan/opportunities?mode=prematch stays empty.
 KENYAN_STALE_AFTER_SECONDS = float(os.getenv("KENYAN_STALE_AFTER_SECONDS", "180"))
 
-# LIVE odds age out after three live poll intervals (15s * 3). Longer
-# retention left outdated live prices actionable. PREMATCH keeps the
+# LIVE confirmation must land inside this window or the price is
+# unusable. Quiet markets may keep the same odds; confirmation, not
+# last price change, is the expiry clock. PREMATCH keeps the
 # catalogue-walk window above. KENYAN_STALE_AFTER_SECONDS remains the
 # shared/prematch default so existing env files keep working.
 KENYAN_LIVE_STALE_AFTER_SECONDS = float(

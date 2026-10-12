@@ -14,6 +14,7 @@ from kenyan.config import (
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
     KENYAN_PREMATCH_STALE_AFTER_SECONDS,
 )
+from kenyan.http_utils import copy_cache_headers
 from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
 from kenyan.parsers.bet22_parser import parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
@@ -44,7 +45,7 @@ PREMATCH_EXTRA_URLS = (
 def _poll_one(url: str, status: str):
     envelope, fetch_result = fetch_vzip_all(url)
     if not fetch_result.ok:
-        return [], Diagnostics(
+        failed = Diagnostics(
             endpoint_status="http_error" if fetch_result.status_code else "exception",
             http_status_code=fetch_result.status_code,
             content_type=fetch_result.content_type,
@@ -56,6 +57,8 @@ def _poll_one(url: str, status: str):
             page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
             snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
         )
+        copy_cache_headers(failed, fetch_result)
+        return [], failed
 
     raw_events = (envelope or {}).get("Value") or []
     football_events = 0
@@ -90,6 +93,7 @@ def _poll_one(url: str, status: str):
         page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
         snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
     )
+    copy_cache_headers(diagnostics, fetch_result)
     return matches, diagnostics
 
 

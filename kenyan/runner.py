@@ -17,6 +17,7 @@ import time
 from typing import Dict, List
 
 from kenyan.config import (
+    KENYAN_LIVE_COMPUTE_IDLE_SECONDS,
     KENYAN_LIVE_OPPORTUNITY_RETENTION_SECONDS,
     KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS,
     LIVE,
@@ -77,6 +78,11 @@ class KenyanEngineRunner:
         self._prematch_compute_seq = 0
         self._live_applied_seq = 0
         self._prematch_applied_seq = 0
+        self._live_ready = threading.Event()
+        self._live_last_fingerprint = None
+        self._live_last_computed = None
+        self._live_cycle_id = 0
+        self._live_last_process = {}
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -93,7 +99,9 @@ class KenyanEngineRunner:
                 self._workers[f"{bookmaker}_live"] = live_worker
                 self._workers[f"{bookmaker}_prematch"] = prematch_worker
 
-            for worker in self._workers.values():
+            for name, worker in self._workers.items():
+                if name.endswith("_live"):
+                    worker.set_on_snapshot(self._notify_live_ready)
                 worker.start()
 
             self._compute_stop.clear()
@@ -115,6 +123,7 @@ class KenyanEngineRunner:
 
     def stop(self):
         self._compute_stop.set()
+        self._live_ready.set()
         live_thread = self._live_compute_thread
         prematch_thread = self._prematch_compute_thread
         with self._lock:
@@ -156,6 +165,104 @@ class KenyanEngineRunner:
             cached, _stamped = getattr(self, cache_attr)
             return cached
 
+    def _notify_live_ready(self):
+        self._live_ready.set()
+
+    def _live_snapshot_fingerprint(self):
+        parts = []
+        with self._lock:
+            workers = [
+                worker for name, worker in self._workers.items() if name.endswith("_live")
+            ]
+        for worker in workers:
+            parts.append((worker.name, worker.content_fingerprint(), worker.snapshot_meta()["acquired_seq"]))
+        return tuple(parts)
+
+    def _refresh_live_opportunities(self):
+        gather_started = time.monotonic()
+        matches = self._matches_for(LIVE)
+        gather_ms = (time.monotonic() - gather_started) * 1000
+        fingerprint = self._live_snapshot_fingerprint()
+        price_ages = []
+        confirm_ages = []
+        now = time.time()
+        for match in matches:
+            collected = getattr(match, "collected_at", None)
+            confirmed = getattr(match, "confirmed_at", None)
+            if collected is not None:
+                try:
+                    price_ages.append(max(0.0, now - collected.timestamp()))
+                except Exception:
+                    pass
+            if confirmed is not None:
+                try:
+                    confirm_ages.append(max(0.0, now - confirmed.timestamp()))
+                except Exception:
+                    pass
+        snapshot_age = max(price_ages) if price_ages else 0.0
+        confirm_age = max(confirm_ages) if confirm_ages else 0.0
+
+        with self._live_compute_lock:
+            self._live_compute_seq += 1
+            seq = self._live_compute_seq
+            self._live_cycle_id += 1
+            cycle_id = self._live_cycle_id
+
+        skipped = fingerprint == self._live_last_fingerprint and self._live_last_computed is not None
+        compute_started = time.monotonic()
+        try:
+            if skipped:
+                computed = self._live_last_computed
+            else:
+                computed = self._live_engine.compute_opportunities(matches)
+                self._live_last_computed = computed
+                self._live_last_fingerprint = fingerprint
+            result = self._live_store.apply(computed)
+        except Exception as exc:  # noqa: BLE001
+            log_arb(
+                event=LIVE,
+                market="ALL",
+                decision="REJECT",
+                reason=f"COMPUTE_ERROR:{type(exc).__name__}",
+            )
+            return
+        compute_ms = (time.monotonic() - compute_started) * 1000
+        process_ms = (time.monotonic() - gather_started) * 1000
+
+        with self._live_compute_lock:
+            if seq < self._live_applied_seq:
+                return
+            self._live_applied_seq = seq
+            self._live_cache = (result, time.time())
+            self._live_last_process = {
+                "cycle_id": cycle_id,
+                "gather_ms": round(gather_ms, 2),
+                "compute_ms": round(compute_ms, 2),
+                "process_ms": round(process_ms, 2),
+                "skipped_unchanged": skipped,
+                "snapshot_age_seconds": round(snapshot_age, 2),
+                "confirm_age_seconds": round(confirm_age, 2),
+                "match_count": len(matches),
+                "computed": len(computed),
+                "retained": len(result),
+                "eligible_bookmakers": len({getattr(m, "bookmaker", "") for m in matches}),
+            }
+        log_cycle(
+            mode=LIVE,
+            cycle_id=cycle_id,
+            stage="process",
+            gather_ms=round(gather_ms, 2),
+            compute_ms=round(compute_ms, 2),
+            process_ms=round(process_ms, 2),
+            skipped_unchanged=int(skipped),
+            snapshot_age_seconds=round(snapshot_age, 2),
+            confirm_age_seconds=round(confirm_age, 2),
+            matches=len(matches),
+            computed=len(computed),
+            retained=len(result),
+            compute_seq=seq,
+        )
+
     def _refresh_opportunities(
         self,
         status,
@@ -194,16 +301,13 @@ class KenyanEngineRunner:
 
     def _compute_loop_live(self):
         while not self._compute_stop.is_set():
-            self._refresh_opportunities(
-                LIVE,
-                self._live_engine,
-                self._live_store,
-                self._live_compute_lock,
-                "_live_cache",
-                "_live_compute_seq",
-                "_live_applied_seq",
-            )
-            self._compute_stop.wait(1.0)
+            self._refresh_live_opportunities()
+            if self._compute_stop.is_set():
+                break
+            self._live_ready.wait(timeout=KENYAN_LIVE_COMPUTE_IDLE_SECONDS)
+            self._live_ready.clear()
+            if self._compute_stop.is_set():
+                break
 
     def _compute_loop_prematch(self):
         while not self._compute_stop.is_set():
@@ -245,6 +349,7 @@ class KenyanEngineRunner:
             "workers": worker_statuses,
             "live_opportunity_count": len(live_cached) if started else 0,
             "prematch_opportunity_count": len(prematch_cached) if started else 0,
+            "live_pipeline": dict(self._live_last_process),
         }
 
 

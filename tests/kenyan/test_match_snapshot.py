@@ -72,6 +72,42 @@ def test_older_acquired_seq_cannot_overwrite_newer_odds():
     assert visible[0].home_odds == 2.20
 
 
+def test_live_unchanged_odds_keep_collected_at():
+    first = _match("1", "A", "B", odds=2.10)
+    records = merge_match_records({}, [first], now=1000.0, retention_seconds=45, acquired_seq=1)
+    original = records[match_identity(first)].match.collected_at
+    same = _match("1", "A", "B", odds=2.10)
+    records = merge_match_records(records, [same], now=1010.0, retention_seconds=45, acquired_seq=2)
+    stored = records[match_identity(first)].match
+    assert stored.collected_at == original
+    assert stored.home_odds == 2.10
+    assert stored.confirmed_at is not None
+    assert abs(stored.confirmed_at.timestamp() - 1010.0) < 1.0
+
+
+def test_live_odds_change_updates_collected_at():
+    first = _match("1", "A", "B", odds=2.10)
+    records = merge_match_records({}, [first], now=1000.0, retention_seconds=45, acquired_seq=1)
+    original = records[match_identity(first)].match.collected_at
+    changed = _match("1", "A", "B", odds=2.25)
+    records = merge_match_records(records, [changed], now=1010.0, retention_seconds=45, acquired_seq=2)
+    stored = records[match_identity(first)].match
+    assert stored.home_odds == 2.25
+    assert stored.collected_at != original
+    assert abs(stored.collected_at.timestamp() - 1010.0) < 1.0
+
+
+def test_prematch_still_restamps_collected_at_to_poll_end():
+    parse_time = datetime.now(timezone.utc) - timedelta(seconds=200)
+    match = _match("1", "A", "B", status="PREMATCH")
+    match.collected_at = parse_time
+    poll_end = time.time()
+    records = merge_match_records({}, [match], now=poll_end, retention_seconds=180)
+    stored = records[match_identity(match)].match
+    age = abs((stored.collected_at.timestamp() - poll_end))
+    assert age < 1.0
+
+
 def test_merge_restamps_collected_at_to_poll_end():
     parse_time = datetime.now(timezone.utc) - timedelta(seconds=200)
     match = _match("1", "A", "B")

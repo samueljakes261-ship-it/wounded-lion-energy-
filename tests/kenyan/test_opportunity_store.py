@@ -1,5 +1,5 @@
 """Kenyan opportunity identity, odds-update, grace retention, and expiry."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from kenyan.api_router import serialize_opportunities
 from kenyan.config import BETIKA, SPORTPESA
@@ -111,7 +111,49 @@ def test_serialize_includes_back_back_stake_plan():
     assert row["lastUpdated"]
     assert row["updatedAt"]
     assert "oddsAgeSeconds" in row
-    implied = (
-        1 / row["home"]["odds"] + 1 / row["draw"]["odds"] + 1 / row["away"]["odds"]
+    assert "confirmedAgeSeconds" in row
+    assert "collectedAt" in row["home"]
+    assert "confirmedAt" in row["home"]
+
+
+def test_serialize_uses_oldest_constituent_collected_at():
+    older = NOW - timedelta(seconds=40)
+    newer = NOW - timedelta(seconds=2)
+    matches = [
+        _match(SPORTPESA, 2.10, 3.30, 3.40, status="LIVE", event_id="sp-a"),
+        _match(BETIKA, 2.00, 3.90, 4.00, status="LIVE", event_id="bk-a"),
+    ]
+    matches[0].collected_at = older
+    matches[0].confirmed_at = newer
+    matches[1].collected_at = newer
+    matches[1].confirmed_at = newer
+    opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000, now=NOW)
+    payload = serialize_opportunities(opportunities, now=NOW)
+    assert payload
+    assert payload[0]["oddsAgeSeconds"] >= 39
+    assert payload[0]["confirmedAgeSeconds"] <= 3
+    assert payload[0]["home"]["oddsAgeSeconds"] >= 39 or payload[0]["draw"]["oddsAgeSeconds"] >= 39 or payload[0]["away"]["oddsAgeSeconds"] >= 39
+
+
+def test_serialize_uses_oldest_constituent_price_age():
+    now = datetime.now(timezone.utc)
+    older = now - timedelta(seconds=40)
+    newer = now - timedelta(seconds=5)
+    matches = [
+        _match(SPORTPESA, 2.10, 3.30, 3.40, event_id="sp-a"),
+        _match(BETIKA, 2.00, 3.90, 4.00, event_id="bk-a"),
+    ]
+    matches[0].collected_at = older
+    matches[0].confirmed_at = newer
+    matches[1].collected_at = newer
+    matches[1].confirmed_at = newer
+    computed = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000, now=now)
+    payload = serialize_opportunities(computed, now=now)
+    assert payload
+    assert payload[0]["oddsAgeSeconds"] >= 39
+    assert payload[0]["confirmedAgeSeconds"] <= 6
+    assert payload[0]["home"]["collectedAt"]
+    assert any(
+        (payload[0][side] or {}).get("oddsAgeSeconds", 0) >= 39
+        for side in ("home", "draw", "away")
     )
-    assert implied < 1

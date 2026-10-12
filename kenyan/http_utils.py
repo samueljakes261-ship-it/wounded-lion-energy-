@@ -56,6 +56,11 @@ class FetchResult:
     pages_fetched: int = 1
     page_cap_hit: bool = False
     snapshot_complete: bool = True
+    http_date: Optional[str] = None
+    cache_age: Optional[str] = None
+    etag: Optional[str] = None
+    last_modified: Optional[str] = None
+    cache_control: Optional[str] = None
 
     @property
     def looks_like_json(self) -> bool:
@@ -102,6 +107,19 @@ def fetch_json(
     elapsed = time.monotonic() - start
     content_type = response.headers.get("content-type")
     size = len(response.content or b"")
+    http_date = response.headers.get("date")
+    cache_age = response.headers.get("age")
+    etag = response.headers.get("etag")
+    last_modified = response.headers.get("last-modified")
+    cache_control = response.headers.get("cache-control")
+
+    cache_kwargs = dict(
+        http_date=http_date,
+        cache_age=cache_age,
+        etag=etag,
+        last_modified=last_modified,
+        cache_control=cache_control,
+    )
 
     if response.status_code >= 400:
         return FetchResult(
@@ -113,6 +131,7 @@ def fetch_json(
             elapsed_seconds=elapsed,
             text_body=response.text[:2000],
             error=f"HTTP {response.status_code}",
+            **cache_kwargs,
         )
 
     json_body = None
@@ -132,6 +151,7 @@ def fetch_json(
             elapsed_seconds=elapsed,
             text_body=response.text[:2000],
             error=parse_error or "empty/non-JSON response body",
+            **cache_kwargs,
         )
 
     return FetchResult(
@@ -142,7 +162,18 @@ def fetch_json(
         response_size_bytes=size,
         elapsed_seconds=elapsed,
         json_body=json_body,
+        **cache_kwargs,
     )
+
+
+def copy_cache_headers(target, fetch_result):
+    """Copy HTTP cache/date headers onto Diagnostics or FetchResult."""
+    if fetch_result is None:
+        return target
+    for name in ("http_date", "cache_age", "etag", "last_modified", "cache_control"):
+        if hasattr(target, name):
+            setattr(target, name, getattr(fetch_result, name, None))
+    return target
 
 
 def looks_like_bot_challenge(fetch_result: FetchResult) -> bool:

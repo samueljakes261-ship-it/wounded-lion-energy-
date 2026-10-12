@@ -119,9 +119,9 @@ def test_onexbet_football_games1x2_is_not_capped_at_50():
     assert any("Get1x2_VZip" in url for url in onexbet.PREMATCH_EXTRA_URLS)
 
 
-def test_prematch_workers_poll_faster_than_live():
+def test_live_workers_poll_independently_of_prematch():
     assert KENYAN_PREMATCH_POLL_INTERVAL_SECONDS == 5
-    assert KENYAN_LIVE_POLL_INTERVAL_SECONDS == 15
+    assert KENYAN_LIVE_POLL_INTERVAL_SECONDS == 2
     pairs = (
         (sportpesa.build_live_worker(), sportpesa.build_prematch_worker()),
         (betika.build_live_worker(), betika.build_prematch_worker()),
@@ -129,7 +129,7 @@ def test_prematch_workers_poll_faster_than_live():
         (bet22.build_live_worker(), bet22.build_prematch_worker()),
     )
     for live, prematch in pairs:
-        assert live._poll_interval_seconds == 15
+        assert live._poll_interval_seconds == 2
         assert prematch._poll_interval_seconds == 5
 
 

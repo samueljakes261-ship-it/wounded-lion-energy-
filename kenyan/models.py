@@ -82,6 +82,9 @@ class KenyanMatchOdds:
     period: str = "FULL_MATCH"
     outcome_family: str = ""
     market_label: str = ""
+    # LIVE-only: last successful poll that still contained these odds.
+    # Distinct from collected_at, which is when the price values changed.
+    confirmed_at: Optional[datetime] = None
 
     @property
     def feed_type(self) -> str:

@@ -35,7 +35,7 @@ from kenyan.config import (
     KENYAN_SPORTPESA_PREMATCH_MAX_PAGES,
     SPORTPESA,
 )
-from kenyan.http_utils import fetch_json, looks_like_bot_challenge
+from kenyan.http_utils import copy_cache_headers, fetch_json, looks_like_bot_challenge
 from kenyan.parsers.sportpesa_parser import (
     build_live_discovery_url,
     build_live_markets_url,
@@ -70,14 +70,17 @@ def _blocked_diagnostics(fetch_result) -> Diagnostics:
     if looks_like_bot_challenge(fetch_result):
         error = "blocked by anti-bot challenge (non-JSON challenge page returned)"
 
-    return Diagnostics(
-        endpoint_status="http_error" if fetch_result.status_code else "exception",
-        http_status_code=fetch_result.status_code,
-        content_type=fetch_result.content_type,
-        response_size_bytes=fetch_result.response_size_bytes,
-        parser_error=error,
-        elapsed_seconds=fetch_result.elapsed_seconds,
-        acquired_at=time.time(),
+    return copy_cache_headers(
+        Diagnostics(
+            endpoint_status="http_error" if fetch_result.status_code else "exception",
+            http_status_code=fetch_result.status_code,
+            content_type=fetch_result.content_type,
+            response_size_bytes=fetch_result.response_size_bytes,
+            parser_error=error,
+            elapsed_seconds=fetch_result.elapsed_seconds,
+            acquired_at=time.time(),
+        ),
+        fetch_result,
     )
 
 
@@ -175,6 +178,7 @@ def _poll_live():
         page_cap_hit=page_cap_hit,
         snapshot_complete=snapshot_complete and parser_error is None,
     )
+    copy_cache_headers(diagnostics, markets_result)
 
     return matches, diagnostics
 

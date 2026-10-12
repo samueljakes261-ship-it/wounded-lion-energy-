@@ -52,4 +52,12 @@ describe("Kenyan opportunity click opens the shared BACK vs BACK stake plan", ()
   it("opens on PREMATCH because those markets are more stable to execute", () => {
     expect(SOURCE).toMatch(/useState<KenyanMode>\("prematch"\)/)
   })
+
+  it("refreshes LIVE independently and faster than PREMATCH", () => {
+    expect(SOURCE).toMatch(/mode === "live" \? 1000 : 5000/)
+    expect(SOURCE).toMatch(/sameOpportunityPayload/)
+    expect(SOURCE).toMatch(/requestSeq/)
+    expect(SOURCE).toMatch(/confirmedAgeSeconds/)
+    expect(SOURCE).toMatch(/cache: "no-store"/)
+  })
 })

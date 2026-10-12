@@ -18,7 +18,7 @@ from kenyan.config import (
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
     KENYAN_PREMATCH_STALE_AFTER_SECONDS,
 )
-from kenyan.http_utils import fetch_json
+from kenyan.http_utils import copy_cache_headers, fetch_json
 from kenyan.parsers.betika_parser import parse_all_matches
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics
 
@@ -172,6 +172,7 @@ def _poll(urls, status: str):
         page_cap_hit=page_cap_hit,
         snapshot_complete=snapshot_complete,
     )
+    copy_cache_headers(diagnostics, last_ok or last)
     return matches, diagnostics
 
 

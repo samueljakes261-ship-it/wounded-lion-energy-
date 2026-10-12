@@ -28,6 +28,7 @@ matching the project's own general stale-data policy (see
 collector.py's MAX_ODDS_AGE_SECONDS) but as an independent constant so
 nothing here can affect the existing bookmakers' staleness handling.
 """
+import hashlib
 import threading
 import time
 from dataclasses import dataclass
@@ -63,6 +64,11 @@ class Diagnostics:
     pages_fetched: int = 0
     page_cap_hit: bool = False
     snapshot_complete: bool = True
+    http_date: Optional[str] = None
+    cache_age: Optional[str] = None
+    etag: Optional[str] = None
+    last_modified: Optional[str] = None
+    cache_control: Optional[str] = None
 
 
 class BaseKenyanWorker:
@@ -105,6 +111,9 @@ class BaseKenyanWorker:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._poll_in_flight = False
+        self._on_snapshot = None
+        self._content_fingerprint = None
+        self._poll_count = 0
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -128,6 +137,25 @@ class BaseKenyanWorker:
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    def set_on_snapshot(self, callback):
+        """Optional hook after a successful LIVE snapshot publish. PREMATCH leaves this unset."""
+        self._on_snapshot = callback
+
+    def content_fingerprint(self):
+        with self._lock:
+            return self._content_fingerprint
+
+    def snapshot_meta(self) -> dict:
+        with self._lock:
+            return {
+                "name": self.name,
+                "acquired_seq": self._acquired_seq,
+                "poll_count": self._poll_count,
+                "poll_in_flight": self._poll_in_flight,
+                "last_good_at": self._last_good_at,
+                "content_fingerprint": self._content_fingerprint,
+            }
+
     # ------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------
@@ -140,8 +168,21 @@ class BaseKenyanWorker:
             self._stop_event.wait(max(0.0, self._poll_interval_seconds - elapsed))
 
     def _run_one_cycle(self):
+        wall_start = time.monotonic()
         with self._lock:
+            if self._poll_in_flight:
+                log_cycle(
+                    bookmaker=self.name,
+                    mode="skipped",
+                    stage="acquire",
+                    skipped_overlap=1,
+                    poll_count=self._poll_count,
+                )
+                return
             self._poll_in_flight = True
+            self._poll_count += 1
+            previous_fp = self._content_fingerprint
+            previous_good = self._last_good_at
         try:
             matches, diagnostics = self._poll_fn()
         except Exception as exc:  # noqa: BLE001 -- worker must never die
@@ -155,9 +196,21 @@ class BaseKenyanWorker:
                     parser_error=f"{type(exc).__name__}: {exc}",
                     acquired_at=now,
                 )
+            log_cycle(
+                bookmaker=self.name,
+                mode="exception",
+                stage="acquire",
+                cycle_id=self._poll_count,
+                cycle_ms=round((time.monotonic() - wall_start) * 1000, 1),
+                error=f"{type(exc).__name__}: {exc}",
+            )
             return
 
         now = time.time()
+        published = False
+        odds_changed = None
+        acquired_seq = 0
+        payload_hash = None
         with self._lock:
             self._poll_in_flight = False
             self._last_attempt_at = now
@@ -177,6 +230,10 @@ class BaseKenyanWorker:
                     now=now,
                     retention_seconds=self._retention_seconds,
                 )
+                self._content_fingerprint = _matches_fingerprint(self._matches)
+                published = True
+                odds_changed = self._content_fingerprint != previous_fp
+                payload_hash = _fingerprint_hash(self._content_fingerprint)
                 if matches:
                     self._last_good_at = now
                     self._health_state.record_success()
@@ -190,16 +247,41 @@ class BaseKenyanWorker:
                 self._health_state.record_failure(
                     diagnostics.parser_error or f"endpoint_status={diagnostics.endpoint_status}"
                 )
+            acquired_seq = self._acquired_seq
+        if published and self._on_snapshot is not None:
+            try:
+                self._on_snapshot()
+            except Exception:
+                pass
         log_cycle(
             bookmaker=self.name,
             mode="ok" if diagnostics.endpoint_status == "ok" else diagnostics.endpoint_status,
+            stage="acquire",
+            cycle_id=self._poll_count,
+            acquired_seq=acquired_seq,
             events=diagnostics.events_discovered,
             normalized=diagnostics.valid_normalized_events,
             bytes=diagnostics.response_size_bytes,
             elapsed=round(diagnostics.elapsed_seconds, 3),
+            cycle_ms=round((time.monotonic() - wall_start) * 1000, 1),
             pages=diagnostics.pages_fetched,
             page_cap_hit=int(diagnostics.page_cap_hit),
             snapshot_complete=int(diagnostics.snapshot_complete),
+            odds_changed=None if odds_changed is None else int(odds_changed),
+            payload_hash=payload_hash,
+            since_last_good_s=(
+                None if previous_good is None else round(now - previous_good, 3)
+            ),
+            http_status=diagnostics.http_status_code,
+            http_date=diagnostics.http_date,
+            cache_age=diagnostics.cache_age,
+            etag=diagnostics.etag,
+            last_modified=diagnostics.last_modified,
+            cache_control=diagnostics.cache_control,
+            next_wait_ms=round(
+                max(0.0, self._poll_interval_seconds * 1000 - (time.monotonic() - wall_start) * 1000),
+                1,
+            ),
             error=diagnostics.parser_error or "",
         )
 
@@ -223,9 +305,9 @@ class BaseKenyanWorker:
                 return []
             if self._poll_in_flight and self._last_good_at is not None:
                 now = self._last_good_at
-            # Do not restamp collected_at here. Merge already stamps
-            # poll-end confirmation time; rewriting it on every read
-            # presents stale odds as current.
+            # Do not restamp collected_at here. LIVE merge preserves
+            # the price-change time; confirmed_at/last_seen track the
+            # last poll that still contained these odds.
             return visible_matches(
                 self._match_records,
                 now=now,
@@ -254,9 +336,37 @@ class BaseKenyanWorker:
                     )
                 ),
                 "acquired_seq": self._acquired_seq,
+                "poll_count": self._poll_count,
+                "poll_in_flight": self._poll_in_flight,
                 "error": self._health_state.last_error,
                 "diagnostics": _diagnostics_to_dict(self._last_diagnostics),
             }
+
+
+def _fingerprint_hash(fingerprint) -> str:
+    if not fingerprint:
+        return ""
+    digest = hashlib.sha1(repr(fingerprint).encode("utf-8")).hexdigest()
+    return digest[:12]
+
+
+def _matches_fingerprint(matches) -> tuple:
+    rows = []
+    for match in matches or []:
+        rows.append(
+            (
+                getattr(match, "bookmaker", ""),
+                getattr(match, "event_id", ""),
+                getattr(match, "market", ""),
+                getattr(match, "period", ""),
+                getattr(match, "line", None),
+                getattr(match, "home_odds", None),
+                getattr(match, "draw_odds", None),
+                getattr(match, "away_odds", None),
+            )
+        )
+    rows.sort()
+    return tuple(rows)
 
 
 def _diagnostics_to_dict(diagnostics: Optional[Diagnostics]) -> Optional[dict]:
@@ -277,4 +387,9 @@ def _diagnostics_to_dict(diagnostics: Optional[Diagnostics]) -> Optional[dict]:
         "pages_fetched": diagnostics.pages_fetched,
         "page_cap_hit": diagnostics.page_cap_hit,
         "snapshot_complete": diagnostics.snapshot_complete,
+        "http_date": diagnostics.http_date,
+        "cache_age": diagnostics.cache_age,
+        "etag": diagnostics.etag,
+        "last_modified": diagnostics.last_modified,
+        "cache_control": diagnostics.cache_control,
     }

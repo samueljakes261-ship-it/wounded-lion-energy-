@@ -10,7 +10,7 @@ from kenyan.config import (
     KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     ONEXBET,
 )
-from kenyan.http_utils import fetch_json
+from kenyan.http_utils import copy_cache_headers, fetch_json
 from kenyan.parsers._common_1x2 import (
     extract_1x2_from_event_groups,
     extract_1x2_from_flat_events,
@@ -59,7 +59,7 @@ def _poll_one(url: str, status: str):
         fetch_result = fetch_json(url)
         json_body = fetch_result.json_body
     if not fetch_result.ok:
-        return [], Diagnostics(
+        failed = Diagnostics(
             endpoint_status="http_error" if fetch_result.status_code else "exception",
             http_status_code=fetch_result.status_code,
             content_type=fetch_result.content_type,
@@ -71,6 +71,8 @@ def _poll_one(url: str, status: str):
             page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
             snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
         )
+        copy_cache_headers(failed, fetch_result)
+        return [], failed
 
     raw_events = iter_events(json_body)
     football_events = 0
@@ -111,6 +113,7 @@ def _poll_one(url: str, status: str):
         page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
         snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
     )
+    copy_cache_headers(diagnostics, fetch_result)
     return matches, diagnostics
 
 

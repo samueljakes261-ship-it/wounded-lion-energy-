@@ -8,10 +8,13 @@ drops the corresponding arbitrage opportunities. This merge keeps
 per-event last-seen timestamps and expires them using the feed's
 stale window.
 
-`collected_at` is the time those odds were last confirmed present in a
-completed poll (restamped to poll-end for rows in that poll). Readers
-must not restamp it again on every serve -- that would present stale
-odds as current.
+LIVE `collected_at` is the time these exact odds values were first
+observed. An unchanged subsequent poll updates `confirmed_at` /
+`last_seen` only -- it must not restamp `collected_at` or the UI will
+treat a quiet market as a price change.
+
+PREMATCH still restamps `collected_at` to poll-end so long extra-sport
+walks do not expire football rows. That PREMATCH behavior is unchanged.
 
 `acquired_seq` is the worker poll generation. A delayed older poll
 cannot overwrite a newer snapshot even if it finishes later.
@@ -54,6 +57,18 @@ def match_identity(match) -> str:
     return f"{bookmaker}|{status}|{home}|{away}|{market}{extra}"
 
 
+def _odds_tuple(match):
+    return (
+        getattr(match, "home_odds", None),
+        getattr(match, "draw_odds", None),
+        getattr(match, "away_odds", None),
+    )
+
+
+def _is_live(match) -> bool:
+    return (getattr(match, "status", "") or "").upper() == "LIVE"
+
+
 def merge_match_records(
     previous: Optional[Dict[str, MatchRecord]],
     incoming: Iterable,
@@ -71,15 +86,23 @@ def merge_match_records(
 
     records = dict(previous or {})
     seen = set()
-    collected_at = datetime.fromtimestamp(now, tz=timezone.utc)
+    poll_end = datetime.fromtimestamp(now, tz=timezone.utc)
 
     for match in incoming:
         key = match_identity(match)
         existing = records.get(key)
         if existing is not None and existing.acquired_seq > acquired_seq:
             continue
-        if hasattr(match, "collected_at"):
-            match.collected_at = collected_at
+        if _is_live(match):
+            unchanged = existing is not None and _odds_tuple(existing.match) == _odds_tuple(match)
+            if unchanged:
+                match.collected_at = existing.match.collected_at
+            elif hasattr(match, "collected_at"):
+                match.collected_at = poll_end
+            if hasattr(match, "confirmed_at"):
+                match.confirmed_at = poll_end
+        elif hasattr(match, "collected_at"):
+            match.collected_at = poll_end
         records[key] = MatchRecord(
             match=match,
             last_seen=now,
@@ -101,8 +124,12 @@ def merge_match_records(
 def visible_matches(records: Optional[Dict[str, MatchRecord]], *, now: float, retention_seconds: float) -> list:
     if not records:
         return []
-    return [
-        record.match
-        for record in records.values()
-        if (now - record.last_seen) <= retention_seconds
-    ]
+    visible = []
+    for record in records.values():
+        if (now - record.last_seen) > retention_seconds:
+            continue
+        match = record.match
+        if _is_live(match) and hasattr(match, "confirmed_at"):
+            match.confirmed_at = datetime.fromtimestamp(record.last_seen, tz=timezone.utc)
+        visible.append(match)
+    return visible

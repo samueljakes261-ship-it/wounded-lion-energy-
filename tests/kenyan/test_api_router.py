@@ -50,6 +50,37 @@ def test_get_runner_is_a_singleton():
     assert get_runner() is get_runner()
 
 
+def test_opportunities_sets_no_store_cache_headers(monkeypatch):
+    fresh_runner = KenyanEngineRunner()
+    monkeypatch.setattr("kenyan.api_router.get_runner", lambda: fresh_runner)
+
+    class HeaderSink:
+        def __init__(self):
+            self.headers = {}
+
+    response = HeaderSink()
+    assert opportunities(mode="live", response=response) == []
+    assert response.headers["Cache-Control"] == "no-store"
+    assert "X-Kenyan-Serialize-Ms" in response.headers
+    assert response.headers["X-Kenyan-Count"] == "0"
+
+
+def test_live_endpoint_reads_cache_without_computing(monkeypatch):
+    sentinel = object()
+    fresh_runner = KenyanEngineRunner()
+    fresh_runner._live_cache = ([sentinel], 1.0)
+
+    def fail_compute(*_args, **_kwargs):
+        raise AssertionError("LIVE GET must not recompute")
+
+    monkeypatch.setattr(
+        fresh_runner,
+        "_live_engine",
+        type("E", (), {"compute_opportunities": fail_compute})(),
+    )
+    assert fresh_runner.get_live_opportunities() == [sentinel]
+
+
 def test_prematch_endpoint_reads_cache_without_computing(monkeypatch):
     sentinel = object()
     fresh_runner = KenyanEngineRunner()

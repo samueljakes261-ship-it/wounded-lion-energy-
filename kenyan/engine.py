@@ -9,6 +9,7 @@ unmodified for three-way 1X2. Two-way winner and Over/Under reuse
 detect_two_way + calculate_two_way_stakes without touching the Turkish
 TARGET_OU_LINE=2.5 filter.
 """
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -62,12 +63,26 @@ def _stale_after_seconds(match) -> float:
     return KENYAN_PREMATCH_STALE_AFTER_SECONDS
 
 
+def _freshness_stamp(match):
+    """
+    LIVE stale-checks last confirmation, not last price change.
+    A quiet market can keep the same odds; that is not expiry.
+    PREMATCH still uses collected_at, which merge restamps at poll-end.
+    """
+    status = (getattr(match, "status", "") or "").upper()
+    if status == LIVE:
+        confirmed = getattr(match, "confirmed_at", None)
+        if confirmed is not None:
+            return confirmed
+    return getattr(match, "collected_at", None)
+
+
 def _is_stale(match, now) -> bool:
-    collected = getattr(match, "collected_at", None)
-    if collected is None:
+    stamp = _freshness_stamp(match)
+    if stamp is None:
         return False
     try:
-        age = (now - collected).total_seconds()
+        age = (now - stamp).total_seconds()
     except TypeError:
         return False
     return age > _stale_after_seconds(match)
@@ -203,12 +218,15 @@ class KenyanArbitrageEngine:
                 continue
             usable.append(match)
 
+        match_started = time.monotonic()
         matched_events = self._finder.find(usable)
+        match_ms = (time.monotonic() - match_started) * 1000
         opportunities = []
         winner_events = 0
         total_events = 0
         rejected = 0
 
+        detect_started = time.monotonic()
         for event in matched_events:
             opportunity = None
             try:
@@ -243,6 +261,7 @@ class KenyanArbitrageEngine:
             else:
                 rejected += 1
 
+        detect_ms = (time.monotonic() - detect_started) * 1000
         sample_mode = (getattr(usable[0], "status", "") or "UNKNOWN") if usable else "EMPTY"
         log_cycle(
             mode=sample_mode,
@@ -255,6 +274,8 @@ class KenyanArbitrageEngine:
             total_events=total_events,
             opportunities=len(opportunities),
             rejected=rejected,
+            match_ms=round(match_ms, 2),
+            detect_ms=round(detect_ms, 2),
         )
 
         return opportunities

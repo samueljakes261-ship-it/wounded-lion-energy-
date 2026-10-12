@@ -11,9 +11,10 @@ Endpoints:
                                   ?mode=live or ?mode=prematch.
     GET /kenyan/status        -- per-worker health.
 """
+import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from kenyan.config import PREMATCH
 from kenyan.markets import market_label
@@ -34,8 +35,57 @@ def _sample_match(opportunity):
     return matches[0] if matches else None
 
 
-def serialize_opportunities(opportunities) -> list:
+def _dt_fields(value, now):
+    if value is None:
+        return None, None
+    try:
+        stamp = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        iso = stamp.isoformat().replace("+00:00", "Z")
+        age = max(0.0, (now - stamp).total_seconds())
+        return iso, round(age, 1)
+    except (TypeError, AttributeError):
+        return None, None
+
+
+def _leg_payload(match, odds, stake, now):
+    collected_iso, collected_age = _dt_fields(getattr(match, "collected_at", None), now)
+    confirmed_iso, confirmed_age = _dt_fields(getattr(match, "confirmed_at", None), now)
+    return {
+        "bookmaker": match.bookmaker,
+        "odds": odds,
+        "stake": stake,
+        "collectedAt": collected_iso,
+        "confirmedAt": confirmed_iso,
+        "oddsAgeSeconds": collected_age,
+        "confirmedAgeSeconds": confirmed_age,
+    }
+
+
+def _oldest_constituent_ages(matches, now):
+    collected_ages = []
+    confirmed_ages = []
+    collected_isos = []
+    for match in matches:
+        if match is None:
+            continue
+        collected_iso, collected_age = _dt_fields(getattr(match, "collected_at", None), now)
+        confirmed_iso, confirmed_age = _dt_fields(getattr(match, "confirmed_at", None), now)
+        if collected_age is not None:
+            collected_ages.append(collected_age)
+            collected_isos.append((collected_age, collected_iso))
+        if confirmed_age is not None:
+            confirmed_ages.append(confirmed_age)
+    oldest_collected = max(collected_ages) if collected_ages else None
+    oldest_confirmed = max(confirmed_ages) if confirmed_ages else None
+    oldest_iso = None
+    if collected_isos:
+        oldest_iso = max(collected_isos)[1]
+    return oldest_iso, oldest_collected, oldest_confirmed
+
+
+def serialize_opportunities(opportunities, *, now=None) -> list:
     serialized = []
+    now = now or datetime.now(timezone.utc)
 
     for item in opportunities:
         try:
@@ -64,19 +114,12 @@ def serialize_opportunities(opportunities) -> list:
                 opportunity, "outcome_count", 3
             ) == 2
 
-            collected = getattr(sample, "collected_at", None) if sample is not None else None
-            collected_iso = None
-            odds_age = None
-            if collected is not None:
-                try:
-                    if collected.tzinfo is None:
-                        collected = collected.replace(tzinfo=timezone.utc)
-                    collected_iso = collected.isoformat().replace("+00:00", "Z")
-                    odds_age = max(0, (datetime.now(timezone.utc) - collected).total_seconds())
-                except (TypeError, AttributeError):
-                    collected_iso = None
-                    odds_age = None
-            last_updated = _iso_utc(updated_at) if updated_at is not None else collected_iso
+            last_updated = _iso_utc(updated_at) if updated_at is not None else None
+            if two_way:
+                constituents = [best.home_match, best.away_match]
+            else:
+                constituents = [best.home_match, best.draw_match, best.away_match]
+            collected_iso, odds_age, confirmed_age = _oldest_constituent_ages(constituents, now)
 
             row = {
                 "opportunityId": identity,
@@ -100,7 +143,8 @@ def serialize_opportunities(opportunities) -> list:
                 "updatedAt": last_updated,
                 "lastUpdated": last_updated,
                 "collectedAt": collected_iso,
-                "oddsAgeSeconds": None if odds_age is None else round(odds_age, 1),
+                "oddsAgeSeconds": odds_age,
+                "confirmedAgeSeconds": confirmed_age,
             }
 
             if two_way:
@@ -114,17 +158,9 @@ def serialize_opportunities(opportunities) -> list:
                     {
                         "homeLabel": home_label,
                         "awayLabel": away_label,
-                        "home": {
-                            "bookmaker": best.home_match.bookmaker,
-                            "odds": best.home_odds,
-                            "stake": plan.home.stake,
-                        },
+                        "home": _leg_payload(best.home_match, best.home_odds, plan.home.stake, now),
                         "draw": None,
-                        "away": {
-                            "bookmaker": best.away_match.bookmaker,
-                            "odds": best.away_odds,
-                            "stake": plan.away.stake,
-                        },
+                        "away": _leg_payload(best.away_match, best.away_odds, plan.away.stake, now),
                     }
                 )
             else:
@@ -132,21 +168,9 @@ def serialize_opportunities(opportunities) -> list:
                     {
                         "homeLabel": "HOME",
                         "awayLabel": "AWAY",
-                        "home": {
-                            "bookmaker": best.home_match.bookmaker,
-                            "odds": best.home_odds,
-                            "stake": plan.home.stake,
-                        },
-                        "draw": {
-                            "bookmaker": best.draw_match.bookmaker,
-                            "odds": best.draw_odds,
-                            "stake": plan.draw.stake,
-                        },
-                        "away": {
-                            "bookmaker": best.away_match.bookmaker,
-                            "odds": best.away_odds,
-                            "stake": plan.away.stake,
-                        },
+                        "home": _leg_payload(best.home_match, best.home_odds, plan.home.stake, now),
+                        "draw": _leg_payload(best.draw_match, best.draw_odds, plan.draw.stake, now),
+                        "away": _leg_payload(best.away_match, best.away_odds, plan.away.stake, now),
                     }
                 )
 
@@ -158,13 +182,22 @@ def serialize_opportunities(opportunities) -> list:
 
 
 @router.get("/opportunities")
-def opportunities(mode: str = "prematch"):
+def opportunities(mode: str = "prematch", response: Response = None):
+    started = time.monotonic()
     runner = get_runner()
 
     if mode.upper() == PREMATCH:
-        return serialize_opportunities(runner.get_prematch_opportunities())
+        payload = serialize_opportunities(runner.get_prematch_opportunities())
+    else:
+        payload = serialize_opportunities(runner.get_live_opportunities())
 
-    return serialize_opportunities(runner.get_live_opportunities())
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Kenyan-Serialize-Ms"] = str(
+            round((time.monotonic() - started) * 1000, 2)
+        )
+        response.headers["X-Kenyan-Count"] = str(len(payload))
+    return payload
 
 
 @router.get("/status")

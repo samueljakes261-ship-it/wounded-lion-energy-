@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,10 @@ type KenyanLeg = {
   bookmaker: string;
   odds: number;
   stake: number;
+  collectedAt?: string | null;
+  confirmedAt?: string | null;
+  oddsAgeSeconds?: number | null;
+  confirmedAgeSeconds?: number | null;
 };
 
 type KenyanOpportunity = {
@@ -50,25 +54,48 @@ type KenyanOpportunity = {
   lastUpdated?: string | null;
   collectedAt?: string | null;
   oddsAgeSeconds?: number | null;
+  confirmedAgeSeconds?: number | null;
   home: KenyanLeg;
   draw: KenyanLeg | null;
   away: KenyanLeg;
 };
 
-function freshnessLabel(opportunity: KenyanOpportunity): string {
-  const age = opportunity.oddsAgeSeconds;
-  if (typeof age === "number") {
-    if (age < 15) return "fresh";
-    if (age < 45) return `${Math.round(age)}s ago`;
-    return `${Math.round(age)}s stale`;
+function sameOpportunityPayload(current: KenyanOpportunity[], incoming: KenyanOpportunity[]): boolean {
+  if (current.length !== incoming.length) {
+    return false;
   }
-  const stamp = opportunity.lastUpdated || opportunity.updatedAt;
-  if (!stamp) return "";
-  const then = Date.parse(stamp);
-  if (Number.isNaN(then)) return "";
-  const seconds = Math.max(0, (Date.now() - then) / 1000);
-  if (seconds < 15) return "fresh";
-  return `${Math.round(seconds)}s ago`;
+  return current.every((row, index) => {
+    const next = incoming[index];
+    return (
+      row.opportunityId === next.opportunityId &&
+      row.profitPercentage === next.profitPercentage &&
+      row.home?.odds === next.home?.odds &&
+      row.draw?.odds === next.draw?.odds &&
+      row.away?.odds === next.away?.odds &&
+      row.lastUpdated === next.lastUpdated &&
+      row.confirmedAgeSeconds === next.confirmedAgeSeconds &&
+      row.oddsAgeSeconds === next.oddsAgeSeconds
+    );
+  });
+}
+
+function freshnessLabel(opportunity: KenyanOpportunity): string {
+  const confirmed = opportunity.confirmedAgeSeconds;
+  const priceAge = opportunity.oddsAgeSeconds;
+  if (typeof confirmed === "number") {
+    if (confirmed > 45) return `${Math.round(confirmed)}s unconfirmed`;
+    if (typeof priceAge === "number" && priceAge > confirmed + 2) {
+      return `confirmed ${Math.round(confirmed)}s · price ${Math.round(priceAge)}s`;
+    }
+    if (confirmed < 3) return "fresh";
+    return `confirmed ${Math.round(confirmed)}s`;
+  }
+  if (typeof priceAge === "number") {
+    if (priceAge < 15) return "fresh";
+    if (priceAge < 45) return `${Math.round(priceAge)}s ago`;
+    return `${Math.round(priceAge)}s stale`;
+  }
+  return "";
 }
 
 type KenyanMode = "live" | "prematch";
@@ -207,34 +234,47 @@ function KenyanDashboard() {
   const [opportunities, setOpportunities] = useState<KenyanOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
     try {
       setLoading(true);
-      const response = await fetch(`${KENYAN_API_BASE}/opportunities?mode=${mode}`);
+      const response = await fetch(`${KENYAN_API_BASE}/opportunities?mode=${mode}`, {
+        cache: "no-store",
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
+      if (seq !== requestSeq.current) {
+        return;
+      }
       if (Array.isArray(data)) {
-        setOpportunities(data);
+        setOpportunities((current) => (sameOpportunityPayload(current, data) ? current : data));
       }
       setError(null);
     } catch (err) {
+      if (seq !== requestSeq.current) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load opportunities");
       // Keep the last successful list. A failed fetch is not an empty market.
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+      }
     }
   }, [mode]);
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 5000);
+    const intervalMs = mode === "live" ? 1000 : 5000;
+    const interval = setInterval(load, intervalMs);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, mode]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">

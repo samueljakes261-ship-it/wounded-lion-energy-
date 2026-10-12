@@ -9,7 +9,7 @@ so a page is "full" at the observed size, not the requested count.
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from kenyan.config import KENYAN_VZIP_MAX_PAGES
-from kenyan.http_utils import FetchResult, fetch_json
+from kenyan.http_utils import FetchResult, copy_cache_headers, fetch_json
 
 PAGE_COUNT = 400
 MAX_PAGES = KENYAN_VZIP_MAX_PAGES
@@ -97,6 +97,7 @@ def fetch_vzip_all(
         json_body={"Success": True, "Value": combined},
         error=None if combined or (last is not None and last.ok) else (last.error if last else None),
     )
+    copy_cache_headers(aggregated, last)
     aggregated.pages_fetched = pages_fetched
     aggregated.page_cap_hit = page_cap_hit
     aggregated.snapshot_complete = snapshot_complete

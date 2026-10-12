@@ -125,6 +125,25 @@ def test_temporary_missing_record_is_retained_then_expires():
     assert store.apply([], now=1_046.0) == []
 
 
+def test_quiet_live_price_is_not_stale_when_recently_confirmed():
+    aged = NOW - timedelta(seconds=120)
+    quiet = _match(SPORTPESA, 2.10, 3.30, 3.40, collected_at=aged)
+    quiet.confirmed_at = NOW
+    partner = _match(BETIKA, 2.00, 3.90, 4.00, event_id="2")
+    partner.confirmed_at = NOW
+    found = KenyanArbitrageEngine().compute_opportunities([quiet, partner], now=NOW)
+    assert len(found) == 1
+
+
+def test_unconfirmed_live_constituent_is_rejected():
+    stale_confirm = NOW - timedelta(seconds=KENYAN_LIVE_STALE_AFTER_SECONDS + 1)
+    quiet = _match(SPORTPESA, 2.10, 3.30, 3.40, collected_at=NOW)
+    quiet.confirmed_at = stale_confirm
+    partner = _match(BETIKA, 2.00, 3.90, 4.00, event_id="2")
+    partner.confirmed_at = NOW
+    assert KenyanArbitrageEngine().compute_opportunities([quiet, partner], now=NOW) == []
+
+
 def test_stale_live_odds_are_rejected_inside_live_window():
     stale = _match(
         SPORTPESA,
@@ -149,6 +168,22 @@ def test_prematch_uses_longer_stale_window_than_live():
     pre[0].collected_at = aged
     pre[1].collected_at = aged
     assert KenyanArbitrageEngine().compute_opportunities(pre, now=NOW)
+
+
+def test_successful_empty_poll_keeps_last_valid_until_retention():
+    state = {"empty": False}
+
+    def poll_fn():
+        if state["empty"]:
+            return [], Diagnostics(endpoint_status="ok", valid_normalized_events=0)
+        return _arb_pair()[:1], Diagnostics(endpoint_status="ok", valid_normalized_events=1)
+
+    worker = BaseKenyanWorker("test", poll_fn, poll_interval_seconds=100, retention_seconds=45)
+    worker._run_one_cycle()
+    assert len(worker.get_matches()) == 1
+    state["empty"] = True
+    worker._run_one_cycle()
+    assert len(worker.get_matches()) == 1
 
 
 def test_failed_poll_does_not_wipe_last_valid_snapshot():
