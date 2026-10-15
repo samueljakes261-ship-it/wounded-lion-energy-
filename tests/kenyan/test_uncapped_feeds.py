@@ -87,12 +87,13 @@ def test_vzip_stops_when_server_ignores_after_and_repeats():
     assert [event["I"] for event in envelope["Value"]] == [10, 11, 12]
     assert result.snapshot_complete is False
     assert result.page_cap_hit is False
+    assert result.terminal_reason == "zero_new_ids"
 
 
 def test_betika_requests_total_subtype_and_pages_until_meta_total(monkeypatch):
     calls = []
 
-    def fake_fetch(url):
+    def fake_fetch(url, **_kwargs):
         calls.append(url)
         query = parse_qs(urlsplit(url).query)
         assert "18" in query.get("sub_type_id", [""])[0]

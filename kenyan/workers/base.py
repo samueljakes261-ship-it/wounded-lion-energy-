@@ -68,6 +68,9 @@ class Diagnostics:
     source_total: Optional[int] = None
     unique_event_ids: int = 0
     duplicate_events: int = 0
+    terminal_reason: Optional[str] = None
+    first_cursor: Optional[str] = None
+    last_cursor: Optional[str] = None
     http_date: Optional[str] = None
     cache_age: Optional[str] = None
     etag: Optional[str] = None
@@ -255,6 +258,7 @@ class BaseKenyanWorker:
                     now=now,
                     retention_seconds=self._retention_seconds,
                     acquired_seq=self._acquired_seq,
+                    expire_unseen=bool(diagnostics.snapshot_complete),
                 )
                 self._matches = visible_matches(
                     self._match_records,
@@ -302,6 +306,9 @@ class BaseKenyanWorker:
             source_total=diagnostics.source_total,
             unique_events=diagnostics.unique_event_ids,
             duplicate_events=diagnostics.duplicate_events,
+            terminal_reason=diagnostics.terminal_reason,
+            first_cursor=diagnostics.first_cursor,
+            last_cursor=diagnostics.last_cursor,
             odds_changed=None if odds_changed is None else int(odds_changed),
             payload_hash=payload_hash,
             since_last_good_s=(
@@ -426,6 +433,9 @@ def _diagnostics_to_dict(diagnostics: Optional[Diagnostics]) -> Optional[dict]:
         "source_total": diagnostics.source_total,
         "unique_event_ids": diagnostics.unique_event_ids,
         "duplicate_events": diagnostics.duplicate_events,
+        "terminal_reason": diagnostics.terminal_reason,
+        "first_cursor": diagnostics.first_cursor,
+        "last_cursor": diagnostics.last_cursor,
         "http_date": diagnostics.http_date,
         "cache_age": diagnostics.cache_age,
         "etag": diagnostics.etag,

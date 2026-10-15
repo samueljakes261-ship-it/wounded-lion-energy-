@@ -234,6 +234,65 @@ def test_partial_successful_poll_merges_instead_of_replacing():
     assert {m.event_id for m in worker.get_matches()} == {"1", "2"}
 
 
+def test_incomplete_catalogue_does_not_drop_last_good_snapshot():
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    def _event(event_id, home):
+        return KenyanMatchOdds(
+            bookmaker="Test",
+            competition="X",
+            sport="Football",
+            market="1X2",
+            home_team=home,
+            away_team="B",
+            home_odds=2.0,
+            draw_odds=3.0,
+            away_odds=4.0,
+            start_time=now,
+            collected_at=now,
+            event_id=event_id,
+            status="PREMATCH",
+        )
+
+    state = {"which": "complete"}
+
+    def poll_fn():
+        if state["which"] == "complete":
+            return (
+                [_event("keep", "A"), _event("also", "C")],
+                _ok_diagnostics(
+                    valid_normalized_events=2,
+                    snapshot_complete=True,
+                    catalogue_status="complete",
+                ),
+            )
+        return (
+            [_event("partial", "D")],
+            _ok_diagnostics(
+                valid_normalized_events=1,
+                snapshot_complete=False,
+                catalogue_status="partial",
+            ),
+        )
+
+    worker = BaseKenyanWorker(
+        "test", poll_fn, poll_interval_seconds=100, retention_seconds=1
+    )
+    worker._run_one_cycle()
+    assert {m.event_id for m in worker.get_matches()} == {"keep", "also"}
+    assert worker.get_status()["diagnostics"]["catalogue_status"] == "complete"
+
+    time.sleep(1.05)
+    state["which"] = "partial"
+    worker._run_one_cycle()
+    ids = {m.event_id for m in worker.get_matches()}
+    assert {"keep", "also", "partial"} <= ids
+    assert worker.get_status()["diagnostics"]["catalogue_status"] == "partial"
+    assert worker.get_status()["diagnostics"]["snapshot_complete"] is False
+
+
 def test_long_poll_snapshot_is_stamped_after_acquisition(monkeypatch):
     monkeypatch.setattr("kenyan.workers.base.KENYAN_STALE_AFTER_SECONDS", 0.2)
 

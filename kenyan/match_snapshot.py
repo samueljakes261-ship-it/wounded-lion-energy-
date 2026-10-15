@@ -76,12 +76,15 @@ def merge_match_records(
     now: float,
     retention_seconds: float,
     acquired_seq: int = 0,
+    expire_unseen: bool = True,
 ) -> Dict[str, MatchRecord]:
     """
     Update records present in `incoming`. Records missing from this
     poll are kept until `now - last_seen > retention_seconds`.
     An incoming row with a lower `acquired_seq` than the stored row
     is ignored so a delayed poll cannot overwrite newer odds.
+    Incomplete PREMATCH walks pass expire_unseen=False so a short
+    partial catalogue cannot drop the last complete snapshot.
     """
 
     records = dict(previous or {})
@@ -110,13 +113,21 @@ def merge_match_records(
         )
         seen.add(key)
 
-    expired = [
-        key
-        for key, record in records.items()
-        if key not in seen and (now - record.last_seen) > retention_seconds
-    ]
-    for key in expired:
-        del records[key]
+    if expire_unseen:
+        expired = [
+            key
+            for key, record in records.items()
+            if key not in seen and (now - record.last_seen) > retention_seconds
+        ]
+        for key in expired:
+            del records[key]
+    else:
+        # Incomplete PREMATCH walk: keep last-good rows visible. Do not
+        # advance their absence clock or a partial catalogue will drop
+        # events the source still has.
+        for key, record in records.items():
+            if key not in seen:
+                record.last_seen = now
 
     return records
 

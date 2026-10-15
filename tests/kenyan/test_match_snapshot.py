@@ -62,6 +62,37 @@ def test_odds_update_replaces_same_identity():
     assert visible[0].home_odds == 2.20
 
 
+def test_incomplete_merge_does_not_expire_last_good():
+    first = _match("1", "A", "B", status="PREMATCH", odds=2.10)
+    records = merge_match_records({}, [first], now=1000.0, retention_seconds=180)
+    partial = _match("2", "C", "D", status="PREMATCH", odds=2.20)
+    records = merge_match_records(
+        records,
+        [partial],
+        now=1200.0,
+        retention_seconds=180,
+        expire_unseen=False,
+    )
+    ids = {m.event_id for m in visible_matches(records, now=1200.0, retention_seconds=180)}
+    assert ids == {"1", "2"}
+    assert records[match_identity(first)].match.home_odds == 2.10
+
+
+def test_complete_merge_still_expires_unseen_after_retention():
+    first = _match("1", "A", "B", status="PREMATCH", odds=2.10)
+    records = merge_match_records({}, [first], now=1000.0, retention_seconds=180)
+    second = _match("2", "C", "D", status="PREMATCH", odds=2.20)
+    records = merge_match_records(
+        records,
+        [second],
+        now=1200.0,
+        retention_seconds=180,
+        expire_unseen=True,
+    )
+    ids = {m.event_id for m in visible_matches(records, now=1200.0, retention_seconds=180)}
+    assert ids == {"2"}
+
+
 def test_older_acquired_seq_cannot_overwrite_newer_odds():
     first = _match("1", "A", "B", odds=2.20)
     records = merge_match_records({}, [first], now=1005.0, retention_seconds=45, acquired_seq=2)

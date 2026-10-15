@@ -378,7 +378,18 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
 
         start_time = unix_seconds_to_datetime(timestamp_ms / 1000)
 
+        event_id = _event_id_key(game.get("id"))
+        home_name = competitors[0].get("name")
+        away_name = competitors[1].get("name")
         if not is_today_in_kenya(start_time, reference=reference_now or now):
+            log_parse(
+                SPORTPESA,
+                event=f"{home_name} vs {away_name}",
+                status="rejected",
+                market="MATCH_WINNER",
+                event_id=event_id,
+                reason="NOT_TODAY_KENYA",
+            )
             continue
 
         market_3way = None
@@ -388,6 +399,14 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
                 break
 
         if market_3way is None:
+            log_parse(
+                SPORTPESA,
+                event=f"{home_name} vs {away_name}",
+                status="rejected",
+                market="MATCH_WINNER",
+                event_id=event_id,
+                reason="NO_MATCH_WINNER_MARKET",
+            )
             continue
 
         home_odds = draw_odds = away_odds = None
@@ -408,10 +427,17 @@ def parse_todays_games(games_payload: list, *, reference_now=None) -> list:
                 away_odds = price
 
         if home_odds is None or draw_odds is None or away_odds is None:
+            log_parse(
+                SPORTPESA,
+                event=f"{home_name} vs {away_name}",
+                status="rejected",
+                market="MATCH_WINNER",
+                event_id=event_id,
+                reason="INCOMPLETE_1X2",
+            )
             continue
 
         competition = (game.get("competition") or {}).get("name") or ""
-        event_id = _event_id_key(game.get("id"))
         market_id = _event_id_key(market_3way.get("id"))
 
         match = KenyanMatchOdds(

@@ -21,6 +21,10 @@ def combine_match_polls(results):
     unique_event_ids = 0
     duplicate_events = 0
     source_total = 0
+    incomplete_reasons = []
+    complete_reasons = []
+    first_cursor = None
+    last_cursor = None
 
     for matches, diagnostics in results:
         discovered += diagnostics.events_discovered
@@ -35,6 +39,16 @@ def combine_match_polls(results):
         snapshot_complete = snapshot_complete and bool(
             getattr(diagnostics, "snapshot_complete", True)
         )
+        reason = getattr(diagnostics, "terminal_reason", None)
+        if getattr(diagnostics, "snapshot_complete", True):
+            if reason:
+                complete_reasons.append(reason)
+        elif reason:
+            incomplete_reasons.append(reason)
+        if first_cursor is None and getattr(diagnostics, "first_cursor", None):
+            first_cursor = diagnostics.first_cursor
+        if getattr(diagnostics, "last_cursor", None):
+            last_cursor = diagnostics.last_cursor
         if diagnostics.endpoint_status == "ok" and diagnostics.parser_error is None:
             ok_diagnostics = diagnostics
         else:
@@ -65,6 +79,14 @@ def combine_match_polls(results):
     chosen.unique_event_ids = unique_event_ids
     chosen.duplicate_events = duplicate_events
     chosen.source_total = source_total or None
+    if page_cap_hit:
+        chosen.terminal_reason = "runaway_guard"
+    elif incomplete_reasons:
+        chosen.terminal_reason = incomplete_reasons[0]
+    elif complete_reasons:
+        chosen.terminal_reason = complete_reasons[0]
+    chosen.first_cursor = first_cursor
+    chosen.last_cursor = last_cursor
     if combined and ok_diagnostics is not None:
         chosen.endpoint_status = "ok"
         chosen.parser_error = None

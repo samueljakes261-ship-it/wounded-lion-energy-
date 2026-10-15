@@ -17,12 +17,12 @@ from kenyan.config import (
     KENYAN_VZIP_MAX_PAGES,
     LIVE,
 )
-from kenyan.http_utils import copy_cache_headers
+from kenyan.http_utils import copy_cache_headers, copy_walk_fields
 from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
 from kenyan.parsers.bet22_parser import parse_all_markets
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics, apply_catalogue_status
 from kenyan.workers.poll_combine import map_polls
-from kenyan.workers.vzip_pages import fetch_vzip_all
+from kenyan.workers.vzip_pages import fetch_vzip_all, fetch_vzip_by_champs
 
 LIVE_URL = (
     "https://22bet.co.ke/service-api/LiveFeed/Get1x2_VZip"
@@ -47,7 +47,13 @@ PREMATCH_EXTRA_URLS = (
 
 def _poll_one(url: str, status: str):
     max_pages = KENYAN_VZIP_MAX_PAGES if status == LIVE else KENYAN_PREMATCH_RUNAWAY_PAGES
-    envelope, fetch_result = fetch_vzip_all(url, max_pages=max_pages)
+    retries = 0 if status == LIVE else 2
+    if status == LIVE:
+        envelope, fetch_result = fetch_vzip_all(url, max_pages=max_pages)
+    else:
+        envelope, fetch_result = fetch_vzip_by_champs(
+            url, max_champs=max_pages, retries=retries
+        )
     if not fetch_result.ok:
         failed = Diagnostics(
             endpoint_status="http_error" if fetch_result.status_code else "exception",
@@ -59,9 +65,12 @@ def _poll_one(url: str, status: str):
             acquired_at=time.time(),
             pages_fetched=getattr(fetch_result, "pages_fetched", 1),
             page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
-            snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
+            snapshot_complete=False,
+            terminal_reason=getattr(fetch_result, "terminal_reason", None) or "http_error",
         )
+        copy_walk_fields(failed, fetch_result)
         copy_cache_headers(failed, fetch_result)
+        failed.snapshot_complete = False
         return [], apply_catalogue_status(failed)
 
     raw_events = (envelope or {}).get("Value") or []
@@ -98,8 +107,14 @@ def _poll_one(url: str, status: str):
         snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
         unique_event_ids=getattr(fetch_result, "unique_event_ids", 0) or len(raw_events),
         duplicate_events=getattr(fetch_result, "duplicate_events", 0) or 0,
+        terminal_reason=getattr(fetch_result, "terminal_reason", None),
+        first_cursor=getattr(fetch_result, "first_cursor", None),
+        last_cursor=getattr(fetch_result, "last_cursor", None),
     )
+    copy_walk_fields(diagnostics, fetch_result)
     copy_cache_headers(diagnostics, fetch_result)
+    if not getattr(fetch_result, "unique_event_ids", 0):
+        diagnostics.unique_event_ids = len(raw_events)
     return matches, apply_catalogue_status(diagnostics)
 
 

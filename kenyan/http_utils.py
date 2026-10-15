@@ -59,6 +59,9 @@ class FetchResult:
     unique_event_ids: int = 0
     duplicate_events: int = 0
     source_total: Optional[int] = None
+    terminal_reason: Optional[str] = None
+    first_cursor: Optional[str] = None
+    last_cursor: Optional[str] = None
     http_date: Optional[str] = None
     cache_age: Optional[str] = None
     etag: Optional[str] = None
@@ -76,6 +79,7 @@ def fetch_json(
     headers: Optional[dict] = None,
     timeout: float = KENYAN_HTTP_TIMEOUT_SECONDS,
     session: Optional[requests.Session] = None,
+    retries: int = 0,
 ) -> FetchResult:
     """
     Fetches `url` and attempts to decode it as JSON.
@@ -91,82 +95,89 @@ def fetch_json(
     if headers:
         merged_headers.update(headers)
 
-    start = time.monotonic()
-    client = session or _thread_session()
+    attempts = max(0, int(retries)) + 1
+    last_result = None
+    for attempt in range(attempts):
+        start = time.monotonic()
+        client = session or _thread_session()
+        try:
+            response = client.get(url, headers=merged_headers, timeout=timeout)
+        except requests.RequestException as exc:
+            last_result = FetchResult(
+                url=url,
+                ok=False,
+                status_code=None,
+                content_type=None,
+                response_size_bytes=0,
+                elapsed_seconds=time.monotonic() - start,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            if attempt + 1 < attempts:
+                time.sleep(min(0.5 * (2 ** attempt), 2.0))
+                continue
+            return last_result
 
-    try:
-        response = client.get(url, headers=merged_headers, timeout=timeout)
-    except requests.RequestException as exc:
-        return FetchResult(
-            url=url,
-            ok=False,
-            status_code=None,
-            content_type=None,
-            response_size_bytes=0,
-            elapsed_seconds=time.monotonic() - start,
-            error=f"{type(exc).__name__}: {exc}",
+        elapsed = time.monotonic() - start
+        content_type = response.headers.get("content-type")
+        size = len(response.content or b"")
+        cache_kwargs = dict(
+            http_date=response.headers.get("date"),
+            cache_age=response.headers.get("age"),
+            etag=response.headers.get("etag"),
+            last_modified=response.headers.get("last-modified"),
+            cache_control=response.headers.get("cache-control"),
         )
 
-    elapsed = time.monotonic() - start
-    content_type = response.headers.get("content-type")
-    size = len(response.content or b"")
-    http_date = response.headers.get("date")
-    cache_age = response.headers.get("age")
-    etag = response.headers.get("etag")
-    last_modified = response.headers.get("last-modified")
-    cache_control = response.headers.get("cache-control")
+        if response.status_code >= 400:
+            last_result = FetchResult(
+                url=url,
+                ok=False,
+                status_code=response.status_code,
+                content_type=content_type,
+                response_size_bytes=size,
+                elapsed_seconds=elapsed,
+                text_body=response.text[:2000],
+                error=f"HTTP {response.status_code}",
+                **cache_kwargs,
+            )
+            retryable = response.status_code >= 500 or response.status_code == 429
+            if retryable and attempt + 1 < attempts:
+                time.sleep(min(0.5 * (2 ** attempt), 2.0))
+                continue
+            return last_result
 
-    cache_kwargs = dict(
-        http_date=http_date,
-        cache_age=cache_age,
-        etag=etag,
-        last_modified=last_modified,
-        cache_control=cache_control,
-    )
+        json_body = None
+        parse_error = None
+        try:
+            json_body = response.json()
+        except ValueError as exc:
+            parse_error = f"invalid JSON: {exc}"
 
-    if response.status_code >= 400:
+        if json_body is None:
+            return FetchResult(
+                url=url,
+                ok=False,
+                status_code=response.status_code,
+                content_type=content_type,
+                response_size_bytes=size,
+                elapsed_seconds=elapsed,
+                text_body=response.text[:2000],
+                error=parse_error or "empty/non-JSON response body",
+                **cache_kwargs,
+            )
+
         return FetchResult(
             url=url,
-            ok=False,
+            ok=True,
             status_code=response.status_code,
             content_type=content_type,
             response_size_bytes=size,
             elapsed_seconds=elapsed,
-            text_body=response.text[:2000],
-            error=f"HTTP {response.status_code}",
+            json_body=json_body,
             **cache_kwargs,
         )
 
-    json_body = None
-    parse_error = None
-    try:
-        json_body = response.json()
-    except ValueError as exc:
-        parse_error = f"invalid JSON: {exc}"
-
-    if json_body is None:
-        return FetchResult(
-            url=url,
-            ok=False,
-            status_code=response.status_code,
-            content_type=content_type,
-            response_size_bytes=size,
-            elapsed_seconds=elapsed,
-            text_body=response.text[:2000],
-            error=parse_error or "empty/non-JSON response body",
-            **cache_kwargs,
-        )
-
-    return FetchResult(
-        url=url,
-        ok=True,
-        status_code=response.status_code,
-        content_type=content_type,
-        response_size_bytes=size,
-        elapsed_seconds=elapsed,
-        json_body=json_body,
-        **cache_kwargs,
-    )
+    return last_result
 
 
 def copy_cache_headers(target, fetch_result):
@@ -176,6 +187,29 @@ def copy_cache_headers(target, fetch_result):
     for name in ("http_date", "cache_age", "etag", "last_modified", "cache_control"):
         if hasattr(target, name):
             setattr(target, name, getattr(fetch_result, name, None))
+    return target
+
+
+WALK_FIELDS = (
+    "pages_fetched",
+    "page_cap_hit",
+    "snapshot_complete",
+    "unique_event_ids",
+    "duplicate_events",
+    "source_total",
+    "terminal_reason",
+    "first_cursor",
+    "last_cursor",
+)
+
+
+def copy_walk_fields(target, fetch_result):
+    """Copy catalogue-walk metadata onto Diagnostics or FetchResult."""
+    if fetch_result is None:
+        return target
+    for name in WALK_FIELDS:
+        if hasattr(target, name) and hasattr(fetch_result, name):
+            setattr(target, name, getattr(fetch_result, name))
     return target
 
 

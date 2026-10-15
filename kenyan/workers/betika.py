@@ -48,7 +48,13 @@ def _with_page(url: str, page: int) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def _fetch_pages(url: str, *, max_pages: int = MAX_PAGES):
+def _fetch_pages(
+    url: str,
+    *,
+    max_pages: int = MAX_PAGES,
+    retries: int = 0,
+    honor_requested_short_page: bool = True,
+):
     combined = []
     seen_ids = set()
     last = None
@@ -57,13 +63,20 @@ def _fetch_pages(url: str, *, max_pages: int = MAX_PAGES):
     snapshot_complete = True
     page_cap_hit = False
     duplicate_events = 0
+    terminal_reason = "empty_page"
+    observed_page_size = None
+    first_cursor = None
     page = 1
     while page <= max_pages:
-        fetch_result = fetch_json(_with_page(url, page))
+        page_url = _with_page(url, page)
+        fetch_result = (
+            fetch_json(page_url, retries=retries) if retries else fetch_json(page_url)
+        )
         last = fetch_result
         pages_fetched += 1
         if not fetch_result.ok:
             snapshot_complete = False
+            terminal_reason = "http_error"
             break
         body = fetch_result.json_body if isinstance(fetch_result.json_body, dict) else {}
         rows = body.get("data") or []
@@ -75,6 +88,11 @@ def _fetch_pages(url: str, *, max_pages: int = MAX_PAGES):
         except (TypeError, ValueError):
             pass
         if not isinstance(rows, list) or not rows:
+            if total and len(combined) < total:
+                snapshot_complete = False
+                terminal_reason = "empty_before_source_total"
+            else:
+                terminal_reason = "empty_page"
             break
         added = 0
         for row in rows:
@@ -87,17 +105,33 @@ def _fetch_pages(url: str, *, max_pages: int = MAX_PAGES):
             seen_ids.add(event_id)
             combined.append(row)
             added += 1
+        if first_cursor is None:
+            first_cursor = str(page)
+        if observed_page_size is None:
+            observed_page_size = len(rows)
         if total and len(combined) >= total:
-            break
-        if len(rows) < PAGE_LIMIT:
+            terminal_reason = "source_total"
             break
         if added == 0:
             snapshot_complete = False
+            terminal_reason = "zero_new_ids"
+            break
+        if honor_requested_short_page:
+            if len(rows) < PAGE_LIMIT:
+                terminal_reason = "short_page"
+                break
+        elif total:
+            # meta.total is authoritative: a page shorter than the
+            # requested limit is not the catalogue end if more remain.
+            pass
+        elif len(rows) < observed_page_size:
+            terminal_reason = "short_page"
             break
         page += 1
     else:
         page_cap_hit = True
         snapshot_complete = False
+        terminal_reason = "runaway_guard"
     if last is not None:
         last.pages_fetched = pages_fetched
         last.page_cap_hit = page_cap_hit
@@ -105,6 +139,9 @@ def _fetch_pages(url: str, *, max_pages: int = MAX_PAGES):
         last.source_total = total
         last.unique_event_ids = len(seen_ids)
         last.duplicate_events = duplicate_events
+        last.terminal_reason = terminal_reason
+        last.first_cursor = first_cursor
+        last.last_cursor = str(page)
     payload = {"data": combined, "meta": {"total": total}}
     return payload, last
 
@@ -122,11 +159,20 @@ def _poll(urls, status: str):
     any_ok = False
     urls = tuple(urls)
     max_pages = KENYAN_BETIKA_MAX_PAGES if status == LIVE else KENYAN_PREMATCH_RUNAWAY_PAGES
+    retries = 0 if status == LIVE else 2
+    honor_requested_short_page = status == LIVE
+    fetch_kwargs = dict(
+        max_pages=max_pages,
+        retries=retries,
+        honor_requested_short_page=honor_requested_short_page,
+    )
     if len(urls) <= 1:
-        fetched = [_fetch_pages(urls[0], max_pages=max_pages)] if urls else []
+        fetched = [_fetch_pages(urls[0], **fetch_kwargs)] if urls else []
     else:
         with ThreadPoolExecutor(max_workers=len(urls)) as pool:
-            fetched = list(pool.map(lambda url: _fetch_pages(url, max_pages=max_pages), urls))
+            fetched = list(
+                pool.map(lambda url, kwargs=fetch_kwargs: _fetch_pages(url, **kwargs), urls)
+            )
     for payload, fetch_result in fetched:
         last = fetch_result
         if fetch_result is not None:
@@ -173,6 +219,32 @@ def _poll(urls, status: str):
     duplicate_events = sum(
         getattr(result, "duplicate_events", 0) or 0 for _payload, result in fetched if result
     )
+    incomplete_reasons = [
+        getattr(result, "terminal_reason", None)
+        for _payload, result in fetched
+        if result and not getattr(result, "snapshot_complete", True)
+    ]
+    complete_reasons = [
+        getattr(result, "terminal_reason", None)
+        for _payload, result in fetched
+        if result and getattr(result, "snapshot_complete", True)
+    ]
+    if page_cap_hit:
+        terminal_reason = "runaway_guard"
+    elif incomplete_reasons:
+        terminal_reason = next((reason for reason in incomplete_reasons if reason), "incomplete")
+    else:
+        terminal_reason = next((reason for reason in complete_reasons if reason), None)
+    first_cursors = [
+        getattr(result, "first_cursor", None)
+        for _payload, result in fetched
+        if result and getattr(result, "first_cursor", None)
+    ]
+    last_cursors = [
+        getattr(result, "last_cursor", None)
+        for _payload, result in fetched
+        if result and getattr(result, "last_cursor", None)
+    ]
     diagnostics = Diagnostics(
         endpoint_status="ok" if ok else (
             "http_error" if last is not None and last.status_code else "exception"
@@ -199,6 +271,9 @@ def _poll(urls, status: str):
         source_total=source_total or None,
         unique_event_ids=unique_event_ids,
         duplicate_events=duplicate_events,
+        terminal_reason=terminal_reason,
+        first_cursor=first_cursors[0] if first_cursors else None,
+        last_cursor=last_cursors[-1] if last_cursors else None,
     )
     copy_cache_headers(diagnostics, last_ok or last)
     return matches, apply_catalogue_status(diagnostics)

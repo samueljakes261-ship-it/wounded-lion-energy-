@@ -45,7 +45,10 @@ from kenyan.parsers.sportpesa_parser import (
 )
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics, apply_catalogue_status
 
-PREMATCH_PAGE_COUNT = 100
+# Browser and ke.sportpesa.com requests use pag_count=15. Requesting a
+# larger count while advancing pag_min as a page index can skip events
+# if the API pages by the requested size but returns fewer rows.
+PREMATCH_PAGE_COUNT = 15
 PREMATCH_MAX_PAGES_PER_CYCLE = KENYAN_PREMATCH_RUNAWAY_PAGES
 LIVE_DISCOVERY_LIMIT = KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT
 LIVE_DISCOVERY_MAX_PAGES = KENYAN_SPORTPESA_LIVE_MAX_PAGES
@@ -60,7 +63,9 @@ SPORTPESA_HEADERS = {
 }
 
 
-def _fetch(url):
+def _fetch(url, retries=0):
+    if retries:
+        return fetch_json(url, headers=SPORTPESA_HEADERS, retries=retries)
     return fetch_json(url, headers=SPORTPESA_HEADERS)
 
 
@@ -196,10 +201,13 @@ def _poll_prematch():
     page_cap_hit = False
     seen_ids = set()
     duplicate_events = 0
+    observed_page_size = None
+    terminal_reason = "empty_page"
+    first_cursor = None
     page = 1
     while page <= PREMATCH_MAX_PAGES_PER_CYCLE:
         url = build_todays_games_url(page_min=page, page_count=PREMATCH_PAGE_COUNT)
-        result = _fetch(url)
+        result = _fetch(url, retries=2)
         pages_fetched += 1
 
         if not result.ok:
@@ -207,8 +215,10 @@ def _poll_prematch():
                 blocked = _blocked_diagnostics(result)
                 blocked.pages_fetched = pages_fetched
                 blocked.snapshot_complete = False
+                blocked.terminal_reason = "http_error"
                 return [], apply_catalogue_status(blocked)
             snapshot_complete = False
+            terminal_reason = "http_error"
             break  # keep whatever earlier pages already produced
 
         last_status_code = result.status_code
@@ -234,6 +244,9 @@ def _poll_prematch():
             seen_ids.add(event_id)
             added += 1
 
+        if first_cursor is None:
+            first_cursor = str(page)
+
         try:
             all_matches.extend(parse_todays_games(page_games))
         except Exception as exc:  # noqa: BLE001
@@ -252,18 +265,31 @@ def _poll_prematch():
                     snapshot_complete=False,
                     unique_event_ids=len(seen_ids),
                     duplicate_events=duplicate_events,
+                    terminal_reason="parse_error",
+                    first_cursor=first_cursor,
+                    last_cursor=str(page),
                 )
             )
 
-        if len(page_games) < PREMATCH_PAGE_COUNT:
-            break  # last page
+        if not page_games:
+            terminal_reason = "empty_page"
+            break
+        if observed_page_size is None:
+            observed_page_size = len(page_games)
         if added == 0:
             snapshot_complete = False
+            terminal_reason = "zero_new_ids"
+            break
+        if len(page_games) < observed_page_size:
+            # Stop on a page shorter than the first observed page, not
+            # on a page shorter than the requested pag_count.
+            terminal_reason = "short_page"
             break
         page += 1
     else:
         page_cap_hit = True
         snapshot_complete = False
+        terminal_reason = "runaway_guard"
 
     diagnostics = Diagnostics(
         endpoint_status="ok",
@@ -281,6 +307,9 @@ def _poll_prematch():
         snapshot_complete=snapshot_complete,
         unique_event_ids=len(seen_ids),
         duplicate_events=duplicate_events,
+        terminal_reason=terminal_reason,
+        first_cursor=first_cursor,
+        last_cursor=str(page),
     )
 
     return all_matches, apply_catalogue_status(diagnostics)
