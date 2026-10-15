@@ -31,7 +31,8 @@ nothing here can affect the existing bookmakers' staleness handling.
 import hashlib
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from kenyan.config import KENYAN_POLL_INTERVAL_SECONDS, KENYAN_STALE_AFTER_SECONDS
@@ -71,6 +72,7 @@ class Diagnostics:
     terminal_reason: Optional[str] = None
     first_cursor: Optional[str] = None
     last_cursor: Optional[str] = None
+    capped_partitions: int = 0
     http_date: Optional[str] = None
     cache_age: Optional[str] = None
     etag: Optional[str] = None
@@ -309,6 +311,7 @@ class BaseKenyanWorker:
             terminal_reason=diagnostics.terminal_reason,
             first_cursor=diagnostics.first_cursor,
             last_cursor=diagnostics.last_cursor,
+            capped_partitions=diagnostics.capped_partitions,
             odds_changed=None if odds_changed is None else int(odds_changed),
             payload_hash=payload_hash,
             since_last_good_s=(
@@ -345,16 +348,31 @@ class BaseKenyanWorker:
             now = time.time()
             if not self._match_records:
                 return []
-            if self._poll_in_flight and self._last_good_at is not None:
+            in_flight = self._poll_in_flight and self._last_good_at is not None
+            if in_flight:
                 now = self._last_good_at
             # Do not restamp collected_at here. LIVE merge preserves
             # the price-change time; confirmed_at/last_seen track the
             # last poll that still contained these odds.
-            return visible_matches(
+            matches = visible_matches(
                 self._match_records,
                 now=now,
                 retention_seconds=self._retention_seconds,
             )
+            if not in_flight:
+                return matches
+            # PREMATCH invariant: a last-good snapshot stays engine-
+            # usable while this worker is still acquiring. Hold
+            # confirmed_at on copies only so stored odds age is unchanged.
+            hold = datetime.now(timezone.utc)
+            held = []
+            for match in matches:
+                status = (getattr(match, "status", "") or "").upper()
+                if status == "LIVE" or not hasattr(match, "confirmed_at"):
+                    held.append(match)
+                else:
+                    held.append(replace(match, confirmed_at=hold))
+            return held
 
     def get_status(self) -> dict:
         with self._lock:
@@ -436,6 +454,7 @@ def _diagnostics_to_dict(diagnostics: Optional[Diagnostics]) -> Optional[dict]:
         "terminal_reason": diagnostics.terminal_reason,
         "first_cursor": diagnostics.first_cursor,
         "last_cursor": diagnostics.last_cursor,
+        "capped_partitions": diagnostics.capped_partitions,
         "http_date": diagnostics.http_date,
         "cache_age": diagnostics.cache_age,
         "etag": diagnostics.etag,

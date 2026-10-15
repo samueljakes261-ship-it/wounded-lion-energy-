@@ -149,6 +149,22 @@ def test_prematch_vzip_champs_walk_collects_more_than_the_50_event_window():
     assert "sports=" not in result.url or "Get1x2_VZip" in result.url
 
 
+def test_champ_event_url_does_not_send_rejected_continuation_params():
+    url = build_champ_events_url(
+        "https://example.test/LineFeed/Get1x2_VZip?sports=1&count=400&lng=en&tf=2200000&tz=3&mode=4&country=87&getEmpty=true",
+        1146817,
+    )
+    query = parse_qs(urlsplit(url).query)
+    assert "after" not in query
+    assert "skip" not in query
+    assert "offset" not in query
+    assert "page" not in query
+    assert "ts" not in query
+    assert query.get("champs") == ["1146817"]
+    assert query.get("count") == [str(CHAMP_EVENT_CAP)]
+    assert "sports" not in query
+
+
 def test_prematch_vzip_champ_at_50_cap_with_higher_gc_is_partial():
     def fake_fetch(url):
         if "GetChampsZip" in url:
@@ -164,6 +180,105 @@ def test_prematch_vzip_champ_at_50_cap_with_higher_gc_is_partial():
     assert result.snapshot_complete is False
     assert result.terminal_reason == "page_size_cap"
     assert result.source_total == 90
+    assert result.capped_partitions == 1
+
+
+def test_prematch_vzip_gc_shortfall_below_cap_is_partial():
+    def fake_fetch(url):
+        if "GetChampsZip" in url:
+            return _ok(url, {"Success": True, "Value": [{"LI": 7, "GC": 20, "SI": 1}]})
+        return _ok(url, {"Value": [{"I": index} for index in range(1, 11)]})
+
+    envelope, result = fetch_vzip_by_champs(
+        "https://example.test/LineFeed/Get1x2_VZip?sports=1&count=400&lng=en",
+        fetch=fake_fetch,
+        champ_concurrency=1,
+    )
+    assert len(envelope["Value"]) == 10
+    assert result.snapshot_complete is False
+    assert result.terminal_reason == "source_total_shortfall"
+    assert result.source_total == 20
+    assert result.capped_partitions == 0
+
+
+def test_prematch_vzip_duplicate_ids_across_champs_are_counted():
+    def fake_fetch(url):
+        if "GetChampsZip" in url:
+            return _ok(
+                url,
+                {
+                    "Success": True,
+                    "Value": [
+                        {"LI": 1, "GC": 2, "SI": 1},
+                        {"LI": 2, "GC": 2, "SI": 1},
+                    ],
+                },
+            )
+        return _ok(url, {"Value": [{"I": 10}, {"I": 11}]})
+
+    envelope, result = fetch_vzip_by_champs(
+        "https://example.test/LineFeed/Get1x2_VZip?sports=1&count=400&lng=en",
+        fetch=fake_fetch,
+        champ_concurrency=1,
+    )
+    assert [event["I"] for event in envelope["Value"]] == [10, 11]
+    assert result.unique_event_ids == 2
+    assert result.duplicate_events == 2
+    assert result.source_total == 4
+    assert result.snapshot_complete is False
+    assert result.terminal_reason == "source_total_shortfall"
+
+
+def test_catalogue_status_source_total_shortfall_is_partial():
+    assert (
+        derive_catalogue_status(
+            Diagnostics(
+                endpoint_status="ok",
+                events_discovered=10,
+                unique_event_ids=10,
+                source_total=20,
+                snapshot_complete=False,
+                terminal_reason="source_total_shortfall",
+            )
+        )
+        == "partial"
+    )
+
+
+def test_combine_polls_keeps_page_size_cap_when_mixed_with_complete():
+    from kenyan.workers.poll_combine import combine_match_polls
+
+    _, diagnostics = combine_match_polls(
+        [
+            (
+                [],
+                Diagnostics(
+                    endpoint_status="ok",
+                    events_discovered=50,
+                    unique_event_ids=50,
+                    source_total=90,
+                    snapshot_complete=False,
+                    terminal_reason="page_size_cap",
+                    capped_partitions=1,
+                ),
+            ),
+            (
+                [],
+                Diagnostics(
+                    endpoint_status="ok",
+                    events_discovered=10,
+                    unique_event_ids=10,
+                    source_total=10,
+                    snapshot_complete=True,
+                    terminal_reason="source_total",
+                ),
+            ),
+        ]
+    )
+    assert diagnostics.snapshot_complete is False
+    assert diagnostics.terminal_reason == "page_size_cap"
+    assert diagnostics.capped_partitions == 1
+    assert diagnostics.catalogue_status == "partial"
 
 
 def test_prematch_vzip_champs_http_error_falls_back_incomplete():
@@ -688,3 +803,18 @@ def test_fetch_json_retries_5xx_and_not_4xx(monkeypatch):
     result400 = fetch_json("https://example.test/retry", session=session400, retries=2)
     assert result400.ok is False
     assert session400.calls == 1
+
+    class Session406:
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, url, headers=None, timeout=None):
+            self.calls += 1
+            if self.calls < 3:
+                return ErrorResponse(406)
+            return OkResponse()
+
+    session406 = Session406()
+    result406 = fetch_json("https://example.test/retry", session=session406, retries=2)
+    assert result406.ok is True
+    assert session406.calls == 3

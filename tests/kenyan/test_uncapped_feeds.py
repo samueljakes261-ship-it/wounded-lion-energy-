@@ -116,10 +116,13 @@ def test_betika_subtype_list_includes_total():
     assert "219" in betika.BETIKA_SUB_TYPES.split(",")
 
 
-def test_onexbet_football_games1x2_is_not_capped_at_50():
-    assert "count=250" in onexbet.PREMATCH_URL
-    assert "count=50" not in onexbet.PREMATCH_URL
-    assert any("Get1x2_VZip" in url for url in onexbet.PREMATCH_EXTRA_URLS)
+def test_onexbet_prematch_catalogue_is_vzip_not_games1x2_window():
+    assert "Get1x2_VZip" in onexbet.PREMATCH_URL
+    assert "games1x2" not in onexbet.PREMATCH_URL
+    assert "games1x2" in onexbet.LIVE_URL
+    assert "count=250" in onexbet.LIVE_URL
+    assert all("Get1x2_VZip" in url for url in onexbet.PREMATCH_EXTRA_URLS)
+    assert all("games1x2" not in url for url in onexbet.PREMATCH_EXTRA_URLS)
 
 
 def test_live_workers_poll_independently_of_prematch():
@@ -169,6 +172,58 @@ def test_combine_polls_keeps_football_when_a_later_url_fails():
     assert diagnostics.endpoint_status == "ok"
     assert diagnostics.parser_error is None
     assert combined == [match]
+
+
+def test_serialize_opportunities_does_not_truncate_list():
+    from datetime import datetime, timezone
+
+    from kenyan.api_router import serialize_opportunities
+    from kenyan.config import BETIKA, SPORTPESA
+    from kenyan.engine import KenyanArbitrageEngine
+
+    now = datetime.now(timezone.utc)
+    matches = []
+    for index in range(60):
+        matches.append(
+            KenyanMatchOdds(
+                bookmaker=SPORTPESA,
+                competition="L",
+                sport="Football",
+                market="1X2",
+                home_team=f"Home {index}",
+                away_team=f"Away {index}",
+                home_odds=2.10,
+                draw_odds=3.30,
+                away_odds=3.40,
+                start_time=now,
+                collected_at=now,
+                event_id=f"sp-{index}",
+                status="PREMATCH",
+            )
+        )
+        matches.append(
+            KenyanMatchOdds(
+                bookmaker=BETIKA,
+                competition="L",
+                sport="Football",
+                market="1X2",
+                home_team=f"Home {index}",
+                away_team=f"Away {index}",
+                home_odds=2.00,
+                draw_odds=3.90,
+                away_odds=4.00,
+                start_time=now,
+                collected_at=now,
+                event_id=f"bk-{index}",
+                status="PREMATCH",
+            )
+        )
+    opportunities = KenyanArbitrageEngine().compute_opportunities(
+        matches, bankroll=1000, now=now
+    )
+    payload = serialize_opportunities(opportunities)
+    assert len(payload) == len(opportunities)
+    assert len(payload) >= 50
 
 
 def test_map_polls_runs_every_url():

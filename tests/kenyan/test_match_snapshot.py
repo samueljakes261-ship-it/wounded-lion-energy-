@@ -76,6 +76,8 @@ def test_incomplete_merge_does_not_expire_last_good():
     ids = {m.event_id for m in visible_matches(records, now=1200.0, retention_seconds=180)}
     assert ids == {"1", "2"}
     assert records[match_identity(first)].match.home_odds == 2.10
+    assert records[match_identity(first)].last_seen == 1000.0
+    assert records[match_identity(first)].pinned is True
 
 
 def test_complete_merge_still_expires_unseen_after_retention():
@@ -137,6 +139,25 @@ def test_prematch_still_restamps_collected_at_to_poll_end():
     stored = records[match_identity(match)].match
     age = abs((stored.collected_at.timestamp() - poll_end))
     assert age < 1.0
+    assert stored.confirmed_at is not None
+    assert abs(stored.confirmed_at.timestamp() - poll_end) < 1.0
+
+
+def test_incomplete_prematch_merge_does_not_refresh_pinned_timestamps():
+    first = _match("1", "A", "B", status="PREMATCH", odds=2.10)
+    records = merge_match_records({}, [first], now=1000.0, retention_seconds=180)
+    original_confirmed = records[match_identity(first)].match.confirmed_at
+    partial = _match("2", "C", "D", status="PREMATCH", odds=2.20)
+    records = merge_match_records(
+        records,
+        [partial],
+        now=1200.0,
+        retention_seconds=180,
+        expire_unseen=False,
+    )
+    assert records[match_identity(first)].pinned is True
+    assert records[match_identity(first)].last_seen == 1000.0
+    assert records[match_identity(first)].match.confirmed_at == original_confirmed
 
 
 def test_merge_restamps_collected_at_to_poll_end():

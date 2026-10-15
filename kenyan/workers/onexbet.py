@@ -25,14 +25,17 @@ from kenyan.workers.poll_combine import map_polls
 from kenyan.workers.vzip_pages import fetch_vzip_all, fetch_vzip_by_champs
 
 # games1x2 count=1000 / skip= returns HTTP 400. count=250 is the
-# proven games1x2 window; Get1x2_VZip is then walked with `after`.
+# proven LIVE games1x2 window. PREMATCH games1x2 is the same limited
+# window and currently 400s on this gateway; the PREMATCH catalogue
+# is GetChampsZip + Get1x2_VZip per championship, not games1x2.
 _GAMES_QUERY = "cfView=3&count=250&fcountry=87&gr=656&grMode=4&lng=en&ref=61"
 _FOOTBALL_QUERY = _GAMES_QUERY
 LIVE_URL = (
     f"https://1xbet.co.ke/service-api/main-live-feed/v3/games1x2?{_FOOTBALL_QUERY}&selectedMs=2.1"
 )
 PREMATCH_URL = (
-    f"https://1xbet.co.ke/service-api/main-line-feed/v3/games1x2?{_FOOTBALL_QUERY}&selectedMs=2.1"
+    "https://1xbet.co.ke/service-api/LineFeed/Get1x2_VZip"
+    "?sports=1&count=400&lng=en&tf=2200000&tz=3&mode=4&country=87&getEmpty=true"
 )
 LIVE_EXTRA_URLS = (
     f"https://1xbet.co.ke/service-api/main-live-feed/v3/games1x2?{_GAMES_QUERY}&selectedMs=1.4,2.4,10.4",
@@ -44,10 +47,6 @@ LIVE_EXTRA_URLS = (
     "https://1xbet.co.ke/service-api/LiveFeed/Get1x2_VZip?sports=6&count=400&lng=en&mode=4&country=87&getEmpty=true",
 )
 PREMATCH_EXTRA_URLS = (
-    f"https://1xbet.co.ke/service-api/main-line-feed/v3/games1x2?{_GAMES_QUERY}&selectedMs=1.4,2.4,10.4",
-    f"https://1xbet.co.ke/service-api/main-line-feed/v3/games1x2?{_GAMES_QUERY}&selectedMs=2.3,2.6",
-    f"https://1xbet.co.ke/service-api/main-line-feed/v3/games1x2?{_GAMES_QUERY}&selectedMs=2.6",
-    "https://1xbet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=1&count=400&lng=en&tf=2200000&tz=3&mode=4&country=87&getEmpty=true",
     "https://1xbet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=3&count=400&lng=en&tf=2200000&tz=3&mode=4&country=87&getEmpty=true",
     "https://1xbet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=4&count=400&lng=en&tf=2200000&tz=3&mode=4&country=87&getEmpty=true",
     "https://1xbet.co.ke/service-api/LineFeed/Get1x2_VZip?sports=6&count=400&lng=en&tf=2200000&tz=3&mode=4&country=87&getEmpty=true",

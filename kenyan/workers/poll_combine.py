@@ -3,7 +3,23 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from kenyan.config import LIVE
 from kenyan.workers.base import Diagnostics, apply_catalogue_status
+
+# More specific acquisition failures outrank remainder-window status so
+# a later HTTP error cannot hide a 50-event championship cap, and a
+# runaway guard cannot be reported as a clean source total.
+_TERMINAL_REASON_RANK = {
+    "runaway_guard": 0,
+    "champs_http_error": 1,
+    "http_error": 2,
+    "parse_error": 3,
+    "page_size_cap": 4,
+    "source_total_shortfall": 5,
+    "empty_before_source_total": 6,
+    "repeated_cursor": 7,
+    "zero_new_ids": 8,
+}
 
 
 def combine_match_polls(results):
@@ -25,6 +41,7 @@ def combine_match_polls(results):
     complete_reasons = []
     first_cursor = None
     last_cursor = None
+    capped_partitions = 0
 
     for matches, diagnostics in results:
         discovered += diagnostics.events_discovered
@@ -49,6 +66,7 @@ def combine_match_polls(results):
             first_cursor = diagnostics.first_cursor
         if getattr(diagnostics, "last_cursor", None):
             last_cursor = diagnostics.last_cursor
+        capped_partitions += getattr(diagnostics, "capped_partitions", 0) or 0
         if diagnostics.endpoint_status == "ok" and diagnostics.parser_error is None:
             ok_diagnostics = diagnostics
         else:
@@ -82,11 +100,15 @@ def combine_match_polls(results):
     if page_cap_hit:
         chosen.terminal_reason = "runaway_guard"
     elif incomplete_reasons:
-        chosen.terminal_reason = incomplete_reasons[0]
+        chosen.terminal_reason = min(
+            incomplete_reasons,
+            key=lambda reason: _TERMINAL_REASON_RANK.get(reason, 50),
+        )
     elif complete_reasons:
         chosen.terminal_reason = complete_reasons[0]
     chosen.first_cursor = first_cursor
     chosen.last_cursor = last_cursor
+    chosen.capped_partitions = capped_partitions
     if combined and ok_diagnostics is not None:
         chosen.endpoint_status = "ok"
         chosen.parser_error = None
@@ -100,12 +122,12 @@ def map_polls(poll_one, urls, status: str):
     started = time.monotonic()
     if not urls:
         return combine_match_polls([])
-    if len(urls) == 1:
-        combined, diagnostics = combine_match_polls([poll_one(urls[0], status)])
-        diagnostics.elapsed_seconds = time.monotonic() - started
-        return combined, diagnostics
-    with ThreadPoolExecutor(max_workers=len(urls)) as pool:
-        results = list(pool.map(lambda url: poll_one(url, status), urls))
+    concurrent = (status or "").upper() == LIVE and len(urls) > 1
+    if not concurrent:
+        results = [poll_one(url, status) for url in urls]
+    else:
+        with ThreadPoolExecutor(max_workers=len(urls)) as pool:
+            results = list(pool.map(lambda url: poll_one(url, status), urls))
     combined, diagnostics = combine_match_polls(results)
     # Wall-clock of the concurrent fan-out, not the sum of each URL.
     diagnostics.elapsed_seconds = time.monotonic() - started

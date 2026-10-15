@@ -305,6 +305,51 @@ def test_long_poll_snapshot_is_stamped_after_acquisition(monkeypatch):
     assert len(worker.get_matches()) == 1
 
 
+def test_in_flight_prematch_poll_past_180s_does_not_drop_last_good():
+    from datetime import datetime, timezone
+
+    from kenyan.config import BETIKA, ONEXBET
+    from kenyan.engine import KenyanArbitrageEngine
+
+    def poll_left():
+        return (
+            [_match(ONEXBET, home_odds=2.10, draw_odds=3.30, away_odds=3.40)],
+            _ok_diagnostics(valid_normalized_events=1),
+        )
+
+    def poll_right():
+        return (
+            [_match(BETIKA, home_odds=2.00, draw_odds=3.90, away_odds=4.00)],
+            _ok_diagnostics(valid_normalized_events=1),
+        )
+
+    left = BaseKenyanWorker("left", poll_left, poll_interval_seconds=100, retention_seconds=180)
+    right = BaseKenyanWorker("right", poll_right, poll_interval_seconds=100, retention_seconds=180)
+    left._run_one_cycle()
+    right._run_one_cycle()
+    aged = time.time() - 200
+    aged_dt = datetime.fromtimestamp(aged, tz=timezone.utc)
+    for worker in (left, right):
+        for record in worker._match_records.values():
+            record.last_seen = aged
+            record.match.collected_at = aged_dt
+            record.match.confirmed_at = aged_dt
+        worker._last_good_at = aged
+        worker._poll_in_flight = True
+    stored_confirmed = list(left._match_records.values())[0].match.confirmed_at
+    now = datetime.now(timezone.utc)
+    matches = left.get_matches() + right.get_matches()
+    assert len(matches) == 2
+    assert list(left._match_records.values())[0].match.confirmed_at == stored_confirmed
+    assert matches[0].confirmed_at != stored_confirmed
+    opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000, now=now)
+    assert len(opportunities) == 1
+    left._poll_in_flight = False
+    right._poll_in_flight = False
+    idle = left.get_matches() + right.get_matches()
+    assert KenyanArbitrageEngine().compute_opportunities(idle, bankroll=1000, now=now) == []
+
+
 def test_in_flight_snapshot_stays_fresh_enough_for_engine(monkeypatch):
     from kenyan.config import BETIKA, ONEXBET
     from kenyan.engine import KenyanArbitrageEngine

@@ -65,15 +65,20 @@ def _stale_after_seconds(match) -> float:
 
 def _freshness_stamp(match):
     """
-    LIVE stale-checks last confirmation, not last price change.
-    A quiet market can keep the same odds; that is not expiry.
-    PREMATCH still uses collected_at, which merge restamps at poll-end.
+    Engine expiry uses snapshot authority, not parse-start time.
+
+    LIVE: confirmed_at is the last poll that still contained these
+    odds. Quiet markets keep collected_at (price-change time).
+
+    PREMATCH: confirmed_at is last successful snapshot publish
+    (poll-end). While a worker poll is in flight, get_matches()
+    returns copies with a held confirmed_at so a 217s 22Bet walk
+    cannot expire the last-good catalogue at 180s. collected_at is
+    not restamped, so odds age stays honest.
     """
-    status = (getattr(match, "status", "") or "").upper()
-    if status == LIVE:
-        confirmed = getattr(match, "confirmed_at", None)
-        if confirmed is not None:
-            return confirmed
+    confirmed = getattr(match, "confirmed_at", None)
+    if confirmed is not None:
+        return confirmed
     return getattr(match, "collected_at", None)
 
 

@@ -132,6 +132,19 @@ def _fetch_pages(
         page_cap_hit = True
         snapshot_complete = False
         terminal_reason = "runaway_guard"
+    if (
+        not honor_requested_short_page
+        and total
+        and len(seen_ids) < total
+    ):
+        snapshot_complete = False
+        if terminal_reason not in (
+            "http_error",
+            "runaway_guard",
+            "zero_new_ids",
+            "empty_before_source_total",
+        ):
+            terminal_reason = "empty_before_source_total"
     if last is not None:
         last.pages_fetched = pages_fetched
         last.page_cap_hit = page_cap_hit

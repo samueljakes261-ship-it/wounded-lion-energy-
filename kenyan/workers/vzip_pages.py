@@ -9,21 +9,27 @@ hosts that extra query key currently returns HTTP 406, so a LIVE walk
 stops incomplete after the first 50-event window. LIVE pagination is
 intentionally unchanged.
 
-PREMATCH cannot use `after=` (same 406). The working LineFeed contract
-is GetChampsZip?sport=<id> then Get1x2_VZip?champs=<LI> without
-`sports=` or `after=`. Each championship is still capped at 50 events;
-a 50-row champ whose advertised GC is higher is incomplete.
+PREMATCH cannot use `after=` (HTTP 406 even as the first query key).
+The working LineFeed contract is GetChampsZip?sport=<id> then
+Get1x2_VZip?champs=<LI> without `sports=` or `after=`. The Kenyan
+gateway returns at most 50 rows per championship regardless of
+`count`. That 50 is a source window, not an internal slice: extra
+keys (`after`, `skip`, `offset`, `page`, `ts`, `from`) are 406.
+Championships with GetChampsZip `T=100` are "Alternative Matches"
+and account for nearly all GC>50 partitions. Regular leagues fit
+in 50 except rare specials such as MLS+. A 50-row champ whose
+advertised GC is higher is incomplete (`page_size_cap`).
 """
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from kenyan.config import KENYAN_VZIP_MAX_PAGES
+from kenyan.config import KENYAN_PREMATCH_RUNAWAY_PAGES, KENYAN_VZIP_MAX_PAGES
 from kenyan.http_utils import FetchResult, copy_cache_headers, fetch_json
 
 PAGE_COUNT = 400
 MAX_PAGES = KENYAN_VZIP_MAX_PAGES
 CHAMP_EVENT_CAP = 50
-CHAMP_CONCURRENCY = 4
+CHAMP_CONCURRENCY = 2
 # Kenyan 1xCorp gateways 406 when allowed keys appear in the wrong
 # order. `sport` / `champs` must lead the query string.
 _CHAMP_LIST_KEYS = ("lng", "tf", "tz", "country", "partner")
@@ -190,7 +196,7 @@ def fetch_vzip_by_champs(
     url: str,
     *,
     fetch=None,
-    max_champs: int = MAX_PAGES,
+    max_champs: int = KENYAN_PREMATCH_RUNAWAY_PAGES,
     retries: int = 0,
     champ_concurrency: int = CHAMP_CONCURRENCY,
 ):
@@ -286,6 +292,8 @@ def fetch_vzip_by_champs(
             seen.add(event_id)
             combined.append(event)
 
+    if source_total and len(seen) < source_total:
+        snapshot_complete = False
     if http_errors and not combined:
         terminal_reason = "http_error"
     elif http_errors:
@@ -294,6 +302,8 @@ def fetch_vzip_by_champs(
         terminal_reason = "runaway_guard"
     elif capped_champs:
         terminal_reason = "page_size_cap"
+    elif source_total and len(seen) < source_total:
+        terminal_reason = "source_total_shortfall"
     elif not combined:
         terminal_reason = "empty_page"
     else:
@@ -319,4 +329,5 @@ def fetch_vzip_by_champs(
     aggregated.terminal_reason = terminal_reason
     aggregated.first_cursor = None if not limited else str(limited[0].get("LI"))
     aggregated.last_cursor = None if not limited else str(limited[-1].get("LI"))
+    aggregated.capped_partitions = capped_champs
     return aggregated.json_body, aggregated

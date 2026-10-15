@@ -13,8 +13,11 @@ observed. An unchanged subsequent poll updates `confirmed_at` /
 `last_seen` only -- it must not restamp `collected_at` or the UI will
 treat a quiet market as a price change.
 
-PREMATCH still restamps `collected_at` to poll-end so long extra-sport
-walks do not expire football rows. That PREMATCH behavior is unchanged.
+PREMATCH restamps `collected_at` and `confirmed_at` to poll-end.
+`collected_at` remains odds-update/publish time. `confirmed_at` is
+snapshot authority for engine expiry. Pinned unseen rows are not
+restamped. While a poll is in flight, `get_matches()` holds
+`confirmed_at` on copies only.
 
 `acquired_seq` is the worker poll generation. A delayed older poll
 cannot overwrite a newer snapshot even if it finishes later.
@@ -29,6 +32,7 @@ class MatchRecord:
     match: object
     last_seen: float
     acquired_seq: int = 0
+    pinned: bool = False
 
 
 def match_identity(match) -> str:
@@ -85,6 +89,8 @@ def merge_match_records(
     is ignored so a delayed poll cannot overwrite newer odds.
     Incomplete PREMATCH walks pass expire_unseen=False so a short
     partial catalogue cannot drop the last complete snapshot.
+    Unseen rows are pinned for visibility; last_seen and collected_at
+    are not restamped, so retained odds are not labelled fresh.
     """
 
     records = dict(previous or {})
@@ -104,16 +110,22 @@ def merge_match_records(
                 match.collected_at = poll_end
             if hasattr(match, "confirmed_at"):
                 match.confirmed_at = poll_end
-        elif hasattr(match, "collected_at"):
-            match.collected_at = poll_end
+        else:
+            if hasattr(match, "collected_at"):
+                match.collected_at = poll_end
+            if hasattr(match, "confirmed_at"):
+                match.confirmed_at = poll_end
         records[key] = MatchRecord(
             match=match,
             last_seen=now,
             acquired_seq=acquired_seq,
+            pinned=False,
         )
         seen.add(key)
 
     if expire_unseen:
+        for record in records.values():
+            record.pinned = False
         expired = [
             key
             for key, record in records.items()
@@ -122,12 +134,9 @@ def merge_match_records(
         for key in expired:
             del records[key]
     else:
-        # Incomplete PREMATCH walk: keep last-good rows visible. Do not
-        # advance their absence clock or a partial catalogue will drop
-        # events the source still has.
         for key, record in records.items():
             if key not in seen:
-                record.last_seen = now
+                record.pinned = True
 
     return records
 
@@ -137,7 +146,7 @@ def visible_matches(records: Optional[Dict[str, MatchRecord]], *, now: float, re
         return []
     visible = []
     for record in records.values():
-        if (now - record.last_seen) > retention_seconds:
+        if not record.pinned and (now - record.last_seen) > retention_seconds:
             continue
         match = record.match
         if _is_live(match) and hasattr(match, "confirmed_at"):

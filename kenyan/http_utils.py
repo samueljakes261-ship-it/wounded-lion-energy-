@@ -62,6 +62,7 @@ class FetchResult:
     terminal_reason: Optional[str] = None
     first_cursor: Optional[str] = None
     last_cursor: Optional[str] = None
+    capped_partitions: int = 0
     http_date: Optional[str] = None
     cache_age: Optional[str] = None
     etag: Optional[str] = None
@@ -140,7 +141,10 @@ def fetch_json(
                 error=f"HTTP {response.status_code}",
                 **cache_kwargs,
             )
-            retryable = response.status_code >= 500 or response.status_code == 429
+            retryable = (
+                response.status_code >= 500
+                or response.status_code in (429, 406)
+            )
             if retryable and attempt + 1 < attempts:
                 time.sleep(min(0.5 * (2 ** attempt), 2.0))
                 continue
@@ -200,6 +204,7 @@ WALK_FIELDS = (
     "terminal_reason",
     "first_cursor",
     "last_cursor",
+    "capped_partitions",
 )
 
 

@@ -170,6 +170,25 @@ def test_prematch_uses_longer_stale_window_than_live():
     assert KenyanArbitrageEngine().compute_opportunities(pre, now=NOW)
 
 
+def test_prematch_in_flight_confirmed_at_keeps_engine_usable_past_180s():
+    old = NOW - timedelta(seconds=KENYAN_PREMATCH_STALE_AFTER_SECONDS + 20)
+    pre = _arb_pair(status="PREMATCH")
+    for match in pre:
+        match.collected_at = old
+        match.confirmed_at = NOW
+    found = KenyanArbitrageEngine().compute_opportunities(pre, now=NOW)
+    assert len(found) == 1
+
+
+def test_prematch_snapshot_older_than_window_is_still_stale():
+    old = NOW - timedelta(seconds=KENYAN_PREMATCH_STALE_AFTER_SECONDS + 20)
+    pre = _arb_pair(status="PREMATCH")
+    for match in pre:
+        match.collected_at = NOW
+        match.confirmed_at = old
+    assert KenyanArbitrageEngine().compute_opportunities(pre, now=NOW) == []
+
+
 def test_successful_empty_poll_keeps_last_valid_until_retention():
     state = {"empty": False}
 
