@@ -56,6 +56,9 @@ class FetchResult:
     pages_fetched: int = 1
     page_cap_hit: bool = False
     snapshot_complete: bool = True
+    unique_event_ids: int = 0
+    duplicate_events: int = 0
+    source_total: Optional[int] = None
     http_date: Optional[str] = None
     cache_age: Optional[str] = None
     etag: Optional[str] = None

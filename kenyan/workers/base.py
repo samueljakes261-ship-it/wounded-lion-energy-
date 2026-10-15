@@ -64,11 +64,38 @@ class Diagnostics:
     pages_fetched: int = 0
     page_cap_hit: bool = False
     snapshot_complete: bool = True
+    catalogue_status: str = "unknown"
+    source_total: Optional[int] = None
+    unique_event_ids: int = 0
+    duplicate_events: int = 0
     http_date: Optional[str] = None
     cache_age: Optional[str] = None
     etag: Optional[str] = None
     last_modified: Optional[str] = None
     cache_control: Optional[str] = None
+
+
+def derive_catalogue_status(diagnostics: "Diagnostics") -> str:
+    """
+    complete / partial / failed / empty_complete from acquisition
+    evidence. A page cap or incomplete walk is never reported complete.
+    """
+    failed = diagnostics.endpoint_status not in ("ok",) or bool(diagnostics.parser_error)
+    discovered = diagnostics.events_discovered or diagnostics.valid_normalized_events
+    if failed and not discovered:
+        return "failed"
+    if diagnostics.page_cap_hit or not diagnostics.snapshot_complete:
+        return "partial"
+    if failed:
+        return "partial"
+    if not discovered:
+        return "empty_complete"
+    return "complete"
+
+
+def apply_catalogue_status(diagnostics: "Diagnostics") -> "Diagnostics":
+    diagnostics.catalogue_status = derive_catalogue_status(diagnostics)
+    return diagnostics
 
 
 class BaseKenyanWorker:
@@ -191,10 +218,13 @@ class BaseKenyanWorker:
                 self._poll_in_flight = False
                 self._last_attempt_at = now
                 self._health_state.record_failure(f"{type(exc).__name__}: {exc}")
-                self._last_diagnostics = Diagnostics(
-                    endpoint_status="exception",
-                    parser_error=f"{type(exc).__name__}: {exc}",
-                    acquired_at=now,
+                self._last_diagnostics = apply_catalogue_status(
+                    Diagnostics(
+                        endpoint_status="exception",
+                        parser_error=f"{type(exc).__name__}: {exc}",
+                        acquired_at=now,
+                        snapshot_complete=False,
+                    )
                 )
             log_cycle(
                 bookmaker=self.name,
@@ -214,6 +244,7 @@ class BaseKenyanWorker:
         with self._lock:
             self._poll_in_flight = False
             self._last_attempt_at = now
+            apply_catalogue_status(diagnostics)
             self._last_diagnostics = diagnostics
 
             if diagnostics.endpoint_status == "ok" and diagnostics.parser_error is None:
@@ -267,6 +298,10 @@ class BaseKenyanWorker:
             pages=diagnostics.pages_fetched,
             page_cap_hit=int(diagnostics.page_cap_hit),
             snapshot_complete=int(diagnostics.snapshot_complete),
+            catalogue_status=diagnostics.catalogue_status,
+            source_total=diagnostics.source_total,
+            unique_events=diagnostics.unique_event_ids,
+            duplicate_events=diagnostics.duplicate_events,
             odds_changed=None if odds_changed is None else int(odds_changed),
             payload_hash=payload_hash,
             since_last_good_s=(
@@ -387,6 +422,10 @@ def _diagnostics_to_dict(diagnostics: Optional[Diagnostics]) -> Optional[dict]:
         "pages_fetched": diagnostics.pages_fetched,
         "page_cap_hit": diagnostics.page_cap_hit,
         "snapshot_complete": diagnostics.snapshot_complete,
+        "catalogue_status": diagnostics.catalogue_status,
+        "source_total": diagnostics.source_total,
+        "unique_event_ids": diagnostics.unique_event_ids,
+        "duplicate_events": diagnostics.duplicate_events,
         "http_date": diagnostics.http_date,
         "cache_age": diagnostics.cache_age,
         "etag": diagnostics.etag,

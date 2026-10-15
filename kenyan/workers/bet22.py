@@ -12,12 +12,15 @@ from kenyan.config import (
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     KENYAN_LIVE_STALE_AFTER_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_RUNAWAY_PAGES,
     KENYAN_PREMATCH_STALE_AFTER_SECONDS,
+    KENYAN_VZIP_MAX_PAGES,
+    LIVE,
 )
 from kenyan.http_utils import copy_cache_headers
 from kenyan.parsers._common_1x2 import extract_1x2_from_flat_events, is_complete_1x2
 from kenyan.parsers.bet22_parser import parse_all_markets
-from kenyan.workers.base import BaseKenyanWorker, Diagnostics
+from kenyan.workers.base import BaseKenyanWorker, Diagnostics, apply_catalogue_status
 from kenyan.workers.poll_combine import map_polls
 from kenyan.workers.vzip_pages import fetch_vzip_all
 
@@ -43,7 +46,8 @@ PREMATCH_EXTRA_URLS = (
 
 
 def _poll_one(url: str, status: str):
-    envelope, fetch_result = fetch_vzip_all(url)
+    max_pages = KENYAN_VZIP_MAX_PAGES if status == LIVE else KENYAN_PREMATCH_RUNAWAY_PAGES
+    envelope, fetch_result = fetch_vzip_all(url, max_pages=max_pages)
     if not fetch_result.ok:
         failed = Diagnostics(
             endpoint_status="http_error" if fetch_result.status_code else "exception",
@@ -58,7 +62,7 @@ def _poll_one(url: str, status: str):
             snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
         )
         copy_cache_headers(failed, fetch_result)
-        return [], failed
+        return [], apply_catalogue_status(failed)
 
     raw_events = (envelope or {}).get("Value") or []
     football_events = 0
@@ -92,9 +96,11 @@ def _poll_one(url: str, status: str):
         pages_fetched=getattr(fetch_result, "pages_fetched", 1),
         page_cap_hit=getattr(fetch_result, "page_cap_hit", False),
         snapshot_complete=getattr(fetch_result, "snapshot_complete", True),
+        unique_event_ids=getattr(fetch_result, "unique_event_ids", 0) or len(raw_events),
+        duplicate_events=getattr(fetch_result, "duplicate_events", 0) or 0,
     )
     copy_cache_headers(diagnostics, fetch_result)
-    return matches, diagnostics
+    return matches, apply_catalogue_status(diagnostics)
 
 
 def _poll(urls, status: str):

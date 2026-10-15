@@ -9,11 +9,10 @@ poll interval for the handful of currently-live football events, so
 this remains "one persistent worker, polling every 5 seconds" rather
 than spinning up anything new per cycle.
 
-PREMATCH is a single call to the date-scoped `todays/1/games` endpoint
-(already includes 1x2 odds -- see kenyan/parsers/sportpesa_parser.py
-for why this was chosen over `games/markets`), paginated across a
-few pages per cycle to cover a reasonable share of today's fixture
-list without unbounded network calls.
+PREMATCH walks `/api/todays/1/games` (embedded 1X2 odds) until a short
+or empty page. That endpoint is football and Kenya-today scoped by
+the API; extra sports are not invented here. There is no catalogue
+page ceiling -- only runaway-loop protection.
 
 ANTI-BOT CHALLENGE: both `www.ke.sportpesa.com` and `www.sportpesa.com`
 currently serve an Imperva "Challenge Validation" HTML page to plain
@@ -29,10 +28,10 @@ from kenyan.config import (
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     KENYAN_LIVE_STALE_AFTER_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
+    KENYAN_PREMATCH_RUNAWAY_PAGES,
     KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT,
     KENYAN_SPORTPESA_LIVE_MAX_PAGES,
-    KENYAN_SPORTPESA_PREMATCH_MAX_PAGES,
     SPORTPESA,
 )
 from kenyan.http_utils import copy_cache_headers, fetch_json, looks_like_bot_challenge
@@ -44,10 +43,10 @@ from kenyan.parsers.sportpesa_parser import (
     parse_live_markets,
     parse_todays_games,
 )
-from kenyan.workers.base import BaseKenyanWorker, Diagnostics
+from kenyan.workers.base import BaseKenyanWorker, Diagnostics, apply_catalogue_status
 
 PREMATCH_PAGE_COUNT = 100
-PREMATCH_MAX_PAGES_PER_CYCLE = KENYAN_SPORTPESA_PREMATCH_MAX_PAGES
+PREMATCH_MAX_PAGES_PER_CYCLE = KENYAN_PREMATCH_RUNAWAY_PAGES
 LIVE_DISCOVERY_LIMIT = KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT
 LIVE_DISCOVERY_MAX_PAGES = KENYAN_SPORTPESA_LIVE_MAX_PAGES
 
@@ -195,7 +194,10 @@ def _poll_prematch():
     pages_fetched = 0
     snapshot_complete = True
     page_cap_hit = False
-    for page in range(1, PREMATCH_MAX_PAGES_PER_CYCLE + 1):
+    seen_ids = set()
+    duplicate_events = 0
+    page = 1
+    while page <= PREMATCH_MAX_PAGES_PER_CYCLE:
         url = build_todays_games_url(page_min=page, page_count=PREMATCH_PAGE_COUNT)
         result = _fetch(url)
         pages_fetched += 1
@@ -205,7 +207,7 @@ def _poll_prematch():
                 blocked = _blocked_diagnostics(result)
                 blocked.pages_fetched = pages_fetched
                 blocked.snapshot_complete = False
-                return [], blocked
+                return [], apply_catalogue_status(blocked)
             snapshot_complete = False
             break  # keep whatever earlier pages already produced
 
@@ -215,30 +217,50 @@ def _poll_prematch():
         total_elapsed += result.elapsed_seconds
 
         page_games = result.json_body or []
+        if not isinstance(page_games, list):
+            page_games = []
         total_events += len(page_games)
         total_football += sum(
             1 for g in page_games if (g.get("sport") or {}).get("id") == 1
         )
+        added = 0
+        for game in page_games:
+            if not isinstance(game, dict):
+                continue
+            event_id = game.get("id") or game.get("externalId")
+            if event_id in seen_ids:
+                duplicate_events += 1
+                continue
+            seen_ids.add(event_id)
+            added += 1
 
         try:
             all_matches.extend(parse_todays_games(page_games))
         except Exception as exc:  # noqa: BLE001
-            return [], Diagnostics(
-                endpoint_status="bad_payload",
-                http_status_code=result.status_code,
-                content_type=result.content_type,
-                response_size_bytes=total_size,
-                events_discovered=total_events,
-                football_events=total_football,
-                parser_error=f"{type(exc).__name__}: {exc}",
-                elapsed_seconds=total_elapsed,
-                acquired_at=time.time(),
-                pages_fetched=pages_fetched,
-                snapshot_complete=False,
+            return [], apply_catalogue_status(
+                Diagnostics(
+                    endpoint_status="bad_payload",
+                    http_status_code=result.status_code,
+                    content_type=result.content_type,
+                    response_size_bytes=total_size,
+                    events_discovered=total_events,
+                    football_events=total_football,
+                    parser_error=f"{type(exc).__name__}: {exc}",
+                    elapsed_seconds=total_elapsed,
+                    acquired_at=time.time(),
+                    pages_fetched=pages_fetched,
+                    snapshot_complete=False,
+                    unique_event_ids=len(seen_ids),
+                    duplicate_events=duplicate_events,
+                )
             )
 
         if len(page_games) < PREMATCH_PAGE_COUNT:
             break  # last page
+        if added == 0:
+            snapshot_complete = False
+            break
+        page += 1
     else:
         page_cap_hit = True
         snapshot_complete = False
@@ -257,9 +279,11 @@ def _poll_prematch():
         pages_fetched=pages_fetched,
         page_cap_hit=page_cap_hit,
         snapshot_complete=snapshot_complete,
+        unique_event_ids=len(seen_ids),
+        duplicate_events=duplicate_events,
     )
 
-    return all_matches, diagnostics
+    return all_matches, apply_catalogue_status(diagnostics)
 
 
 def build_live_worker() -> BaseKenyanWorker:

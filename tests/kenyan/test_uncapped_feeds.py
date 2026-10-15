@@ -78,13 +78,15 @@ def test_vzip_stops_when_server_ignores_after_and_repeats():
     def fake_fetch(url):
         return _ok(url, {"Value": [{"I": 10}, {"I": 11}, {"I": 12}]})
 
-    envelope, _ = fetch_vzip_all(
+    envelope, result = fetch_vzip_all(
         "https://example.test/Get1x2_VZip?sports=1",
         fetch=fake_fetch,
         page_count=3,
         max_pages=5,
     )
     assert [event["I"] for event in envelope["Value"]] == [10, 11, 12]
+    assert result.snapshot_complete is False
+    assert result.page_cap_hit is False
 
 
 def test_betika_requests_total_subtype_and_pages_until_meta_total(monkeypatch):

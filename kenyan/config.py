@@ -74,10 +74,9 @@ KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS = float(
     )
 )
 
-# Pagination safety ceilings. Workers page until a short page / meta
-# total, then stop. These caps exist only to bound memory and time;
-# hitting one is recorded as page_cap_hit, never treated as a complete
-# catalogue.
+# LIVE pagination ceilings. LIVE catalogues are small; these bound a
+# hung or repeating cursor without waiting on a full prematch walk.
+# Hitting one is recorded as page_cap_hit / snapshot_complete=False.
 KENYAN_VZIP_MAX_PAGES = int(os.getenv("KENYAN_VZIP_MAX_PAGES", "80"))
 KENYAN_BETIKA_MAX_PAGES = int(os.getenv("KENYAN_BETIKA_MAX_PAGES", "80"))
 KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT = int(
@@ -86,8 +85,22 @@ KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT = int(
 KENYAN_SPORTPESA_LIVE_MAX_PAGES = int(
     os.getenv("KENYAN_SPORTPESA_LIVE_MAX_PAGES", "40")
 )
+
+# PREMATCH has no catalogue-size page ceiling. Workers stop on a short
+# or empty page, a reported total, or a repeated cursor. This runaway
+# figure is only infinite-loop protection; hitting it is incomplete,
+# never treated as the end of the bookmaker catalogue.
+KENYAN_PREMATCH_RUNAWAY_PAGES = int(
+    os.getenv("KENYAN_PREMATCH_RUNAWAY_PAGES", "10000")
+)
+# Kept so existing env files still parse. PREMATCH acquisition no
+# longer uses it as a stop; LIVE SportPesa discovery uses
+# KENYAN_SPORTPESA_LIVE_MAX_PAGES.
 KENYAN_SPORTPESA_PREMATCH_MAX_PAGES = int(
-    os.getenv("KENYAN_SPORTPESA_PREMATCH_MAX_PAGES", "40")
+    os.getenv(
+        "KENYAN_SPORTPESA_PREMATCH_MAX_PAGES",
+        str(KENYAN_PREMATCH_RUNAWAY_PAGES),
+    )
 )
 
 # Consecutive-failure / consecutive-success hysteresis for flipping a

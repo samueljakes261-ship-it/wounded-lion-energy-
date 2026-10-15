@@ -3,7 +3,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from kenyan.workers.base import Diagnostics
+from kenyan.workers.base import Diagnostics, apply_catalogue_status
 
 
 def combine_match_polls(results):
@@ -18,6 +18,9 @@ def combine_match_polls(results):
     pages_fetched = 0
     page_cap_hit = False
     snapshot_complete = True
+    unique_event_ids = 0
+    duplicate_events = 0
+    source_total = 0
 
     for matches, diagnostics in results:
         discovered += diagnostics.events_discovered
@@ -25,6 +28,9 @@ def combine_match_polls(results):
         elapsed += diagnostics.elapsed_seconds
         bytes_total += diagnostics.response_size_bytes
         pages_fetched += getattr(diagnostics, "pages_fetched", 0) or 0
+        unique_event_ids += getattr(diagnostics, "unique_event_ids", 0) or 0
+        duplicate_events += getattr(diagnostics, "duplicate_events", 0) or 0
+        source_total += getattr(diagnostics, "source_total", 0) or 0
         page_cap_hit = page_cap_hit or bool(getattr(diagnostics, "page_cap_hit", False))
         snapshot_complete = snapshot_complete and bool(
             getattr(diagnostics, "snapshot_complete", True)
@@ -56,9 +62,13 @@ def combine_match_polls(results):
     chosen.pages_fetched = pages_fetched
     chosen.page_cap_hit = page_cap_hit
     chosen.snapshot_complete = snapshot_complete
+    chosen.unique_event_ids = unique_event_ids
+    chosen.duplicate_events = duplicate_events
+    chosen.source_total = source_total or None
     if combined and ok_diagnostics is not None:
         chosen.endpoint_status = "ok"
         chosen.parser_error = None
+    apply_catalogue_status(chosen)
     return combined, chosen
 
 

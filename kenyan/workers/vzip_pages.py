@@ -4,7 +4,11 @@ Walk 1xCorp Get1x2_VZip catalogues with the `after` cursor.
 games1x2 `count=1000` and `skip=` return HTTP 400. Asking for
 `count=400` still returns 50 events (verified live on 1xBet and 22Bet),
 so a page is "full" at the observed size, not the requested count.
-`after=<last event I>` continues until a short page.
+`after=<last event I>` continues until a short or empty page.
+
+LIVE callers pass KENYAN_VZIP_MAX_PAGES. PREMATCH callers pass
+KENYAN_PREMATCH_RUNAWAY_PAGES so a real catalogue is not truncated at
+80 pages; hitting the runaway marks the walk incomplete.
 """
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -37,14 +41,21 @@ def fetch_vzip_all(
     seen = set()
     last = None
     after = None
+    seen_cursors = set()
     observed_page_size = None
     total_elapsed = 0.0
     total_bytes = 0
     pages_fetched = 0
     snapshot_complete = True
     page_cap_hit = False
+    duplicate_events = 0
 
     for page in range(max_pages):
+        if after is not None:
+            if after in seen_cursors:
+                snapshot_complete = False
+                break
+            seen_cursors.add(after)
         page_url = with_query(url, count=page_count, after=after)
         result = fetch(page_url)
         last = result
@@ -69,6 +80,7 @@ def fetch_vzip_all(
                 continue
             event_id = event.get("I")
             if event_id in seen:
+                duplicate_events += 1
                 continue
             seen.add(event_id)
             combined.append(event)
@@ -78,9 +90,11 @@ def fetch_vzip_all(
 
         if observed_page_size is None:
             observed_page_size = len(events)
-        # Server may ignore count=400 and return 50. Stop only on a
-        # short page, a repeated page, or a missing cursor.
-        if added == 0 or len(events) < observed_page_size or not new_ids:
+        if added == 0:
+            # Full page of IDs already seen, or the cursor was ignored.
+            snapshot_complete = False
+            break
+        if len(events) < observed_page_size or not new_ids:
             break
         after = new_ids[-1]
     else:
@@ -101,4 +115,6 @@ def fetch_vzip_all(
     aggregated.pages_fetched = pages_fetched
     aggregated.page_cap_hit = page_cap_hit
     aggregated.snapshot_complete = snapshot_complete
+    aggregated.unique_event_ids = len(seen)
+    aggregated.duplicate_events = duplicate_events
     return aggregated.json_body, aggregated
