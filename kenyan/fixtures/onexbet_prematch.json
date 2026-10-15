@@ -1,0 +1,3566 @@
+[
+  {
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/4269a9d0d55e0c20e4110ce1a41e1cf7.png",
+      "id": 88637,
+      "name": "England. Premier League"
+    },
+    "opponent1": {
+      "fullName": "Manchester United",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 1996,
+          "name": "Manchester United",
+          "image": "/sfiles/logo_teams/1996.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Ipswich Town",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 2050,
+          "name": "Ipswich Town",
+          "image": "/sfiles/logo_teams/2050.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 2",
+      "location": "Old Trafford (Manchester)",
+      "temperature": "+17\u00b0C",
+      "locationCountry": "England",
+      "weatherCode": "13",
+      "weatherDescription": "Gloomy, rain and thunderstorms",
+      "weatherWindCode": "9",
+      "weatherWindParam": "1.9",
+      "weatherWindDescription": "S wind, m/s",
+      "weatherPressure": "753",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "86",
+      "weatherHumidityDescription": "Humidity, %",
+      "weatherPrecipitationChance": "67",
+      "weatherPrecipitationChanceDescription": "Precipitation, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 1.392,
+              "cfView": "1.392"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 5.48,
+              "cfView": "5.48"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 8.7,
+              "cfView": "8.7"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 1.087,
+              "cfView": "1.087"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.186,
+              "cfView": "1.186"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 3.24,
+              "cfView": "3.24"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 1.7,
+              "cfView": "1.7"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 2.054,
+              "cfView": "2.054"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 2.267,
+              "cfView": "2.267",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.742,
+              "cfView": "1.742",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 99,
+        "shortGroupId": 1007,
+        "events": [
+          [
+            {
+              "type": 3827,
+              "parameter": 3.25,
+              "cf": 2.023,
+              "cfView": "2.023",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3828,
+              "parameter": 3.25,
+              "cf": 1.919,
+              "cfView": "1.919",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 2.012,
+              "cfView": "2.012",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 1.929,
+              "cfView": "1.929",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2854,
+        "shortGroupId": 1008,
+        "events": [
+          [
+            {
+              "type": 3829,
+              "parameter": -1.25,
+              "cf": 1.799,
+              "cfView": "1.799",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3830,
+              "parameter": 1.25,
+              "cf": 2.176,
+              "cfView": "2.176",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 2.5,
+              "cf": 2.14,
+              "cfView": "2.14",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 2.5,
+              "cf": 1.72,
+              "cfView": "1.72",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 0.5,
+              "cf": 1.57,
+              "cfView": "1.57",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 0.5,
+              "cf": 2.25,
+              "cfView": "2.25",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a3512b85e99bd05c63e977a",
+      "stageId": "6a34c3a75e99bd05c63e703a",
+      "stageType": 2,
+      "status": 2,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 1.444,
+              "cfView": "1.444",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.0,
+              "cf": 1.71,
+              "cfView": "1.71",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 2.267,
+              "cfView": "2.267",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 4.0,
+              "cf": 3.02,
+              "cfView": "3.02",
+              "eventParams": {
+                "params": [
+                  "(4)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 4.5,
+              "cf": 3.54,
+              "cfView": "3.54",
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 2.61,
+              "cfView": "2.61",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.0,
+              "cf": 2.09,
+              "cfView": "2.09",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.742,
+              "cfView": "1.742",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 4.0,
+              "cf": 1.363,
+              "cfView": "1.363",
+              "eventParams": {
+                "params": [
+                  "(4)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 4.5,
+              "cf": 1.26,
+              "cfView": "1.26",
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 3.15,
+              "cfView": "3.15",
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.0,
+              "cf": 2.57,
+              "cfView": "2.57",
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 2.012,
+              "cfView": "2.012",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.0,
+              "cf": 1.5,
+              "cfView": "1.5",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "cf": 1.088,
+              "cfView": "1.088",
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 1.31,
+              "cfView": "1.31",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.0,
+              "cf": 1.47,
+              "cfView": "1.47",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 1.929,
+              "cfView": "1.929",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.0,
+              "cf": 2.48,
+              "cfView": "2.48",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "cf": 6,
+              "cfView": "6",
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 1287,
+    "subGamesCount": 45,
+    "id": 746423690,
+    "num": 248919,
+    "mainGameId": 746423690,
+    "constId": 362574522,
+    "startTs": 1788103800,
+    "countryId": 231,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 7,
+    "mainConstId": 362574522,
+    "kind": 3,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/d4567348989cea3937d84a953323b252.png",
+      "id": 96463,
+      "name": "Germany. Bundesliga"
+    },
+    "opponent1": {
+      "fullName": "Augsburg",
+      "countryId": 53,
+      "opps": [
+        {
+          "id": 18607,
+          "name": "Augsburg",
+          "image": "/sfiles/logo_teams/c476607e89862aac7d9f180f33537eff.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Schalke 04",
+      "countryId": 53,
+      "opps": [
+        {
+          "id": 2884,
+          "name": "Schalke 04",
+          "image": "/sfiles/logo_teams/7d185689417db855d668106a6f407247.PNG"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 1",
+      "location": "WWK Arena (Augsburg)",
+      "temperature": "+25\u00b0C",
+      "locationCountry": "Germany",
+      "weatherCode": "3",
+      "weatherDescription": "Some cloud",
+      "weatherWindCode": "12",
+      "weatherWindParam": "2.8",
+      "weatherWindDescription": "WSW wind, m/s",
+      "weatherPressure": "761",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "50",
+      "weatherHumidityDescription": "Humidity, %",
+      "weatherPrecipitationChance": "1",
+      "weatherPrecipitationChanceDescription": "Precipitation, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 2.317,
+              "cfView": "2.317"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 3.595,
+              "cfView": "3.595"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 3.27,
+              "cfView": "3.27"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 1.389,
+              "cfView": "1.389"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.337,
+              "cfView": "1.337"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 1.683,
+              "cfView": "1.683"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 1.57,
+              "cfView": "1.57"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 2.281,
+              "cfView": "2.281"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 1.787,
+              "cfView": "1.787",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 2.194,
+              "cfView": "2.194",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 99,
+        "shortGroupId": 1007,
+        "events": [
+          [
+            {
+              "type": 3827,
+              "parameter": 2.25,
+              "cf": 1.592,
+              "cfView": "1.592",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3828,
+              "parameter": 2.25,
+              "cf": 2.582,
+              "cfView": "2.582",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "cf": 1.689,
+              "cfView": "1.689",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "cf": 2.363,
+              "cfView": "2.363",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2854,
+        "shortGroupId": 1008,
+        "events": [
+          [
+            {
+              "type": 3829,
+              "parameter": -0.25,
+              "cf": 1.981,
+              "cfView": "1.981",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-0.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3830,
+              "parameter": 0.25,
+              "cf": 1.959,
+              "cfView": "1.959",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 1.5,
+              "cf": 2.01,
+              "cfView": "2.01",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 1.5,
+              "cf": 1.81,
+              "cfView": "1.81",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 1.5,
+              "cf": 2.48,
+              "cfView": "2.48",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 1.5,
+              "cf": 1.533,
+              "cfView": "1.533",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a4679e65e99bd05c646ed55",
+      "stageId": "6a46569f5e99bd05c646de32",
+      "stageType": 2,
+      "status": 2,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 1.176,
+              "cfView": "1.176",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.0,
+              "cf": 1.285,
+              "cfView": "1.285",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 1.787,
+              "cfView": "1.787",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.0,
+              "cf": 2.13,
+              "cfView": "2.13",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 2.76,
+              "cfView": "2.76",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 3.92,
+              "cfView": "3.92",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.0,
+              "cf": 3.125,
+              "cfView": "3.125",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 2.194,
+              "cfView": "2.194",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.0,
+              "cf": 1.65,
+              "cfView": "1.65",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.46,
+              "cfView": "1.46",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 3.95,
+              "cfView": "3.95",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.0,
+              "cf": 3.24,
+              "cfView": "3.24",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "cf": 1.689,
+              "cfView": "1.689",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.0,
+              "cf": 1.112,
+              "cfView": "1.112",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.5,
+              "cf": 1.069,
+              "cfView": "1.069",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 1.182,
+              "cfView": "1.182",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.0,
+              "cf": 1.285,
+              "cfView": "1.285",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "cf": 2.363,
+              "cfView": "2.363",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.0,
+              "cf": 5.35,
+              "cfView": "5.35",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.5,
+              "cf": 6.1,
+              "cfView": "6.1",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 1308,
+    "subGamesCount": 41,
+    "id": 742385163,
+    "num": 180492,
+    "mainGameId": 742385163,
+    "constId": 351232470,
+    "startTs": 1788103800,
+    "countryId": 53,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 107,
+    "mainConstId": 351232470,
+    "kind": 3,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/a623076801421d2decfd4242eeff0b1c.png",
+      "id": 127733,
+      "name": "Spain. La Liga"
+    },
+    "opponent1": {
+      "fullName": "Real Madrid",
+      "countryId": 78,
+      "opps": [
+        {
+          "id": 2564,
+          "name": "Real Madrid",
+          "image": "/sfiles/logo_teams/65e3e972954419765c3ce21698edf6cb.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Malaga",
+      "countryId": 78,
+      "opps": [
+        {
+          "id": 3450,
+          "name": "Malaga",
+          "image": "/sfiles/logo_teams/3450.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 3",
+      "location": "Santiago Bernabeu (Madrid)",
+      "temperature": "+31\u00b0C",
+      "locationCountry": "Spain",
+      "weatherCode": "15",
+      "weatherDescription": "Clear skies",
+      "weatherWindCode": "11",
+      "weatherWindParam": "5.8",
+      "weatherWindDescription": "SW wind, m/s",
+      "weatherPressure": "760",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "21",
+      "weatherHumidityDescription": "Humidity, %",
+      "weatherPrecipitationChance": "0",
+      "weatherPrecipitationChanceDescription": "Precipitation, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 1.1,
+              "cfView": "1.1"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 12.5,
+              "cfView": "12.5"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 24,
+              "cfView": "24"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 1.007,
+              "cfView": "1.007"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.045,
+              "cfView": "1.045"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 7.95,
+              "cfView": "7.95"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 1.98,
+              "cfView": "1.98"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 1.825,
+              "cfView": "1.825"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 4.5,
+              "cf": 2.235,
+              "cfView": "2.235",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 4.5,
+              "cf": 1.665,
+              "cfView": "1.665",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 99,
+        "shortGroupId": 1007,
+        "events": [
+          [
+            {
+              "type": 3827,
+              "parameter": 4.25,
+              "cf": 2.048,
+              "cfView": "2.048",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3828,
+              "parameter": 4.25,
+              "cf": 1.845,
+              "cfView": "1.845",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 1.73,
+              "cfView": "1.73",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 2.136,
+              "cfView": "2.136",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2854,
+        "shortGroupId": 1008,
+        "events": [
+          [
+            {
+              "type": 3829,
+              "parameter": -2.75,
+              "cf": 1.89,
+              "cfView": "1.89",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.75)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3830,
+              "parameter": 2.75,
+              "cf": 1.99,
+              "cfView": "1.99",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.75)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 3.5,
+              "cf": 1.81,
+              "cfView": "1.81",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 3.5,
+              "cf": 2,
+              "cfView": "2",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 0.5,
+              "cf": 1.81,
+              "cfView": "1.81",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 0.5,
+              "cf": 2,
+              "cfView": "2",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a4951635e99bd05c648556b",
+      "stageId": "6a44f21b5e99bd05c646499a",
+      "stageType": 2,
+      "status": 2,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 1.544,
+              "cfView": "1.544",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 4.0,
+              "cf": 1.86,
+              "cfView": "1.86",
+              "eventParams": {
+                "params": [
+                  "(4)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 4.5,
+              "cf": 2.235,
+              "cfView": "2.235",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 5.0,
+              "cf": 2.73,
+              "cfView": "2.73",
+              "eventParams": {
+                "params": [
+                  "(5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 5.5,
+              "cf": 3.6,
+              "cfView": "3.6",
+              "eventParams": {
+                "params": [
+                  "(5.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 2.5,
+              "cfView": "2.5",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 4.0,
+              "cf": 2.025,
+              "cfView": "2.025",
+              "eventParams": {
+                "params": [
+                  "(4)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 4.5,
+              "cf": 1.665,
+              "cfView": "1.665",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 5.0,
+              "cf": 1.46,
+              "cfView": "1.46",
+              "eventParams": {
+                "params": [
+                  "(5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 5.5,
+              "cf": 1.3,
+              "cfView": "1.3",
+              "eventParams": {
+                "params": [
+                  "(5.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -3.5,
+              "cf": 2.41,
+              "cfView": "2.41",
+              "eventParams": {
+                "params": [
+                  "(-3.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -3.0,
+              "cf": 2.136,
+              "cfView": "2.136",
+              "eventParams": {
+                "params": [
+                  "(-3)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 1.73,
+              "cfView": "1.73",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.0,
+              "cf": 1.395,
+              "cfView": "1.395",
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 1.29,
+              "cfView": "1.29",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 3.5,
+              "cf": 1.57,
+              "cfView": "1.57",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 3.0,
+              "cf": 1.775,
+              "cfView": "1.775",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 2.136,
+              "cfView": "2.136",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.0,
+              "cf": 2.97,
+              "cfView": "2.97",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 3.59,
+              "cfView": "3.59",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 1315,
+    "subGamesCount": 49,
+    "id": 746639849,
+    "num": 243109,
+    "mainGameId": 746639849,
+    "constId": 362816650,
+    "startTs": 1788102000,
+    "countryId": 78,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 106,
+    "mainConstId": 362816650,
+    "kind": 3,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/a623076801421d2decfd4242eeff0b1c.png",
+      "id": 127733,
+      "name": "Spain. La Liga"
+    },
+    "opponent1": {
+      "fullName": "Deportivo de A Coruna",
+      "countryId": 78,
+      "opps": [
+        {
+          "id": 3480,
+          "name": "Deportivo de A Coruna",
+          "image": "/sfiles/logo_teams/6ec3a3908ef6682c69dbd6d84eccc1bd.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Valencia",
+      "countryId": 78,
+      "opps": [
+        {
+          "id": 3452,
+          "name": "Valencia",
+          "image": "/sfiles/logo_teams/e5f210ac37638c73fa8ef665b5b9b0fb.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 3",
+      "location": "Riazor (La Coruna)",
+      "temperature": "+20\u00b0C",
+      "locationCountry": "Spain",
+      "weatherCode": "15",
+      "weatherDescription": "Clear skies",
+      "weatherWindCode": "13",
+      "weatherWindParam": "5.0",
+      "weatherWindDescription": "W wind, m/s",
+      "weatherPressure": "765",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "69",
+      "weatherHumidityDescription": "Humidity, %",
+      "weatherPrecipitationChance": "1",
+      "weatherPrecipitationChanceDescription": "Precipitation, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 2.694,
+              "cfView": "2.694"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 3.1,
+              "cfView": "3.1"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 3.11,
+              "cfView": "3.11"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 1.42,
+              "cfView": "1.42"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.422,
+              "cfView": "1.422"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 1.528,
+              "cfView": "1.528"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 1.99,
+              "cfView": "1.99"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 1.747,
+              "cfView": "1.747"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 2.538,
+              "cfView": "2.538",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 1.61,
+              "cfView": "1.61",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 99,
+        "shortGroupId": 1007,
+        "events": [
+          [
+            {
+              "type": 3827,
+              "parameter": 2.25,
+              "cf": 2.203,
+              "cfView": "2.203",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3828,
+              "parameter": 2.25,
+              "cf": 1.781,
+              "cfView": "1.781",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "cf": 1.835,
+              "cfView": "1.835",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "cf": 2.126,
+              "cfView": "2.126",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2854,
+        "shortGroupId": 1008,
+        "events": [
+          [
+            {
+              "type": 3829,
+              "parameter": -0.25,
+              "cf": 2.243,
+              "cfView": "2.243",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-0.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3830,
+              "parameter": 0.25,
+              "cf": 1.756,
+              "cfView": "1.756",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 1.5,
+              "cf": 2.75,
+              "cfView": "2.75",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 1.5,
+              "cf": 1.42,
+              "cfView": "1.42",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 0.5,
+              "cf": 1.48,
+              "cfView": "1.48",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 0.5,
+              "cf": 2.62,
+              "cfView": "2.62",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a4951635e99bd05c648555d",
+      "stageId": "6a44f21b5e99bd05c646499a",
+      "stageType": 2,
+      "status": 2,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 1.43,
+              "cfView": "1.43",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.0,
+              "cf": 1.78,
+              "cfView": "1.78",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 2.538,
+              "cfView": "2.538",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.0,
+              "cf": 3.72,
+              "cfView": "3.72",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 4.55,
+              "cfView": "4.55",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 2.58,
+              "cfView": "2.58",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.0,
+              "cf": 1.95,
+              "cfView": "1.95",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 1.61,
+              "cfView": "1.61",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.0,
+              "cf": 1.24,
+              "cfView": "1.24",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.152,
+              "cfView": "1.152",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 5.5,
+              "cfView": "5.5",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.0,
+              "cf": 4.5,
+              "cfView": "4.5",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "cf": 1.835,
+              "cfView": "1.835",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.0,
+              "cf": 1.098,
+              "cfView": "1.098",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.5,
+              "cf": 1.052,
+              "cfView": "1.052",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 1.09,
+              "cfView": "1.09",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.0,
+              "cf": 1.156,
+              "cfView": "1.156",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "cf": 2.126,
+              "cfView": "2.126",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.0,
+              "cf": 5.7,
+              "cfView": "5.7",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.5,
+              "cf": 6.75,
+              "cfView": "6.75",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 1270,
+    "subGamesCount": 43,
+    "id": 746589666,
+    "num": 210761,
+    "mainGameId": 746589666,
+    "constId": 362180940,
+    "startTs": 1788111000,
+    "countryId": 78,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 106,
+    "mainConstId": 362180940,
+    "kind": 3,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/a623076801421d2decfd4242eeff0b1c.png",
+      "id": 127733,
+      "name": "Spain. La Liga"
+    },
+    "opponent1": {
+      "fullName": "Celta",
+      "countryId": 78,
+      "opps": [
+        {
+          "id": 3476,
+          "name": "Celta",
+          "image": "/sfiles/logo_teams/fadddef16fb3f0768be2989065e9be6b.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Athletic Bilbao",
+      "countryId": 78,
+      "opps": [
+        {
+          "id": 11851,
+          "name": "Athletic Bilbao",
+          "image": "/sfiles/logo_teams/04abe3fa4260dc224a6ab0949c5b8b35.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 3",
+      "location": "Balaidos (Vigo)",
+      "temperature": "+19\u00b0C",
+      "locationCountry": "Spain",
+      "weatherCode": "3",
+      "weatherDescription": "Some cloud",
+      "weatherWindCode": "15",
+      "weatherWindParam": "1.4",
+      "weatherWindDescription": "NW wind, m/s",
+      "weatherPressure": "766",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "79",
+      "weatherHumidityDescription": "Humidity, %",
+      "weatherPrecipitationChance": "2",
+      "weatherPrecipitationChanceDescription": "Precipitation, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 2.765,
+              "cfView": "2.765"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 3.29,
+              "cfView": "3.29"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 2.857,
+              "cfView": "2.857"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 1.48,
+              "cfView": "1.48"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.385,
+              "cfView": "1.385"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 1.506,
+              "cfView": "1.506"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 1.83,
+              "cfView": "1.83"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 1.891,
+              "cfView": "1.891"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 2.229,
+              "cfView": "2.229",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 1.765,
+              "cfView": "1.765",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 99,
+        "shortGroupId": 1007,
+        "events": [
+          [
+            {
+              "type": 3827,
+              "parameter": 2.25,
+              "cf": 1.959,
+              "cfView": "1.959",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3828,
+              "parameter": 2.25,
+              "cf": 1.98,
+              "cfView": "1.98",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "cf": 1.949,
+              "cfView": "1.949",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "cf": 1.991,
+              "cfView": "1.991",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2854,
+        "shortGroupId": 1008,
+        "events": [
+          [
+            {
+              "type": 3829,
+              "parameter": -0.25,
+              "cf": 2.321,
+              "cfView": "2.321",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-0.25)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3830,
+              "parameter": 0.25,
+              "cf": 1.711,
+              "cfView": "1.711",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.25)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 1.5,
+              "cf": 2.55,
+              "cfView": "2.55",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 1.5,
+              "cf": 1.48,
+              "cfView": "1.48",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 1.5,
+              "cf": 2.65,
+              "cfView": "2.65",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 1.5,
+              "cf": 1.46,
+              "cfView": "1.46",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a4951635e99bd05c6485565",
+      "stageId": "6a44f21b5e99bd05c646499a",
+      "stageType": 2,
+      "status": 2,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 1.34,
+              "cfView": "1.34",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.0,
+              "cf": 1.59,
+              "cfView": "1.59",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 2.229,
+              "cfView": "2.229",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.0,
+              "cf": 3.1,
+              "cfView": "3.1",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 3.74,
+              "cfView": "3.74",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 2.93,
+              "cfView": "2.93",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.0,
+              "cf": 2.24,
+              "cfView": "2.24",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 1.765,
+              "cfView": "1.765",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.0,
+              "cf": 1.33,
+              "cfView": "1.33",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.22,
+              "cfView": "1.22",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 5.4,
+              "cfView": "5.4",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.0,
+              "cf": 4.5,
+              "cfView": "4.5",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "cf": 1.949,
+              "cfView": "1.949",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.0,
+              "cf": 1.145,
+              "cfView": "1.145",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.5,
+              "cf": 1.087,
+              "cfView": "1.087",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 1.095,
+              "cfView": "1.095",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.0,
+              "cf": 1.157,
+              "cfView": "1.157",
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "cf": 1.991,
+              "cfView": "1.991",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.0,
+              "cf": 4.7,
+              "cfView": "4.7",
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.5,
+              "cf": 5.6,
+              "cfView": "5.6",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 1293,
+    "subGamesCount": 43,
+    "id": 746589663,
+    "num": 211208,
+    "mainGameId": 746589663,
+    "constId": 362180950,
+    "startTs": 1788118200,
+    "countryId": 78,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 106,
+    "mainConstId": 362180950,
+    "kind": 3,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/a623076801421d2decfd4242eeff0b1c.png",
+      "id": 127733,
+      "name": "Spain. La Liga"
+    },
+    "opponent1": {
+      "fullName": "Home",
+      "countryId": 225,
+      "opps": [
+        {
+          "id": 142205,
+          "name": "Home",
+          "image": "/sfiles/logo_teams/teamdefault.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Away",
+      "countryId": 225,
+      "opps": [
+        {
+          "id": 142207,
+          "name": "Away",
+          "image": "/sfiles/logo_teams/teamdefault.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 3",
+      "locationCountry": "Spain"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 1.225,
+              "cfView": "1.225"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 10,
+              "cfView": "10"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 7.11,
+              "cfView": "7.11"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 1.04,
+              "cfView": "1.04"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.06,
+              "cfView": "1.06"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 4.4,
+              "cfView": "4.4"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 8.5,
+              "cf": 1.868,
+              "cfView": "1.868",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(8.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 8.5,
+              "cf": 2.084,
+              "cfView": "2.084",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(8.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 99,
+        "shortGroupId": 1007,
+        "events": [
+          [
+            {
+              "type": 3827,
+              "parameter": 8.75,
+              "cf": 1.902,
+              "cfView": "1.902",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(8.75)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3828,
+              "parameter": 8.75,
+              "cf": 1.898,
+              "cfView": "1.898",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(8.75)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 1.785,
+              "cfView": "1.785",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 2.198,
+              "cfView": "2.198",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2854,
+        "shortGroupId": 1008,
+        "events": [
+          [
+            {
+              "type": 3829,
+              "parameter": -2.75,
+              "cf": 1.878,
+              "cfView": "1.878",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.75)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 3830,
+              "parameter": 2.75,
+              "cf": 2.071,
+              "cfView": "2.071",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.75)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 5.5,
+              "cf": 1.758,
+              "cfView": "1.758",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(5.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 5.5,
+              "cf": 2.067,
+              "cfView": "2.067",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(5.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 2.5,
+              "cf": 1.708,
+              "cfView": "1.708",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 2.5,
+              "cf": 2.141,
+              "cfView": "2.141",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "homeAwayFlag": true,
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 6.5,
+              "cf": 1.243,
+              "cfView": "1.243",
+              "eventParams": {
+                "params": [
+                  "(6.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 7.5,
+              "cf": 1.468,
+              "cfView": "1.468",
+              "eventParams": {
+                "params": [
+                  "(7.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 8.5,
+              "cf": 1.868,
+              "cfView": "1.868",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(8.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 9.5,
+              "cf": 2.295,
+              "cfView": "2.295",
+              "eventParams": {
+                "params": [
+                  "(9.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 10.5,
+              "cf": 3.125,
+              "cfView": "3.125",
+              "eventParams": {
+                "params": [
+                  "(10.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 6.5,
+              "cf": 4.03,
+              "cfView": "4.03",
+              "eventParams": {
+                "params": [
+                  "(6.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 7.5,
+              "cf": 2.691,
+              "cfView": "2.691",
+              "eventParams": {
+                "params": [
+                  "(7.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 8.5,
+              "cf": 2.084,
+              "cfView": "2.084",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(8.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 9.5,
+              "cf": 1.621,
+              "cfView": "1.621",
+              "eventParams": {
+                "params": [
+                  "(9.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 10.5,
+              "cf": 1.365,
+              "cfView": "1.365",
+              "eventParams": {
+                "params": [
+                  "(10.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -3.5,
+              "cf": 2.178,
+              "cfView": "2.178",
+              "eventParams": {
+                "params": [
+                  "(-3.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -3.0,
+              "cf": 1.925,
+              "cfView": "1.925",
+              "eventParams": {
+                "params": [
+                  "(-3)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 1.785,
+              "cfView": "1.785",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.0,
+              "cf": 1.514,
+              "cfView": "1.514",
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 1.415,
+              "cfView": "1.415",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 3.5,
+              "cf": 1.685,
+              "cfView": "1.685",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 3.0,
+              "cf": 1.875,
+              "cfView": "1.875",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 2.198,
+              "cfView": "2.198",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.0,
+              "cf": 2.551,
+              "cfView": "2.551",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 2.889,
+              "cfView": "2.889",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 419,
+    "subGamesCount": 4,
+    "id": 746682713,
+    "num": 246038,
+    "mainGameId": 746682713,
+    "constId": 362902502,
+    "startTs": 1788102000,
+    "countryId": 78,
+    "gameTypeName": "",
+    "dopInfo": "3 Matches",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 106,
+    "mainConstId": 362902502,
+    "kind": 3,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  }
+]

@@ -36,6 +36,8 @@ PRODUCTION_VERCEL_ORIGIN = "https://woundedlionenergy.vercel.app"
 LEGACY_VERCEL_ORIGIN = "https://wounded-lion-energy.vercel.app"
 LOCAL_DEV_ORIGINS = [
     "http://localhost:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
     "http://localhost:5173",
     "http://localhost:3000",
 ]
@@ -171,6 +173,7 @@ def test_opportunities_endpoint_schema_matches_frontend_expectations(client, mon
     cache_file = tmp_path / "cached_opportunities.json"
     monkeypatch.setattr(collector, "CACHE_FILE", cache_file)
     collector._write_cache([opportunity])
+    monkeypatch.setattr(api, "get_cached_betfair_opportunities", lambda live=None: [])
 
     response = client.get("/opportunities")
     assert response.status_code == 200
@@ -243,6 +246,7 @@ def test_opportunities_response_never_contains_secrets(client, monkeypatch, tmp_
     cache_file = tmp_path / "cached_opportunities.json"
     monkeypatch.setattr(collector, "CACHE_FILE", cache_file)
     collector._write_cache([opportunity])
+    monkeypatch.setattr(api, "get_cached_betfair_opportunities", lambda live=None: [])
 
     response = client.get("/opportunities")
     body_text = response.text

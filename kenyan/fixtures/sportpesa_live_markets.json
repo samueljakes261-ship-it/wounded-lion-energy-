@@ -1,0 +1,255 @@
+{
+  "markets": [
+    {
+      "eventId": 1702585,
+      "markets": [
+        {
+          "id": 194,
+          "status": "Open",
+          "name": "1x2",
+          "shortName": "1x2",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123676271,
+          "template": 3,
+          "position": 101,
+          "selections": [
+            {
+              "id": 251621347,
+              "status": "Open",
+              "name": "Chelsea FC",
+              "odds": "1.01"
+            },
+            {
+              "id": 251621359,
+              "status": "Open",
+              "name": "draw",
+              "odds": "12.50"
+            },
+            {
+              "id": 251621365,
+              "status": "Open",
+              "name": "Brighton & Hove Albion",
+              "odds": "100.00"
+            }
+          ]
+        },
+        {
+          "id": 147,
+          "status": "Open",
+          "name": "Double chance",
+          "shortName": "Double chance",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123676269,
+          "template": 3,
+          "position": 107,
+          "selections": [
+            {
+              "id": 251621351,
+              "status": "Closed",
+              "name": "Chelsea FC or draw",
+              "odds": "1.06"
+            },
+            {
+              "id": 251621345,
+              "status": "Open",
+              "name": "draw or Brighton & Hove Albion",
+              "odds": "11.00"
+            },
+            {
+              "id": 251621339,
+              "status": "Closed",
+              "name": "Chelsea FC or Brighton & Hove Albion",
+              "odds": "1.15"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "eventId": 1702597,
+      "markets": [
+        {
+          "id": 194,
+          "status": "Open",
+          "name": "1x2",
+          "shortName": "1x2",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123676869,
+          "template": 3,
+          "position": 101,
+          "selections": [
+            {
+              "id": 251623055,
+              "status": "Open",
+              "name": "Sunderland AFC",
+              "odds": "1.10"
+            },
+            {
+              "id": 251623059,
+              "status": "Open",
+              "name": "draw",
+              "odds": "6.00"
+            },
+            {
+              "id": 251623063,
+              "status": "Open",
+              "name": "Fulham FC",
+              "odds": "80.00"
+            }
+          ]
+        },
+        {
+          "id": 138,
+          "status": "Open",
+          "name": "Both teams to score",
+          "shortName": "Both teams to score",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123681015,
+          "template": 2,
+          "position": 105,
+          "selections": [
+            {
+              "id": 251634863,
+              "status": "Open",
+              "name": "yes",
+              "odds": "5.40"
+            },
+            {
+              "id": 251634883,
+              "status": "Open",
+              "name": "no",
+              "odds": "1.12"
+            }
+          ]
+        },
+        {
+          "id": 147,
+          "status": "Open",
+          "name": "Double chance",
+          "shortName": "Double chance",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123676871,
+          "template": 3,
+          "position": 107,
+          "selections": [
+            {
+              "id": 251623065,
+              "status": "Closed",
+              "name": "Sunderland AFC or draw",
+              "odds": "1.14"
+            },
+            {
+              "id": 251623061,
+              "status": "Open",
+              "name": "draw or Fulham FC",
+              "odds": "5.60"
+            },
+            {
+              "id": 251623057,
+              "status": "Open",
+              "name": "Sunderland AFC or Fulham FC",
+              "odds": "1.09"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "eventId": 1702591,
+      "markets": [
+        {
+          "id": 194,
+          "status": "Open",
+          "name": "1x2",
+          "shortName": "1x2",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123676939,
+          "template": 3,
+          "position": 101,
+          "selections": [
+            {
+              "id": 251623209,
+              "status": "Open",
+              "name": "Leeds United",
+              "odds": "5.60"
+            },
+            {
+              "id": 251623213,
+              "status": "Open",
+              "name": "draw",
+              "odds": "1.45"
+            },
+            {
+              "id": 251623217,
+              "status": "Open",
+              "name": "Brentford FC",
+              "odds": "4.75"
+            }
+          ]
+        },
+        {
+          "id": 147,
+          "status": "Open",
+          "name": "Double chance",
+          "shortName": "Double chance",
+          "specialValue": "0.00",
+          "sequence": 0,
+          "eventMarketId": 123676941,
+          "template": 3,
+          "position": 107,
+          "selections": [
+            {
+              "id": 251623219,
+              "status": "Open",
+              "name": "Leeds United or draw",
+              "odds": "1.15"
+            },
+            {
+              "id": 251623215,
+              "status": "Open",
+              "name": "draw or Brentford FC",
+              "odds": "1.12"
+            },
+            {
+              "id": 251623211,
+              "status": "Open",
+              "name": "Leeds United or Brentford FC",
+              "odds": "2.55"
+            }
+          ]
+        },
+        {
+          "id": 105,
+          "status": "Open",
+          "name": "Total",
+          "shortName": "Total",
+          "specialValue": "2.50",
+          "sequence": 0,
+          "eventMarketId": 123680135,
+          "template": 2,
+          "position": 109,
+          "selections": [
+            {
+              "id": 251632513,
+              "status": "Open",
+              "name": "over 2.5",
+              "odds": "2.40"
+            },
+            {
+              "id": 251632517,
+              "status": "Open",
+              "name": "under 2.5",
+              "odds": "1.52"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

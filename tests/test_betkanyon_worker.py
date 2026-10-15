@@ -72,6 +72,8 @@ class FakeBetkanyonFeed:
         self.in_call = False
         self.overlap_detected = False
         self._matches = []
+        self.last_cycle_empty = False
+        self.last_stats = {"events": 0, "odds": 0}
 
     def collect_once(self):
         if self.in_call:
@@ -101,7 +103,13 @@ class FakeBetkanyonFeed:
             if delay:
                 time.sleep(delay)
 
+            if self.script.get("empty_cycles"):
+                self.last_cycle_empty = True
+                self.last_stats = {"events": 0, "odds": 0}
+                return self._matches
+            self.last_cycle_empty = False
             self._matches = [make_match()]
+            self.last_stats = {"events": 1, "odds": 1}
             return self._matches
         finally:
             self.in_call = False
@@ -391,3 +399,22 @@ def test_worker_waits_on_credential_cooldown_then_recovers(monkeypatch):
     assert len(FakeBetkanyonFeed.instances) == 2
     assert FakeBetkanyonFeed.instances[0].closed is True
     assert worker.get_status()["error"] is None
+
+
+def test_empty_cycle_is_not_healthy_success(monkeypatch):
+    worker = make_worker(monkeypatch, poll_interval=0.02, empty_cycles=True)
+    worker.start()
+    try:
+        assert wait_until(
+            lambda: worker.get_status()["failed_count"] >= 2,
+            timeout=3.0,
+        )
+        status = worker.get_status()
+        assert status["status"] != "running"
+        assert status["success_count"] == 0
+        assert status["last_update_at"] is None
+        assert status["last_event_count"] == 0
+        assert status["consecutive_failures"] >= 2
+        assert "EmptyAcquisition" in (status["error"] or "")
+    finally:
+        worker.stop()
