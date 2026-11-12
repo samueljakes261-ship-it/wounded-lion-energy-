@@ -13,11 +13,11 @@ observed. An unchanged subsequent poll updates `confirmed_at` /
 `last_seen` only -- it must not restamp `collected_at` or the UI will
 treat a quiet market as a price change.
 
-PREMATCH restamps `collected_at` and `confirmed_at` to poll-end.
-`collected_at` remains odds-update/publish time. `confirmed_at` is
+PREMATCH restamps `collected_at` and `confirmed_at` to poll-end only
+when that poll successfully republishes the row. `confirmed_at` is
 snapshot authority for engine expiry. Pinned unseen rows are not
-restamped. While a poll is in flight, `get_matches()` holds
-`confirmed_at` on copies only.
+restamped. A later poll does not rewrite those timestamps while it
+is still in flight.
 
 `acquired_seq` is the worker poll generation. A delayed older poll
 cannot overwrite a newer snapshot even if it finishes later.

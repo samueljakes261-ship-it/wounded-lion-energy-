@@ -70,11 +70,11 @@ def _freshness_stamp(match):
     LIVE: confirmed_at is the last poll that still contained these
     odds. Quiet markets keep collected_at (price-change time).
 
-    PREMATCH: confirmed_at is last successful snapshot publish
-    (poll-end). While a worker poll is in flight, get_matches()
-    returns copies with a held confirmed_at so a 217s 22Bet walk
-    cannot expire the last-good catalogue at 180s. collected_at is
-    not restamped, so odds age stays honest.
+    PREMATCH: confirmed_at is the last successful snapshot publish
+    (poll-end). A poll that is still running does not move it.
+    Odds older than the prematch window are stale even if the
+    worker is mid-acquisition. collected_at stays the publish time
+    of that same successful poll.
     """
     confirmed = getattr(match, "confirmed_at", None)
     if confirmed is not None:

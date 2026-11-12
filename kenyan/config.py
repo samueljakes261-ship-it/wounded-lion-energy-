@@ -11,15 +11,14 @@ import os
 # ------------------------------------------------------------------
 # Polling.
 #
-# Prematch stays on the 5s catalogue cadence. LIVE workers are
-# independent threads, so they no longer need a 15s gap to avoid
-# starving prematch. 2s is the floor between LIVE polls: a slow
-# bookmaker still cannot overlap itself, and a fast one is not
-# hammered every 200ms.
+# PREMATCH targets one completed acquisition every 90 seconds.
+# Each bookmaker has its own thread, so a slow catalogue walk does
+# not delay the others and does not overlap itself. LIVE stays on
+# its own 2s floor.
 # ------------------------------------------------------------------
 KENYAN_POLL_INTERVAL_SECONDS = float(os.getenv("KENYAN_POLL_INTERVAL_SECONDS", "5"))
 KENYAN_PREMATCH_POLL_INTERVAL_SECONDS = float(
-    os.getenv("KENYAN_PREMATCH_POLL_INTERVAL_SECONDS", str(KENYAN_POLL_INTERVAL_SECONDS))
+    os.getenv("KENYAN_PREMATCH_POLL_INTERVAL_SECONDS", "90")
 )
 KENYAN_LIVE_POLL_INTERVAL_SECONDS = float(
     os.getenv("KENYAN_LIVE_POLL_INTERVAL_SECONDS", "2")
@@ -67,11 +66,11 @@ KENYAN_LIVE_OPPORTUNITY_RETENTION_SECONDS = float(
         str(KENYAN_LIVE_STALE_AFTER_SECONDS),
     )
 )
+# A PREMATCH card the latest compute did not return is not kept.
+# The worker snapshot is what preserves last-good odds. Keeping a
+# rejected card here is what left stale prices on the API.
 KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS = float(
-    os.getenv(
-        "KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS",
-        str(KENYAN_PREMATCH_STALE_AFTER_SECONDS),
-    )
+    os.getenv("KENYAN_PREMATCH_OPPORTUNITY_RETENTION_SECONDS", "0")
 )
 
 # LIVE pagination ceilings. LIVE catalogues are small; these bound a

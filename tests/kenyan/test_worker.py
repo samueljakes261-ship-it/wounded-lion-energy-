@@ -341,9 +341,9 @@ def test_in_flight_prematch_poll_past_180s_does_not_drop_last_good():
     matches = left.get_matches() + right.get_matches()
     assert len(matches) == 2
     assert list(left._match_records.values())[0].match.confirmed_at == stored_confirmed
-    assert matches[0].confirmed_at != stored_confirmed
+    assert matches[0].confirmed_at == stored_confirmed
     opportunities = KenyanArbitrageEngine().compute_opportunities(matches, bankroll=1000, now=now)
-    assert len(opportunities) == 1
+    assert opportunities == []
     left._poll_in_flight = False
     right._poll_in_flight = False
     idle = left.get_matches() + right.get_matches()

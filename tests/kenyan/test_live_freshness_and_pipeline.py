@@ -250,7 +250,7 @@ def test_runner_compute_loops_are_independent():
     assert runner._live_compute_thread is None
     assert runner._prematch_compute_thread is None
     assert runner._live_store._retention_seconds == KENYAN_LIVE_STALE_AFTER_SECONDS
-    assert runner._prematch_store._retention_seconds == KENYAN_PREMATCH_STALE_AFTER_SECONDS
+    assert runner._prematch_store._retention_seconds == 0
 
 
 def test_vzip_walks_more_than_former_40_page_cap():

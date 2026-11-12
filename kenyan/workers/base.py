@@ -7,7 +7,7 @@ Architecture (per the task's explicit requirement):
         -> initial acquisition
         -> parse payload
         -> update bookmaker snapshot
-        -> wait 5 seconds
+        -> wait for the feed interval
         -> poll again
         -> parse
         -> update snapshot
@@ -22,21 +22,19 @@ not a long-lived browser session.
 
 Last-good snapshot behavior: a failed or empty poll never immediately
 blanks out previously-published valid opportunities. The most recent
-successful (non-empty OR explicitly-confirmed-empty) result keeps being
-served by `get_matches()` until it exceeds KENYAN_STALE_AFTER_SECONDS,
-matching the project's own general stale-data policy (see
-collector.py's MAX_ODDS_AGE_SECONDS) but as an independent constant so
-nothing here can affect the existing bookmakers' staleness handling.
+successful result keeps being served by `get_matches()` until it
+exceeds the worker retention window. Serving that snapshot does not
+rewrite `confirmed_at` or `collected_at`. The engine expires odds from
+those stored timestamps, including while the next poll is still running.
 """
 import hashlib
 import threading
 import time
-from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from kenyan.config import KENYAN_POLL_INTERVAL_SECONDS, KENYAN_STALE_AFTER_SECONDS
-from kenyan.health import HealthState, WorkerHealth
+from kenyan.health import HealthState
 from kenyan.match_snapshot import merge_match_records, visible_matches
 from kenyan.metrics import log_cycle
 
@@ -136,6 +134,12 @@ class BaseKenyanWorker:
         self._match_records = {}
         self._last_good_at: Optional[float] = None
         self._last_attempt_at: Optional[float] = None
+        self._last_poll_started_at: Optional[float] = None
+        self._last_successful_poll_at: Optional[float] = None
+        self._poll_duration_seconds: Optional[float] = None
+        self._last_poll_error: Optional[str] = None
+        self._last_poll_ok: Optional[bool] = None
+        self._missed_poll_interval = False
         self._last_diagnostics: Optional[Diagnostics] = None
         self._health_state = HealthState()
         self._acquired_seq = 0
@@ -201,6 +205,7 @@ class BaseKenyanWorker:
 
     def _run_one_cycle(self):
         wall_start = time.monotonic()
+        started_at = time.time()
         with self._lock:
             if self._poll_in_flight:
                 log_cycle(
@@ -213,6 +218,7 @@ class BaseKenyanWorker:
                 return
             self._poll_in_flight = True
             self._poll_count += 1
+            self._last_poll_started_at = started_at
             previous_fp = self._content_fingerprint
             previous_good = self._last_good_at
         try:
@@ -222,11 +228,17 @@ class BaseKenyanWorker:
             with self._lock:
                 self._poll_in_flight = False
                 self._last_attempt_at = now
-                self._health_state.record_failure(f"{type(exc).__name__}: {exc}")
+                self._poll_duration_seconds = max(0.0, now - started_at)
+                self._missed_poll_interval = (
+                    self._poll_duration_seconds > self._poll_interval_seconds
+                )
+                self._last_poll_ok = False
+                self._last_poll_error = f"{type(exc).__name__}: {exc}"
+                self._health_state.record_failure(self._last_poll_error)
                 self._last_diagnostics = apply_catalogue_status(
                     Diagnostics(
                         endpoint_status="exception",
-                        parser_error=f"{type(exc).__name__}: {exc}",
+                        parser_error=self._last_poll_error,
                         acquired_at=now,
                         snapshot_complete=False,
                     )
@@ -249,6 +261,10 @@ class BaseKenyanWorker:
         with self._lock:
             self._poll_in_flight = False
             self._last_attempt_at = now
+            self._poll_duration_seconds = max(0.0, now - started_at)
+            self._missed_poll_interval = (
+                self._poll_duration_seconds > self._poll_interval_seconds
+            )
             apply_catalogue_status(diagnostics)
             self._last_diagnostics = diagnostics
 
@@ -273,17 +289,25 @@ class BaseKenyanWorker:
                 payload_hash = _fingerprint_hash(self._content_fingerprint)
                 if matches:
                     self._last_good_at = now
+                    self._last_successful_poll_at = now
+                    self._last_poll_ok = True
+                    self._last_poll_error = None
                     self._health_state.record_success()
                 else:
                     # Well-formed payload, genuinely zero relevant
                     # events right now (e.g. no live football matches
                     # this instant) -- not a failure. Previously seen
-                    # events stay until per-event retention expires.
+                    # events keep their existing timestamps until
+                    # per-event retention expires.
+                    self._last_poll_ok = True
                     self._health_state.record_empty_but_ok()
             else:
-                self._health_state.record_failure(
-                    diagnostics.parser_error or f"endpoint_status={diagnostics.endpoint_status}"
+                self._last_poll_ok = False
+                self._last_poll_error = (
+                    diagnostics.parser_error
+                    or f"endpoint_status={diagnostics.endpoint_status}"
                 )
+                self._health_state.record_failure(self._last_poll_error)
             acquired_seq = self._acquired_seq
         if published and self._on_snapshot is not None:
             try:
@@ -350,57 +374,80 @@ class BaseKenyanWorker:
                 return []
             in_flight = self._poll_in_flight and self._last_good_at is not None
             if in_flight:
+                # Keep the previous rows visible for diagnostics while
+                # this acquisition is running. Do not move confirmed_at
+                # or collected_at; a long poll must not make them fresh.
                 now = self._last_good_at
-            # Do not restamp collected_at here. LIVE merge preserves
-            # the price-change time; confirmed_at/last_seen track the
-            # last poll that still contained these odds.
-            matches = visible_matches(
+            return visible_matches(
                 self._match_records,
                 now=now,
                 retention_seconds=self._retention_seconds,
             )
-            if not in_flight:
-                return matches
-            # PREMATCH invariant: a last-good snapshot stays engine-
-            # usable while this worker is still acquiring. Hold
-            # confirmed_at on copies only so stored odds age is unchanged.
-            hold = datetime.now(timezone.utc)
-            held = []
-            for match in matches:
-                status = (getattr(match, "status", "") or "").upper()
-                if status == "LIVE" or not hasattr(match, "confirmed_at"):
-                    held.append(match)
-                else:
-                    held.append(replace(match, confirmed_at=hold))
-            return held
 
     def get_status(self) -> dict:
         with self._lock:
-            now = time.time()
+            wall = time.time()
+            visible_now = wall
             if self._poll_in_flight and self._last_good_at is not None:
-                now = self._last_good_at
-            health = self._health_state.classify(last_good_at=self._last_good_at, now=now)
-            age = (now - self._last_good_at) if self._last_good_at else None
-
+                visible_now = self._last_good_at
+            health = self._health_state.classify(last_good_at=self._last_good_at, now=wall)
+            age = (
+                (wall - self._last_successful_poll_at)
+                if self._last_successful_poll_at
+                else None
+            )
+            diagnostics = self._last_diagnostics
             return {
                 "name": self.name,
                 "health": health.value,
                 "last_good_at": self._last_good_at,
                 "last_attempt_at": self._last_attempt_at,
                 "age_seconds": age,
+                "freshness_age_seconds": age,
                 "match_count": len(
                     visible_matches(
                         self._match_records,
-                        now=now,
+                        now=visible_now,
                         retention_seconds=self._retention_seconds,
                     )
                 ),
                 "acquired_seq": self._acquired_seq,
                 "poll_count": self._poll_count,
                 "poll_in_flight": self._poll_in_flight,
+                "poll_interval_seconds": self._poll_interval_seconds,
+                "last_poll_started_at": self._last_poll_started_at,
+                "last_successful_poll_at": self._last_successful_poll_at,
+                "last_response_status": (
+                    None if diagnostics is None else diagnostics.http_status_code
+                ),
+                "poll_duration_seconds": self._poll_duration_seconds,
+                "events_retrieved": (
+                    0 if diagnostics is None else diagnostics.events_discovered
+                ),
+                "odds_parsed": (
+                    0 if diagnostics is None else diagnostics.valid_normalized_events
+                ),
+                "poll_status": self._poll_status(wall),
+                "missed_poll_interval": self._missed_poll_interval,
+                "last_poll_error": self._last_poll_error,
                 "error": self._health_state.last_error,
-                "diagnostics": _diagnostics_to_dict(self._last_diagnostics),
+                "diagnostics": _diagnostics_to_dict(diagnostics),
             }
+
+    def _poll_status(self, now: float) -> str:
+        stale = (
+            self._last_successful_poll_at is not None
+            and (now - self._last_successful_poll_at) > self._retention_seconds
+        )
+        if stale:
+            return "stale"
+        if self._poll_in_flight:
+            return "polling"
+        if self._last_poll_ok is False:
+            return "failed"
+        if self._last_successful_poll_at is None and self._last_poll_ok is not True:
+            return "polling"
+        return "fresh"
 
 
 def _fingerprint_hash(fingerprint) -> str:

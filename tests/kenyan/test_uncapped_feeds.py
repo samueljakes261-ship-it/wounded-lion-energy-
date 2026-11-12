@@ -126,7 +126,7 @@ def test_onexbet_prematch_catalogue_is_vzip_not_games1x2_window():
 
 
 def test_live_workers_poll_independently_of_prematch():
-    assert KENYAN_PREMATCH_POLL_INTERVAL_SECONDS == 5
+    assert KENYAN_PREMATCH_POLL_INTERVAL_SECONDS == 90
     assert KENYAN_LIVE_POLL_INTERVAL_SECONDS == 2
     pairs = (
         (sportpesa.build_live_worker(), sportpesa.build_prematch_worker()),
@@ -136,7 +136,7 @@ def test_live_workers_poll_independently_of_prematch():
     )
     for live, prematch in pairs:
         assert live._poll_interval_seconds == 2
-        assert prematch._poll_interval_seconds == 5
+        assert prematch._poll_interval_seconds == 90
 
 
 def test_opportunities_default_mode_is_prematch():
