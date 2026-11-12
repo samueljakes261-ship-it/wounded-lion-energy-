@@ -19,7 +19,7 @@ from kenyan.workers.vzip_pages import (
 )
 
 
-def _ok(url, body, *, bytes_len=64):
+def _ok(url, body, *, bytes_len=64, content_range=None):
     return FetchResult(
         url=url,
         ok=True,
@@ -28,6 +28,7 @@ def _ok(url, body, *, bytes_len=64):
         response_size_bytes=bytes_len,
         elapsed_seconds=0.01,
         json_body=body,
+        content_range=content_range,
     )
 
 
@@ -383,20 +384,28 @@ def test_betika_live_still_stops_at_live_cap(monkeypatch):
 
 def test_sportpesa_prematch_pages_until_short_page_past_former_40(monkeypatch):
     calls = []
+    monkeypatch.setattr(sportpesa, "PREMATCH_REQUEST_PACE_SECONDS", 0)
+    monkeypatch.setattr(
+        sportpesa, "establish_prematch_session", lambda: (object(), None)
+    )
 
-    def fake_fetch(url, headers=None, timeout=None, retries=0):
+    def fake_fetch(url, headers=None, timeout=None, retries=0, session=None):
+        if "/api/games/markets" in url:
+            return _ok(url, {})
         calls.append(url)
         page = int(parse_qs(urlsplit(url).query).get("pag_min", ["1"])[0])
-        if page < 45:
+        index = len(calls)
+        assert page == 1 + (index - 1) * sportpesa.PREMATCH_PAGE_COUNT
+        if index < 45:
             body = [
                 {
-                    "id": page * 100 + index,
+                    "id": page * 100 + offset,
                     "sport": {"id": 1},
                     "competitors": [{"name": "A"}, {"name": "B"}],
                     "dateTimestamp": 1_700_000_000_000,
                     "markets": [],
                 }
-                for index in range(sportpesa.PREMATCH_PAGE_COUNT)
+                for offset in range(sportpesa.PREMATCH_PAGE_COUNT)
             ]
             return _ok(url, body)
         return _ok(url, [{"id": 4500, "sport": {"id": 1}}])
@@ -407,8 +416,11 @@ def test_sportpesa_prematch_pages_until_short_page_past_former_40(monkeypatch):
     assert diagnostics.page_cap_hit is False
     assert diagnostics.snapshot_complete is True
     assert diagnostics.catalogue_status == "complete"
+    assert diagnostics.terminal_reason == "short_page"
     assert len(calls) == 45
     assert len(calls) > KENYAN_SPORTPESA_LIVE_MAX_PAGES
+    assert "pag_min=1" in calls[0]
+    assert "pag_min=16" in calls[1]
     assert isinstance(matches, list)
 
 
@@ -661,44 +673,60 @@ def test_betika_zero_new_ids_is_incomplete(monkeypatch):
 
 def test_sportpesa_prematch_continues_when_first_page_shorter_than_requested(monkeypatch):
     calls = []
+    monkeypatch.setattr(sportpesa, "PREMATCH_REQUEST_PACE_SECONDS", 0)
+    monkeypatch.setattr(
+        sportpesa, "establish_prematch_session", lambda: (object(), None)
+    )
 
-    def fake_fetch(url, headers=None, timeout=None, retries=0):
+    def fake_fetch(url, headers=None, timeout=None, retries=0, session=None):
+        if "/api/games/markets" in url:
+            return _ok(url, {})
         calls.append(url)
         page = int(parse_qs(urlsplit(url).query).get("pag_min", ["1"])[0])
         count = int(parse_qs(urlsplit(url).query).get("pag_count", ["15"])[0])
         assert count == sportpesa.PREMATCH_PAGE_COUNT
-        observed = 10
-        if page < 5:
-            body = [
-                {
-                    "id": (page - 1) * observed + index,
-                    "sport": {"id": 1},
-                    "competitors": [{"name": "A"}, {"name": "B"}],
-                    "dateTimestamp": 1_700_000_000_000,
-                    "markets": [],
-                }
-                for index in range(observed)
-            ]
-            return _ok(url, body)
-        return _ok(
-            url,
-            [{"id": 40, "sport": {"id": 1}, "competitors": [{"name": "A"}, {"name": "B"}]}],
-        )
+        total = 41
+        start = page - 1
+        end = min(start + 9, total - 1)
+        body = [
+            {
+                "id": start + index,
+                "sport": {"id": 1},
+                "competitors": [{"name": "A"}, {"name": "B"}],
+                "dateTimestamp": 1_700_000_000_000,
+                "markets": [],
+            }
+            for index in range(end - start + 1)
+        ]
+        return _ok(url, body, content_range=f"{start}-{end}/{total}")
 
     monkeypatch.setattr(sportpesa, "fetch_json", fake_fetch)
     matches, diagnostics = sportpesa._poll_prematch()
     assert "pag_count=15" in calls[0]
+    assert [int(parse_qs(urlsplit(url).query)["pag_min"][0]) for url in calls] == [
+        1,
+        11,
+        21,
+        31,
+        41,
+    ]
     assert diagnostics.pages_fetched == 5
     assert diagnostics.snapshot_complete is True
     assert diagnostics.catalogue_status == "complete"
-    assert diagnostics.terminal_reason == "short_page"
+    assert diagnostics.terminal_reason == "content_range"
+    assert diagnostics.source_total == 41
     assert diagnostics.unique_event_ids == 41
     assert diagnostics.page_cap_hit is False
     assert isinstance(matches, list)
 
 
 def test_sportpesa_prematch_http_error_mid_walk_is_partial(monkeypatch):
-    def fake_fetch(url, headers=None, timeout=None, retries=0):
+    monkeypatch.setattr(sportpesa, "PREMATCH_REQUEST_PACE_SECONDS", 0)
+    monkeypatch.setattr(
+        sportpesa, "establish_prematch_session", lambda: (object(), None)
+    )
+
+    def fake_fetch(url, headers=None, timeout=None, retries=0, session=None):
         page = int(parse_qs(urlsplit(url).query).get("pag_min", ["1"])[0])
         if page == 1:
             body = [
@@ -732,7 +760,12 @@ def test_sportpesa_prematch_http_error_mid_walk_is_partial(monkeypatch):
 
 
 def test_sportpesa_prematch_runaway_is_incomplete(monkeypatch):
-    def fake_fetch(url, headers=None, timeout=None, retries=0):
+    monkeypatch.setattr(sportpesa, "PREMATCH_REQUEST_PACE_SECONDS", 0)
+    monkeypatch.setattr(
+        sportpesa, "establish_prematch_session", lambda: (object(), None)
+    )
+
+    def fake_fetch(url, headers=None, timeout=None, retries=0, session=None):
         page = int(parse_qs(urlsplit(url).query).get("pag_min", ["1"])[0])
         body = [
             {

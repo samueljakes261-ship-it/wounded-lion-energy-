@@ -2,29 +2,28 @@
 Persistent SportPesa workers (one for LIVE, one for PREMATCH).
 
 LIVE is a two-step flow per poll cycle (discover -> build dynamic
-markets URL -> fetch markets -> parse), exactly as required: the event
-ids are NEVER hardcoded, they come fresh from the discovery call every
-cycle. Both HTTP calls together still complete well within the 5s
-poll interval for the handful of currently-live football events, so
-this remains "one persistent worker, polling every 5 seconds" rather
-than spinning up anything new per cycle.
+markets URL -> fetch markets -> parse). Event ids come from the
+discovery call every cycle. LIVE is unchanged by the prematch session.
 
-PREMATCH walks `/api/todays/1/games` (embedded 1X2 odds) until a short
-or empty page. That endpoint is football and Kenya-today scoped by
-the API; extra sports are not invented here. There is no catalogue
-page ceiling -- only runaway-loop protection.
+PREMATCH opens one HTTP session, GETs the public homepage so the site
+can set its own cookies, then reuses that session for the catalogue
+and for `/api/games/markets`. `pag_min` is the 1-based item index.
+Completeness comes from `Content-Range: start-end/total` (0-based,
+inclusive). The next `pag_min` is `end + 2`. There is no page, offset,
+or skip parameter.
 
-ANTI-BOT CHALLENGE: both `www.ke.sportpesa.com` and `www.sportpesa.com`
-currently serve an Imperva "Challenge Validation" HTML page to plain
-HTTP GETs (HTTP 200, non-JSON). This module does not reuse OnWin/
-BetKanyon ZenRows sessions. A challenge is recorded as a failed
-acquisition (`looks_like_bot_challenge`) and health becomes DEGRADED
-after the Kenyan consecutive-failure threshold — never RUNNING just
-because the poll thread is alive, and never by fabricating odds.
+www.ke.sportpesa.com returns HTTP 403 Access Denied to this client and
+sets no cookies. This module does not bypass that response. The same
+API paths on www.sportpesa.com return JSON after the homepage GET.
+HTTP 200/206 HTML that is not JSON is a source failure, not an empty
+catalogue. A JSON body is accepted even when Content-Type is text/html.
 """
 import time
 
+import requests
+
 from kenyan.config import (
+    KENYAN_HTTP_TIMEOUT_SECONDS,
     KENYAN_LIVE_POLL_INTERVAL_SECONDS,
     KENYAN_LIVE_STALE_AFTER_SECONDS,
     KENYAN_PREMATCH_POLL_INTERVAL_SECONDS,
@@ -32,41 +31,112 @@ from kenyan.config import (
     KENYAN_PREMATCH_STALE_AFTER_SECONDS,
     KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT,
     KENYAN_SPORTPESA_LIVE_MAX_PAGES,
+    KENYAN_USER_AGENT,
     SPORTPESA,
 )
-from kenyan.http_utils import copy_cache_headers, fetch_json, looks_like_bot_challenge
+from kenyan.http_utils import (
+    FetchResult,
+    copy_cache_headers,
+    fetch_json,
+    looks_like_bot_challenge,
+)
 from kenyan.parsers.sportpesa_parser import (
+    SPORTPESA_BASE_URL,
+    assemble_prematch_matches,
     build_live_discovery_url,
     build_live_markets_url,
+    build_prematch_markets_url,
     build_todays_games_url,
     extract_live_football_events,
+    looks_like_live_markets_payload,
+    parse_content_range,
     parse_live_markets,
-    parse_todays_games,
 )
 from kenyan.workers.base import BaseKenyanWorker, Diagnostics, apply_catalogue_status
 
-# Browser and ke.sportpesa.com requests use pag_count=15. Requesting a
-# larger count while advancing pag_min as a page index can skip events
-# if the API pages by the requested size but returns fewer rows.
+# Verified catalogue page size. pag_min steps by the number of rows
+# returned (Content-Range end + 2), not by 1.
 PREMATCH_PAGE_COUNT = 15
+PREMATCH_MARKETS_BATCH = 15
+PREMATCH_REQUEST_PACE_SECONDS = 0.05
 PREMATCH_MAX_PAGES_PER_CYCLE = KENYAN_PREMATCH_RUNAWAY_PAGES
 LIVE_DISCOVERY_LIMIT = KENYAN_SPORTPESA_LIVE_DISCOVERY_LIMIT
 LIVE_DISCOVERY_MAX_PAGES = KENYAN_SPORTPESA_LIVE_MAX_PAGES
 
-# Browser-like Origin/Referer only — never cookies/tokens. Direct HTTP
-# to both www.sportpesa.com and ke.sportpesa.com currently returns an
-# Imperva "Challenge Validation" HTML page (HTTP 200, not JSON); that
-# is recorded as a failed acquisition, not RUNNING.
+# LIVE headers. Prematch adds the XHR headers verified on the site.
 SPORTPESA_HEADERS = {
     "Origin": "https://www.sportpesa.com",
     "Referer": "https://www.sportpesa.com/",
 }
+PREMATCH_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": "https://www.sportpesa.com",
+    "Referer": "https://www.sportpesa.com/",
+    "X-Requested-With": "XMLHttpRequest",
+    "X-App-Timezone": "Africa/Nairobi",
+}
 
 
-def _fetch(url, retries=0):
+def _fetch(url, retries=0, session=None, headers=None):
+    kwargs = {"headers": headers or SPORTPESA_HEADERS}
     if retries:
-        return fetch_json(url, headers=SPORTPESA_HEADERS, retries=retries)
-    return fetch_json(url, headers=SPORTPESA_HEADERS)
+        kwargs["retries"] = retries
+    if session is not None:
+        kwargs["session"] = session
+    return fetch_json(url, **kwargs)
+
+
+def establish_prematch_session():
+    """
+    Open one session and load the public homepage.
+
+    Cookies set by that response stay on the session. Their values are
+    not read or logged. A challenge page or an HTTP error is a failed
+    session, not an empty catalogue.
+    """
+    session = requests.Session()
+    home = f"{SPORTPESA_BASE_URL}/"
+    start = time.monotonic()
+    try:
+        response = session.get(
+            home,
+            headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "User-Agent": KENYAN_USER_AGENT,
+            },
+            timeout=KENYAN_HTTP_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        return None, FetchResult(
+            url=home,
+            ok=False,
+            status_code=None,
+            content_type=None,
+            response_size_bytes=0,
+            elapsed_seconds=time.monotonic() - start,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
+    text = response.text or ""
+    content_type = response.headers.get("content-type")
+    result = FetchResult(
+        url=home,
+        ok=response.status_code < 400,
+        status_code=response.status_code,
+        content_type=content_type,
+        response_size_bytes=len(response.content or b""),
+        elapsed_seconds=time.monotonic() - start,
+        text_body=text[:2000],
+        error=None if response.status_code < 400 else f"HTTP {response.status_code}",
+    )
+    if response.status_code >= 400 or looks_like_bot_challenge(result):
+        result.ok = False
+        if looks_like_bot_challenge(result):
+            result.error = "blocked by anti-bot challenge (non-JSON challenge page returned)"
+        return None, result
+    return session, None
 
 
 def _blocked_diagnostics(fetch_result) -> Diagnostics:
@@ -187,110 +257,213 @@ def _poll_live():
     return matches, diagnostics
 
 
+def _prematch_failure(result, *, pages_fetched):
+    blocked = _blocked_diagnostics(result)
+    if not looks_like_bot_challenge(result):
+        body = (result.text_body or "").lstrip()
+        content_type = (result.content_type or "").lower()
+        if body.startswith("<") or ("html" in content_type and not result.looks_like_json):
+            blocked.parser_error = "non-JSON HTML response"
+            blocked.endpoint_status = "http_error"
+        elif result.status_code is not None and result.status_code < 400:
+            blocked.endpoint_status = "bad_payload"
+    blocked.pages_fetched = pages_fetched
+    blocked.snapshot_complete = False
+    blocked.terminal_reason = (
+        "http_error" if blocked.endpoint_status == "http_error" else "bad_payload"
+    )
+    return [], apply_catalogue_status(blocked)
+
+
+def _pace():
+    if PREMATCH_REQUEST_PACE_SECONDS > 0:
+        time.sleep(PREMATCH_REQUEST_PACE_SECONDS)
+
+
 def _poll_prematch():
-    all_matches = []
+    session, session_failure = establish_prematch_session()
+    if session_failure is not None:
+        failed, diagnostics = _prematch_failure(session_failure, pages_fetched=0)
+        diagnostics.terminal_reason = "session_failed"
+        return failed, apply_catalogue_status(diagnostics)
+
+    games = []
     total_events = 0
     total_football = 0
     total_size = 0
     total_elapsed = 0.0
     last_status_code = None
     last_content_type = None
-
     pages_fetched = 0
     snapshot_complete = True
     page_cap_hit = False
     seen_ids = set()
     duplicate_events = 0
-    observed_page_size = None
     terminal_reason = "empty_page"
     first_cursor = None
-    page = 1
-    while page <= PREMATCH_MAX_PAGES_PER_CYCLE:
-        url = build_todays_games_url(page_min=page, page_count=PREMATCH_PAGE_COUNT)
-        result = _fetch(url, retries=2)
+    source_total = None
+    pag_min = 1
+    last_cursor = "1"
+
+    while True:
+        if pages_fetched >= PREMATCH_MAX_PAGES_PER_CYCLE:
+            page_cap_hit = True
+            snapshot_complete = False
+            terminal_reason = "runaway_guard"
+            break
+        if pages_fetched:
+            _pace()
+        url = build_todays_games_url(page_min=pag_min, page_count=PREMATCH_PAGE_COUNT)
+        result = _fetch(url, retries=2, session=session, headers=PREMATCH_HEADERS)
         pages_fetched += 1
+        last_cursor = str(pag_min)
+        if first_cursor is None:
+            first_cursor = str(pag_min)
 
         if not result.ok:
-            if page == 1:
-                blocked = _blocked_diagnostics(result)
-                blocked.pages_fetched = pages_fetched
-                blocked.snapshot_complete = False
-                blocked.terminal_reason = "http_error"
-                return [], apply_catalogue_status(blocked)
+            if not games:
+                return _prematch_failure(result, pages_fetched=pages_fetched)
             snapshot_complete = False
-            terminal_reason = "http_error"
-            break  # keep whatever earlier pages already produced
+            body = (result.text_body or "").lstrip()
+            if body.startswith("<") or looks_like_bot_challenge(result):
+                terminal_reason = "non_json_html"
+            else:
+                terminal_reason = "http_error"
+            break
 
         last_status_code = result.status_code
         last_content_type = result.content_type
         total_size += result.response_size_bytes
         total_elapsed += result.elapsed_seconds
 
-        page_games = result.json_body or []
+        page_games = result.json_body
         if not isinstance(page_games, list):
-            page_games = []
+            if not games:
+                return [], apply_catalogue_status(
+                    Diagnostics(
+                        endpoint_status="bad_payload",
+                        http_status_code=result.status_code,
+                        content_type=result.content_type,
+                        response_size_bytes=total_size,
+                        parser_error="expected a PREMATCH game list",
+                        elapsed_seconds=total_elapsed,
+                        acquired_at=time.time(),
+                        pages_fetched=pages_fetched,
+                        snapshot_complete=False,
+                        terminal_reason="bad_payload",
+                        first_cursor=first_cursor,
+                        last_cursor=last_cursor,
+                    )
+                )
+            snapshot_complete = False
+            terminal_reason = "bad_payload"
+            break
+
         total_events += len(page_games)
-        total_football += sum(
-            1 for g in page_games if (g.get("sport") or {}).get("id") == 1
-        )
+        span = parse_content_range(result.content_range)
+        if span is not None:
+            _start, end, total = span
+            source_total = total
+            next_min = end + 2
+            page_complete = end + 1 >= total
+        else:
+            next_min = pag_min + len(page_games)
+            page_complete = len(page_games) < PREMATCH_PAGE_COUNT
+
         added = 0
         for game in page_games:
             if not isinstance(game, dict):
                 continue
-            event_id = game.get("id") or game.get("externalId")
+            sport = game.get("sport") or {}
+            if isinstance(sport, dict) and sport.get("id") == 1:
+                total_football += 1
+            event_id = game.get("id")
+            if event_id in (None, ""):
+                games.append(game)
+                continue
             if event_id in seen_ids:
                 duplicate_events += 1
                 continue
             seen_ids.add(event_id)
+            games.append(game)
             added += 1
-
-        if first_cursor is None:
-            first_cursor = str(page)
-
-        try:
-            all_matches.extend(parse_todays_games(page_games))
-        except Exception as exc:  # noqa: BLE001
-            return [], apply_catalogue_status(
-                Diagnostics(
-                    endpoint_status="bad_payload",
-                    http_status_code=result.status_code,
-                    content_type=result.content_type,
-                    response_size_bytes=total_size,
-                    events_discovered=total_events,
-                    football_events=total_football,
-                    parser_error=f"{type(exc).__name__}: {exc}",
-                    elapsed_seconds=total_elapsed,
-                    acquired_at=time.time(),
-                    pages_fetched=pages_fetched,
-                    snapshot_complete=False,
-                    unique_event_ids=len(seen_ids),
-                    duplicate_events=duplicate_events,
-                    terminal_reason="parse_error",
-                    first_cursor=first_cursor,
-                    last_cursor=str(page),
-                )
-            )
 
         if not page_games:
             terminal_reason = "empty_page"
+            if span is not None and end + 1 < total:
+                snapshot_complete = False
+            else:
+                snapshot_complete = True
             break
-        if observed_page_size is None:
-            observed_page_size = len(page_games)
         if added == 0:
             snapshot_complete = False
             terminal_reason = "zero_new_ids"
             break
-        if len(page_games) < observed_page_size:
-            # Stop on a page shorter than the first observed page, not
-            # on a page shorter than the requested pag_count.
-            terminal_reason = "short_page"
+        if page_complete:
+            terminal_reason = "content_range" if span is not None else "short_page"
+            snapshot_complete = True
             break
-        page += 1
-    else:
-        page_cap_hit = True
-        snapshot_complete = False
-        terminal_reason = "runaway_guard"
+        if next_min <= pag_min:
+            snapshot_complete = False
+            terminal_reason = "pagination_stalled"
+            break
+        pag_min = next_min
 
+    markets_payload = {}
+    if games and snapshot_complete:
+        event_ids = [game.get("id") for game in games if game.get("id") not in (None, "")]
+        markets_ok = True
+        for offset in range(0, len(event_ids), PREMATCH_MARKETS_BATCH):
+            if offset:
+                _pace()
+            batch = event_ids[offset : offset + PREMATCH_MARKETS_BATCH]
+            markets_result = _fetch(
+                build_prematch_markets_url(batch),
+                retries=2,
+                session=session,
+                headers=PREMATCH_HEADERS,
+            )
+            total_size += markets_result.response_size_bytes
+            total_elapsed += markets_result.elapsed_seconds
+            body = markets_result.json_body
+            if (
+                not markets_result.ok
+                or not isinstance(body, dict)
+                or looks_like_live_markets_payload(body)
+            ):
+                markets_ok = False
+                break
+            markets_payload.update(body)
+        if not markets_ok:
+            snapshot_complete = False
+            terminal_reason = "markets_incomplete"
+
+    try:
+        matches = assemble_prematch_matches(games, markets_payload or None)
+    except Exception as exc:  # noqa: BLE001
+        return [], apply_catalogue_status(
+            Diagnostics(
+                endpoint_status="bad_payload",
+                http_status_code=last_status_code,
+                content_type=last_content_type,
+                response_size_bytes=total_size,
+                events_discovered=total_events,
+                football_events=total_football,
+                parser_error=f"{type(exc).__name__}: {exc}",
+                elapsed_seconds=total_elapsed,
+                acquired_at=time.time(),
+                pages_fetched=pages_fetched,
+                snapshot_complete=False,
+                source_total=source_total,
+                unique_event_ids=len(seen_ids),
+                duplicate_events=duplicate_events,
+                terminal_reason="parse_error",
+                first_cursor=first_cursor,
+                last_cursor=last_cursor,
+            )
+        )
+
+    one_x_two = sum(1 for match in matches if match.market == "1X2")
     diagnostics = Diagnostics(
         endpoint_status="ok",
         http_status_code=last_status_code,
@@ -298,21 +471,21 @@ def _poll_prematch():
         response_size_bytes=total_size,
         events_discovered=total_events,
         football_events=total_football,
-        one_x_two_events=total_football,
-        valid_normalized_events=len(all_matches),
+        one_x_two_events=one_x_two,
+        valid_normalized_events=len(matches),
         elapsed_seconds=total_elapsed,
         acquired_at=time.time(),
         pages_fetched=pages_fetched,
         page_cap_hit=page_cap_hit,
         snapshot_complete=snapshot_complete,
+        source_total=source_total,
         unique_event_ids=len(seen_ids),
         duplicate_events=duplicate_events,
         terminal_reason=terminal_reason,
         first_cursor=first_cursor,
-        last_cursor=str(page),
+        last_cursor=last_cursor,
     )
-
-    return all_matches, apply_catalogue_status(diagnostics)
+    return matches, apply_catalogue_status(diagnostics)
 
 
 def build_live_worker() -> BaseKenyanWorker:

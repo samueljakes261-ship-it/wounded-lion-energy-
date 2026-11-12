@@ -1,0 +1,23 @@
+{
+  "16167883": [
+    {
+      "id": 10,
+      "name": "1X2",
+      "specValue": 0,
+      "selections": [
+        {"name": "Home", "shortName": "1", "odds": "1.50", "specValue": 0},
+        {"name": "Draw", "shortName": "X", "odds": "3.75", "specValue": 0},
+        {"name": "Away", "shortName": "2", "odds": "6.00", "specValue": 0}
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Total Goals Over/Under - Full Time",
+      "specValue": 2.5,
+      "selections": [
+        {"name": "OVER 2.50", "shortName": "OV", "odds": "1.74", "specValue": 2.5},
+        {"name": "UNDER 2.50", "shortName": "UN", "odds": "2.02", "specValue": 2.5}
+      ]
+    }
+  ]
+}

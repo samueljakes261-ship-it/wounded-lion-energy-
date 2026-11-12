@@ -68,6 +68,9 @@ class FetchResult:
     etag: Optional[str] = None
     last_modified: Optional[str] = None
     cache_control: Optional[str] = None
+    # SportPesa catalogue responses are HTTP 206 with Content-Range
+    # start-end/total. The header is catalogue metadata, not a secret.
+    content_range: Optional[str] = None
 
     @property
     def looks_like_json(self) -> bool:
@@ -121,12 +124,15 @@ def fetch_json(
         elapsed = time.monotonic() - start
         content_type = response.headers.get("content-type")
         size = len(response.content or b"")
+        # Decode JSON from the body. SportPesa sometimes labels a JSON
+        # array as text/html; Content-Type alone is not the success check.
         cache_kwargs = dict(
             http_date=response.headers.get("date"),
             cache_age=response.headers.get("age"),
             etag=response.headers.get("etag"),
             last_modified=response.headers.get("last-modified"),
             cache_control=response.headers.get("cache-control"),
+            content_range=response.headers.get("content-range"),
         )
 
         if response.status_code >= 400:
