@@ -98,7 +98,24 @@ class Kolay90PrematchWorker:
         except Exception:
             pass
 
+    def _prepare_vnc_desktop(self):
+        flag = (os.getenv("KOLAY90_VNC_AUTOSTART") or "").strip().lower()
+        if flag not in {"1", "true", "yes"}:
+            return
+        from parsers.kolay90_prematch.vnc_session import ensure_desktop
+
+        result = ensure_desktop(autostart=True)
+        print(
+            "[KOLAY90 PREMATCH] RealVNC desktop "
+            f"display={result.get('display')} "
+            f"vnc_listening={str(bool(result.get('vnc_listening'))).lower()} "
+            f"cdp_listening={str(bool(result.get('cdp_listening'))).lower()} "
+            f"ok={str(bool(result.get('ok'))).lower()} "
+            f"failure={result.get('failure') or '-'}"
+        )
+
     def _run_loop(self):
+        self._prepare_vnc_desktop()
         while not self._stop_event.is_set():
             cycle_start = time.monotonic()
             with self._lock:
@@ -114,11 +131,17 @@ class Kolay90PrematchWorker:
                 wait = self.poll_interval
                 if result.get("auth_required") or result.get("auth_state") == AUTH_REQUIRED:
                     wait = AUTH_WAIT_SECONDS
+                    from parsers.kolay90_prematch.vnc_session import (
+                        desktop_status,
+                        operator_message,
+                    )
+
+                    desktop = desktop_status()
+                    result["session_desktop"] = desktop
                     print("[KOLAY90 PREMATCH] KOLAY90_AUTHENTICATION_REQUIRED")
                     print(
-                        f"[KOLAY90 PREMATCH] failure={result.get('failure')} "
-                        "Chrome/CDP 127.0.0.1:9222 is still alive. "
-                        "Complete Cloudflare/login in that same open window; do not relaunch Chrome"
+                        "[KOLAY90 PREMATCH] "
+                        + operator_message(result.get("failure"), desktop)
                     )
                 remaining = max(0.0, wait - (elapsed_ms / 1000.0))
                 if self._stop_event.wait(timeout=remaining):
@@ -138,6 +161,8 @@ class Kolay90PrematchWorker:
             state["last_processing_ms"] = elapsed_ms
             state["auth_state"] = result.get("auth_state")
             state["authenticated"] = bool(result.get("authenticated"))
+            if result.get("session_desktop") is not None:
+                state["session_desktop"] = result.get("session_desktop")
             if matches or not state["matches"]:
                 state["matches"] = matches
             state["last_event_count"] = result.get("total_events") or len(matches)
