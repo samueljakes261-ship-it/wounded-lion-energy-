@@ -10,6 +10,9 @@ Endpoints:
     GET /kenyan/opportunities -- Kenyan BACK-vs-BACK opportunities for
                                   ?mode=live or ?mode=prematch.
     GET /kenyan/status        -- per-worker health.
+
+The earlier access-code gate was removed. kenyan/access.py is unchanged
+if that gate needs to be attached again.
 """
 import time
 from datetime import datetime, timezone
