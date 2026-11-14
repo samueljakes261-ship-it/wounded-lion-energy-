@@ -1,6 +1,6 @@
 from parsers.betkanyon.adapter import BetkanyonAdapter
 from parsers.betkanyon.decryptor import BetkanyonDecryptor
-from parsers.betkanyon.fetcher import BetkanyonFetcher, EmptyAcquisitionError
+from parsers.betkanyon.fetcher import BetkanyonFetcher
 from parsers.betkanyon.parser import parse_json
 
 
@@ -38,11 +38,22 @@ class BetkanyonFeed:
         encrypted = self.fetcher.fetch()
         meta = getattr(self.fetcher, "last_meta", {}) or {}
         if not encrypted:
-            raise EmptyAcquisitionError("empty payload")
+            return self._keep_last_good("empty payload")
 
         decrypted = self.decryptor.decrypt(encrypted)
+        if decrypted is None:
+            return self._keep_last_good("empty decrypt")
 
-        parsed = parse_json(decrypted)
+        try:
+            parsed = parse_json(decrypted)
+        except Exception:
+            if self._match_odds:
+                print(
+                    "[BETKANYON] malformed cycle ignored; "
+                    f"keeping {len(self._match_odds)} last MatchOdds"
+                )
+                return self._match_odds
+            raise
 
         matches = []
 
@@ -55,6 +66,15 @@ class BetkanyonFeed:
                 matches.append(match)
 
         self.last_cycle_empty = not matches
+        if not matches:
+            self.last_stats = {
+                "events": len(parsed),
+                "odds": 0,
+                "http_status": meta.get("http_status"),
+                "content_type": meta.get("content_type"),
+                "payload_bytes": meta.get("payload_bytes") or 0,
+            }
+            return self._keep_last_good("empty parse")
         self._parsed_event_count = len(parsed)
         self.last_stats = {
             "events": len(parsed),
@@ -75,6 +95,15 @@ class BetkanyonFeed:
             self._match_odds = matches
 
         return self._match_odds
+
+    def _keep_last_good(self, reason: str):
+        if self._match_odds:
+            print(
+                f"[BETKANYON] {reason} ignored; "
+                f"keeping {len(self._match_odds)} last MatchOdds"
+            )
+            return self._match_odds
+        return []
 
     def get_match_odds(self):
 

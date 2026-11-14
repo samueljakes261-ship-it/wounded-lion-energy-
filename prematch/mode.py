@@ -1,7 +1,8 @@
 """Reversible engine mode for the prematch forensic session.
 
 ENGINE_MODE=prematch  -> do not start live BetKanyon/Orbit/OnWin
-ENGINE_MODE=live      -> default, both pipelines (unchanged)
+ENGINE_MODE=live      -> default, live BetKanyon/Orbit + all prematch
+                         (OnWin LIVE stays frozen unless ONWIN_LIVE=1)
 
 Never deletes live worker code. Flip the env var and restart.
 """

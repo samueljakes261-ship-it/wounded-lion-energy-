@@ -40,6 +40,8 @@ def test_tournament_universe_is_unique_and_includes_turkish_example():
 
 def test_prematch_url_uses_dynamic_dates_and_tournament_id():
     url = build_prematch_url("4520")
+    assert "sport.bksp3.com" in url
+    assert "getmixedsportandeventslistwithoutright" in url
     assert "tournamentId=4520" in url
     assert "includeLiveEvents=false" in url
     assert "startDate=" in url
@@ -48,6 +50,9 @@ def test_prematch_url_uses_dynamic_dates_and_tournament_id():
     # Confirmed against the working sport.bksp3.com prematch endpoint:
     # langId=2, not the old langId=4.
     assert "langId=2" in url
+    assert "partnerId=107" in url
+    assert "countryCode=KE" in url
+    assert "betkanyon1617.com" not in url
 
 
 def test_prematch_adapter_tags_feed_type_and_tournament():

@@ -131,6 +131,9 @@ class BetkanyonWorker:
     # ------------------------------------------------------------------
 
     def _run(self):
+        from engine.sync_playwright_thread import isolate_from_running_asyncio_loop
+
+        isolate_from_running_asyncio_loop()
         try:
             self._run_loop()
         except Exception as exc:
@@ -358,7 +361,7 @@ class BetkanyonWorker:
             state["consecutive_successes"] += 1
             state["last_processing_ms"] = elapsed_ms
             state["last_event_count"] = self._feed.get_parsed_event_count()
-            state["last_odds_count"] = len(matches)
+            state["last_odds_count"] = len(state["matches"])
 
             prev_avg = state["avg_processing_ms"]
             n = state["success_count"]
