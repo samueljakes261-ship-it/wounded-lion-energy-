@@ -10,6 +10,11 @@ import os
 import threading
 import time
 
+from parsers.kolay90_prematch.auth_phase import (
+    AUTHENTICATED,
+    derive_auth_phase,
+    update_session_record,
+)
 from parsers.kolay90_prematch.feed import Kolay90PrematchFeed
 from parsers.kolay90_prematch.session_state import AUTH_REQUIRED
 
@@ -42,7 +47,12 @@ class Kolay90PrematchWorker:
             "last_event_count": 0,
             "last_odds_count": 0,
             "auth_state": None,
+            "auth_phase": "NOT_INITIALIZED",
             "authenticated": False,
+            "manual_intervention_required": False,
+            "last_authenticated_at": None,
+            "last_authenticated_request_at": None,
+            "last_auth_error": None,
         }
 
     def start(self):
@@ -127,22 +137,36 @@ class Kolay90PrematchWorker:
                     self._feed = Kolay90PrematchFeed()
                 result = self._feed.poll()
                 elapsed_ms = (time.monotonic() - cycle_start) * 1000
-                self._publish(result, elapsed_ms)
                 wait = self.poll_interval
-                if result.get("auth_required") or result.get("auth_state") == AUTH_REQUIRED:
-                    wait = AUTH_WAIT_SECONDS
+                needs_operator = (
+                    result.get("auth_required")
+                    or result.get("auth_state") == AUTH_REQUIRED
+                    or result.get("failure")
+                    in {"cdp_attach_failed", "browser_page_closed", "kolay90_tab_missing"}
+                )
+                if needs_operator:
                     from parsers.kolay90_prematch.vnc_session import (
                         desktop_status,
                         operator_message,
+                        recover_crashed_chrome,
                     )
 
                     desktop = desktop_status()
+                    if (
+                        result.get("failure")
+                        in {"cdp_attach_failed", "browser_page_closed", "kolay90_tab_missing"}
+                        and not desktop.get("cdp_listening")
+                    ):
+                        desktop = recover_crashed_chrome(desktop)
                     result["session_desktop"] = desktop
-                    print("[KOLAY90 PREMATCH] KOLAY90_AUTHENTICATION_REQUIRED")
-                    print(
-                        "[KOLAY90 PREMATCH] "
-                        + operator_message(result.get("failure"), desktop)
-                    )
+                    if result.get("auth_required") or result.get("auth_state") == AUTH_REQUIRED:
+                        wait = AUTH_WAIT_SECONDS
+                        print("[KOLAY90 PREMATCH] KOLAY90_AUTHENTICATION_REQUIRED")
+                        print(
+                            "[KOLAY90 PREMATCH] "
+                            + operator_message(result.get("failure"), desktop)
+                        )
+                self._publish(result, elapsed_ms)
                 remaining = max(0.0, wait - (elapsed_ms / 1000.0))
                 if self._stop_event.wait(timeout=remaining):
                     break
@@ -157,19 +181,44 @@ class Kolay90PrematchWorker:
         auth_required = bool(result.get("auth_required"))
         with self._lock:
             state = self._state
+            desktop = result.get("session_desktop") or {}
+            previous = state.get("auth_phase")
+            phase = derive_auth_phase(
+                browser_listening=bool(desktop.get("cdp_listening")),
+                page_state=result.get("session_state") or result.get("auth_state"),
+                fetch_authenticated=bool(result.get("ok") and result.get("authenticated")),
+                fetch_failure=None if result.get("ok") else result.get("failure"),
+                previously_authenticated=(
+                    previous == AUTHENTICATED or bool(state.get("last_authenticated_at"))
+                ),
+            )
             state["poll_count"] += 1
             state["last_processing_ms"] = elapsed_ms
             state["auth_state"] = result.get("auth_state")
-            state["authenticated"] = bool(result.get("authenticated"))
+            state["auth_phase"] = phase
+            state["authenticated"] = phase == AUTHENTICATED
+            state["manual_intervention_required"] = phase in {
+                "AWAITING_MANUAL_AUTH",
+                "SESSION_EXPIRED",
+                "AUTHENTICATION_FAILED",
+            }
             if result.get("session_desktop") is not None:
-                state["session_desktop"] = result.get("session_desktop")
-            if matches or not state["matches"]:
-                state["matches"] = matches
-            state["last_event_count"] = result.get("total_events") or len(matches)
-            state["last_odds_count"] = result.get("one_x_two") or len(state["matches"])
+                state["session_desktop"] = {
+                    "display": desktop.get("display"),
+                    "vnc_port": desktop.get("vnc_port"),
+                    "vnc_listening": desktop.get("vnc_listening"),
+                    "cdp_listening": desktop.get("cdp_listening"),
+                    "browser_process": desktop.get("browser_process"),
+                    "chrome_profile": desktop.get("chrome_profile"),
+                    "auth_phase": phase,
+                }
             if result.get("ok"):
+                state["matches"] = matches
+                state["last_event_count"] = result.get("total_events") or len(matches)
+                state["last_odds_count"] = result.get("one_x_two") or len(matches)
                 state["status"] = "running"
                 state["error"] = None
+                state["last_auth_error"] = None
                 state["last_update_at"] = time.time()
                 state["success_count"] += 1
                 state["consecutive_failures"] = 0
@@ -180,22 +229,42 @@ class Kolay90PrematchWorker:
                     elapsed_ms if prev is None else prev + (elapsed_ms - prev) / n
                 )
             else:
+                if not state["matches"] and matches:
+                    state["matches"] = matches
                 state["failed_count"] += 1
                 state["consecutive_successes"] = 0
                 state["consecutive_failures"] += 1
                 state["error"] = result.get("failure")
-                if auth_required:
+                state["last_auth_error"] = result.get("failure")
+                if auth_required or phase in {"AWAITING_MANUAL_AUTH", "SESSION_EXPIRED"}:
                     state["status"] = "authentication_required"
+                elif phase == "AUTHENTICATION_FAILED" and not state.get("matches"):
+                    state["status"] = "error"
                 elif state.get("matches"):
                     state["status"] = "degraded"
                 else:
                     state["status"] = "error"
+            try:
+                saved = update_session_record(
+                    phase=phase,
+                    error=None if result.get("ok") else result.get("failure"),
+                    profile=desktop.get("chrome_profile"),
+                    browser_process=desktop.get("browser_process"),
+                    authenticated_request=bool(result.get("ok") and result.get("authenticated")),
+                )
+                state["last_authenticated_at"] = saved.get("last_authenticated_at")
+                state["last_authenticated_request_at"] = saved.get(
+                    "last_authenticated_request_at"
+                )
+            except OSError:
+                pass
         print(
             f"[KOLAY90 PREMATCH] status={result.get('status')} "
             f"events={result.get('total_events')} "
             f"valid_football_1x2={result.get('one_x_two')} "
             f"session={result.get('auth_state')} "
-            f"authenticated={str(bool(result.get('authenticated'))).lower()} "
+            f"phase={phase} "
+            f"authenticated={str(phase == AUTHENTICATED).lower()} "
             f"kept_last_good={result.get('kept_last_good')}"
         )
 

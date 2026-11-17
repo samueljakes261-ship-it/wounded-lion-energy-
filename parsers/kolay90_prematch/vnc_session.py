@@ -14,12 +14,17 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from parsers.kolay90_prematch.auth_phase import (
+    SESSION_EXPIRED,
+    read_session_record,
+)
 from parsers.kolay90_prematch.cdp import cdp_url
 
 DEFAULT_DISPLAY = ":1"
@@ -65,6 +70,43 @@ def chrome_profile_dir() -> Path:
     return Path(raw) if raw else DEFAULT_PROFILE
 
 
+def prepare_profile(path: Path | None = None) -> Path:
+    """Create the persistent profile so only this user can read it."""
+    profile = path or chrome_profile_dir()
+    profile.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(profile, 0o700)
+    except OSError:
+        pass
+    return profile
+
+
+def vnc_binds_localhost() -> bool:
+    raw = (os.environ.get("KOLAY90_VNC_LOCALHOST") or "yes").strip().lower()
+    return raw not in {"0", "false", "no", "any"}
+
+
+def chrome_using_profile(profile: Path | None = None) -> list[int]:
+    """PIDs whose command line uses this user-data-dir. No command lines returned."""
+    target = str(profile or chrome_profile_dir())
+    needle = f"--user-data-dir={target}"
+    found = []
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return found
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        command = raw.replace(b"\x00", b" ").decode("utf-8", "replace")
+        if needle in command:
+            found.append(int(entry.name))
+    return found
+
+
 def cdp_port(url: str | None = None) -> int:
     parsed = urlsplit(url or cdp_url())
     if parsed.port:
@@ -106,13 +148,21 @@ def find_chrome() -> str | None:
 
 
 def vnc_argv(binary: str, display: str | None = None) -> list[str]:
-    """Start a virtual desktop. Authentication stays in RealVNC's config."""
-    return [
+    """Start a virtual desktop. Authentication stays in RealVNC's config.
+
+    The default binds the desktop to localhost. RealVNC's own password
+    is never passed here. Set KOLAY90_VNC_LOCALHOST=no only when RealVNC
+    Server's own authentication is already required.
+    """
+    argv = [
         binary,
         display or display_name(),
         "-geometry",
         (os.environ.get("KOLAY90_VNC_GEOMETRY") or DEFAULT_GEOMETRY).strip(),
     ]
+    if vnc_binds_localhost():
+        argv.extend(["-localhost", "yes"])
+    return argv
 
 
 def chrome_argv(
@@ -154,16 +204,32 @@ def desktop_status() -> dict:
     url = cdp_url()
     port = vnc_tcp_port(display)
     socket_path = x_socket_path(display)
+    profile = chrome_profile_dir()
+    listening = port_open("127.0.0.1", cdp_port(url))
+    profile_pids = chrome_using_profile(profile)
+    record = read_session_record()
+    if listening or profile_pids:
+        browser_process = "multiple" if len(profile_pids) > 1 else "running"
+    else:
+        browser_process = "down"
     return {
         "display": display,
         "x_socket": socket_path.exists(),
         "vnc_port": port,
         "vnc_listening": port_open("127.0.0.1", port),
+        "vnc_bind": "localhost" if vnc_binds_localhost() else "any",
         "cdp_url": url,
-        "cdp_listening": port_open("127.0.0.1", cdp_port(url)),
-        "chrome_profile": str(chrome_profile_dir()),
+        "cdp_listening": listening,
+        "chrome_profile": str(profile),
         "vnc_server": find_vnc_server(),
         "chrome_bin": find_chrome(),
+        "browser_process": browser_process,
+        "auth_phase": record.get("auth_phase"),
+        "last_authenticated_at": record.get("last_authenticated_at"),
+        "last_authenticated_request_at": record.get("last_authenticated_request_at"),
+        "last_auth_error": record.get("last_auth_error"),
+        "manual_intervention_required": bool(record.get("manual_intervention_required")),
+        "session_expired": record.get("auth_phase") == SESSION_EXPIRED,
     }
 
 
@@ -238,8 +304,13 @@ def ensure_desktop(*, autostart: bool = False) -> dict:
         status["failure"] = "chrome_missing"
         status["started"] = started
         return status
-    profile = chrome_profile_dir()
-    profile.mkdir(parents=True, exist_ok=True)
+    profile = prepare_profile()
+    if chrome_using_profile(profile):
+        status["ok"] = False
+        status["chrome"] = "already_running"
+        status["failure"] = "chrome_profile_busy"
+        status["started"] = started
+        return status
     env = os.environ.copy()
     env["DISPLAY"] = display
     _spawn(chrome_argv(binary, display=display, profile=profile), env)
@@ -254,6 +325,70 @@ def ensure_desktop(*, autostart: bool = False) -> dict:
     return status
 
 
+def recover_crashed_chrome(desktop: dict | None = None) -> dict:
+    """Start the profile Chrome again when the desktop is up and Chrome is gone.
+
+    Does not start a second Chrome on a profile that is already in use,
+    and does not start the VNC desktop.
+    """
+    status = dict(desktop or desktop_status())
+    if status.get("cdp_listening"):
+        status["ok"] = True
+        status["chrome"] = "already_running"
+        status["started"] = []
+        return status
+    if not status.get("x_socket") and not status.get("vnc_listening"):
+        status["ok"] = False
+        status["failure"] = "vnc_desktop_down"
+        status["started"] = []
+        return status
+    profile = prepare_profile()
+    if chrome_using_profile(profile):
+        status["ok"] = False
+        status["chrome"] = "already_running"
+        status["failure"] = "chrome_profile_busy"
+        status["started"] = []
+        return status
+    binary = status.get("chrome_bin") or find_chrome()
+    if not binary:
+        status["ok"] = False
+        status["failure"] = "chrome_missing"
+        status["started"] = []
+        return status
+    env = os.environ.copy()
+    env["DISPLAY"] = status.get("display") or display_name()
+    _spawn(chrome_argv(binary, display=env["DISPLAY"], profile=profile), env)
+    ready = _wait_until(lambda: port_open("127.0.0.1", cdp_port()))
+    recovered = desktop_status()
+    recovered["started"] = ["chrome"]
+    recovered["ok"] = ready
+    recovered["chrome"] = "started" if ready else "not_listening"
+    if not ready:
+        recovered["failure"] = "chrome_cdp_down"
+    return recovered
+
+
+def stop_profile_chrome(profile: Path | None = None) -> int:
+    """Stop only Chrome processes using this Kolay90 profile."""
+    pids = chrome_using_profile(profile or chrome_profile_dir())
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            continue
+    if pids:
+        _wait_until(lambda: not chrome_using_profile(profile or chrome_profile_dir()), seconds=5.0)
+    return len(pids)
+
+
+def restart_browser() -> dict:
+    """Restart the Kolay90 Chrome window. Leaves the RealVNC desktop running."""
+    stopped = stop_profile_chrome()
+    status = recover_crashed_chrome()
+    status["chrome_stopped"] = stopped
+    return status
+
+
 def main(argv: list[str] | None = None) -> int:
     import sys
 
@@ -261,11 +396,16 @@ def main(argv: list[str] | None = None) -> int:
     command = args[0] if args else "status"
     if command == "start":
         payload = ensure_desktop(autostart=True)
+    elif command == "restart":
+        payload = restart_browser()
     elif command == "status":
         payload = desktop_status()
         payload["ok"] = bool(payload["vnc_listening"] or payload["x_socket"])
     else:
-        print("usage: python -m parsers.kolay90_prematch.vnc_session [status|start]")
+        print(
+            "usage: python -m parsers.kolay90_prematch.vnc_session "
+            "[status|start|restart]"
+        )
         return 2
     print(json.dumps(payload, indent=2))
     if command == "start" and payload.get("ok"):

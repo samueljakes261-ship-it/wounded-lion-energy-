@@ -23,6 +23,8 @@ def test_commands_do_not_disable_auth_or_hide_chrome(monkeypatch):
     assert "securitytypes" not in blob
     assert "password" not in blob
     assert "--headless" not in blob
+    assert "-localhost" in vnc
+    assert "yes" in vnc
     assert "--remote-debugging-address=127.0.0.1" in chrome
     assert "--remote-debugging-port=9222" in chrome
     assert chrome[-1] == "https://kolay90.com/"
@@ -169,7 +171,8 @@ def test_operator_message_names_the_realvnc_desktop():
     assert "Do not start a second Chrome." in text
 
 
-def test_worker_points_at_the_realvnc_desktop_when_login_is_required():
+def test_worker_points_at_the_realvnc_desktop_when_login_is_required(monkeypatch, tmp_path):
+    monkeypatch.setenv("KOLAY90_SESSION_STATUS", str(tmp_path / "session.json"))
     worker = Kolay90PrematchWorker(poll_interval=30, feed=object())
     result = {
         "ok": False,
