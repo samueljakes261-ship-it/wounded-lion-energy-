@@ -1,12 +1,13 @@
-"""RealVNC desktop that holds the Kolay90 Chrome session.
+"""TigerVNC desktop that holds the Kolay90 Chrome session.
 
 The prematch worker never logs in and never starts a second browser.
-An operator connects with RealVNC Viewer, completes Cloudflare and the
-Kolay90 login in the Chrome window on this virtual desktop, and leaves
-that window open. The worker then attaches to 127.0.0.1:9222.
+An operator connects with TigerVNC Viewer through an SSH tunnel,
+completes Cloudflare and the Kolay90 login in the Chrome window on
+this virtual desktop, and leaves that window open. The worker then
+attaches to 127.0.0.1:9222.
 
 This module does not type credentials, read cookies, or disable VNC
-authentication. The RealVNC password stays in the server's own config.
+authentication. The TigerVNC password stays in ~/.vnc/passwd.
 """
 
 from __future__ import annotations
@@ -28,10 +29,12 @@ from parsers.kolay90_prematch.auth_phase import (
 from parsers.kolay90_prematch.cdp import cdp_url
 
 DEFAULT_DISPLAY = ":1"
-DEFAULT_GEOMETRY = "1280x800"
+DEFAULT_GEOMETRY = "1600x900"
+DEFAULT_DEPTH = "24"
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "experiments" / "kolay90_direct" / "chrome_profile"
-VNC_CANDIDATES = ("vncserver-virtual", "vncserver")
+VNC_CANDIDATES = ("tigervncserver",)
+XFCE_PROCESS_NAMES = {"xfce4-session", "xfwm4", "xfce4-panel"}
 CHROME_CANDIDATES = (
     "google-chrome",
     "google-chrome-stable",
@@ -147,22 +150,106 @@ def find_chrome() -> str | None:
     return None
 
 
-def vnc_argv(binary: str, display: str | None = None) -> list[str]:
-    """Start a virtual desktop. Authentication stays in RealVNC's config.
+def vnc_depth() -> str:
+    raw = (os.environ.get("KOLAY90_VNC_DEPTH") or DEFAULT_DEPTH).strip()
+    return raw if raw.isdigit() else DEFAULT_DEPTH
 
-    The default binds the desktop to localhost. RealVNC's own password
-    is never passed here. Set KOLAY90_VNC_LOCALHOST=no only when RealVNC
-    Server's own authentication is already required.
+
+def vnc_argv(binary: str, display: str | None = None) -> list[str]:
+    """Start TigerVNC. Authentication stays in ~/.vnc/passwd.
+
+    The default matches the VPS session: localhost only, 1600x900, depth 24.
+    The password is never passed on the command line.
     """
     argv = [
         binary,
         display or display_name(),
         "-geometry",
         (os.environ.get("KOLAY90_VNC_GEOMETRY") or DEFAULT_GEOMETRY).strip(),
+        "-depth",
+        vnc_depth(),
     ]
     if vnc_binds_localhost():
         argv.extend(["-localhost", "yes"])
     return argv
+
+
+def parse_vnc_list(text: str) -> set[int]:
+    """Display numbers from `tigervncserver -list`. Ignores header lines."""
+    found = set()
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        token = parts[0][1:] if parts[0].startswith(":") else parts[0]
+        if token.isdigit():
+            found.add(int(token))
+    return found
+
+
+def listed_display_numbers() -> set[int]:
+    binary = find_vnc_server()
+    if not binary:
+        return set()
+    try:
+        completed = subprocess.run(
+            [binary, "-list"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    return parse_vnc_list(completed.stdout or "")
+
+
+def xfce_installed() -> bool:
+    return bool(shutil.which("startxfce4") or shutil.which("xfce4-session"))
+
+
+def xfce_on_display(display: str | None = None) -> bool:
+    """True when an XFCE process is running on this X display.
+
+    Reads process names and DISPLAY only. Does not log environments.
+    """
+    wanted = display or display_name()
+    exact = f"DISPLAY={wanted}".encode()
+    prefix = f"DISPLAY={wanted}.".encode()
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return False
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            comm = (entry / "comm").read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if comm not in XFCE_PROCESS_NAMES:
+            continue
+        try:
+            environment = (entry / "environ").read_bytes()
+        except OSError:
+            continue
+        for item in environment.split(b"\x00"):
+            if item == exact or item.startswith(prefix):
+                return True
+    return False
+
+
+def _display_running(status: dict) -> bool:
+    if "display_running" in status:
+        return bool(status["display_running"])
+    return bool(status.get("vnc_listed")) or bool(
+        status.get("x_socket") and status.get("vnc_listening")
+    )
+
+
+def _xfce_ready(status: dict) -> bool:
+    if "xfce_available" in status:
+        return bool(status["xfce_available"])
+    return False
 
 
 def chrome_argv(
@@ -189,13 +276,15 @@ def chrome_argv(
 def operator_message(failure: str | None, desktop: dict) -> str:
     return (
         f"failure={failure} "
-        f"RealVNC display {desktop.get('display')} "
+        f"TigerVNC display {desktop.get('display')} "
         f"port {desktop.get('vnc_port')} "
         f"vnc_listening={str(bool(desktop.get('vnc_listening'))).lower()} "
+        f"xfce_available={str(bool(desktop.get('xfce_available'))).lower()} "
         f"cdp_listening={str(bool(desktop.get('cdp_listening'))).lower()}. "
-        "Open RealVNC Viewer on that desktop and complete "
-        "Cloudflare and Kolay90 login in its Chrome window. "
-        "Leave the window open. Do not start a second Chrome."
+        "Use an SSH tunnel to 127.0.0.1:5901 and open TigerVNC Viewer "
+        "on the forwarded local port. Complete Cloudflare and Kolay90 "
+        "login in its Chrome window. Leave the window open. "
+        "Do not start a second Chrome."
     )
 
 
@@ -208,16 +297,29 @@ def desktop_status() -> dict:
     listening = port_open("127.0.0.1", cdp_port(url))
     profile_pids = chrome_using_profile(profile)
     record = read_session_record()
+    x_socket = socket_path.exists()
+    vnc_listening = port_open("127.0.0.1", port)
+    listed = display_number(display) in listed_display_numbers()
+    display_running = listed or (x_socket and vnc_listening)
+    xfce_available = xfce_on_display(display) if display_running else False
     if listening or profile_pids:
         browser_process = "multiple" if len(profile_pids) > 1 else "running"
     else:
         browser_process = "down"
+    auth_file = Path.home() / ".vnc" / "passwd"
     return {
         "display": display,
-        "x_socket": socket_path.exists(),
+        "x_socket": x_socket,
         "vnc_port": port,
-        "vnc_listening": port_open("127.0.0.1", port),
+        "vnc_listening": vnc_listening,
+        "vnc_listed": listed,
+        "display_running": display_running,
         "vnc_bind": "localhost" if vnc_binds_localhost() else "any",
+        "vnc_implementation": "tigervnc",
+        "xfce_installed": xfce_installed(),
+        "xfce_available": xfce_available,
+        "desktop_ready": bool(display_running and xfce_available),
+        "vnc_auth_file_present": auth_file.is_file(),
         "cdp_url": url,
         "cdp_listening": listening,
         "chrome_profile": str(profile),
@@ -253,22 +355,27 @@ def _spawn(argv: list[str], env: dict) -> subprocess.Popen:
 
 
 def ensure_desktop(*, autostart: bool = False) -> dict:
-    """Make sure the RealVNC desktop and its Chrome window exist.
+    """Make sure the TigerVNC desktop and its Chrome window exist.
 
-    A desktop that is already up is left alone. Chrome is started only
-    when nothing is listening on the CDP port, so a logged-in window
-    is not replaced.
+    A display that is already listed or listening is left alone.
+    Chrome starts only after XFCE is up, and only when nothing is
+    listening on the CDP port, so a logged-in window is not replaced.
     """
     status = desktop_status()
     started = []
     display = status["display"]
-    if not status["x_socket"] and not status["vnc_listening"]:
+    if not _display_running(status):
         if not autostart:
             status["ok"] = False
             status["failure"] = "vnc_desktop_down"
             status["started"] = started
             return status
-        binary = status["vnc_server"]
+        if status.get("x_socket") or status.get("vnc_listed"):
+            status["ok"] = False
+            status["failure"] = "vnc_display_stale"
+            status["started"] = started
+            return status
+        binary = status.get("vnc_server")
         if not binary:
             status["ok"] = False
             status["failure"] = "vncserver_missing"
@@ -276,12 +383,14 @@ def ensure_desktop(*, autostart: bool = False) -> dict:
             return status
         _spawn(vnc_argv(binary, display), os.environ.copy())
         started.append("vnc")
-        ready = _wait_until(
-            lambda: x_socket_path(display).exists() or port_open("127.0.0.1", status["vnc_port"])
-        )
+        def _session_ready():
+            current = desktop_status()
+            return _display_running(current) and _xfce_ready(current)
+
+        ready = _wait_until(_session_ready)
         status = desktop_status()
         status["started"] = started
-        if not ready and not status["x_socket"] and not status["vnc_listening"]:
+        if not ready and not _display_running(status):
             status["ok"] = False
             status["failure"] = "vnc_desktop_down"
             return status
@@ -291,6 +400,17 @@ def ensure_desktop(*, autostart: bool = False) -> dict:
         status["chrome"] = "already_running"
         status["started"] = started
         return status
+    if not _xfce_ready(status):
+        if autostart:
+            _wait_until(lambda: _xfce_ready(desktop_status()))
+            fresh = desktop_status()
+            fresh["started"] = started
+            status = fresh
+        if not _xfce_ready(status):
+            status["ok"] = False
+            status["failure"] = "xfce_desktop_down"
+            status["started"] = started
+            return status
     if not autostart:
         status["ok"] = False
         status["chrome"] = "not_listening"
@@ -337,9 +457,14 @@ def recover_crashed_chrome(desktop: dict | None = None) -> dict:
         status["chrome"] = "already_running"
         status["started"] = []
         return status
-    if not status.get("x_socket") and not status.get("vnc_listening"):
+    if not _display_running(status):
         status["ok"] = False
         status["failure"] = "vnc_desktop_down"
+        status["started"] = []
+        return status
+    if not _xfce_ready(status):
+        status["ok"] = False
+        status["failure"] = "xfce_desktop_down"
         status["started"] = []
         return status
     profile = prepare_profile()
@@ -382,7 +507,7 @@ def stop_profile_chrome(profile: Path | None = None) -> int:
 
 
 def restart_browser() -> dict:
-    """Restart the Kolay90 Chrome window. Leaves the RealVNC desktop running."""
+    """Restart the Kolay90 Chrome window. Leaves the TigerVNC desktop running."""
     stopped = stop_profile_chrome()
     status = recover_crashed_chrome()
     status["chrome_stopped"] = stopped
@@ -400,7 +525,7 @@ def main(argv: list[str] | None = None) -> int:
         payload = restart_browser()
     elif command == "status":
         payload = desktop_status()
-        payload["ok"] = bool(payload["vnc_listening"] or payload["x_socket"])
+        payload["ok"] = bool(payload.get("display_running"))
     else:
         print(
             "usage: python -m parsers.kolay90_prematch.vnc_session "
@@ -410,10 +535,11 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(payload, indent=2))
     if command == "start" and payload.get("ok"):
         print(
-            "Connect with RealVNC Viewer to this machine, display "
-            f"{payload['display']} (TCP {payload['vnc_port']}). "
-            "Complete Cloudflare and log in to Kolay90 in the Chrome window. "
-            "Leave that window open."
+            "TigerVNC stays on localhost, display "
+            f"{payload['display']} (127.0.0.1:{payload['vnc_port']}). "
+            "Keep an SSH tunnel to that port and open TigerVNC Viewer "
+            "on the forwarded local port. Complete Cloudflare and log in "
+            "to Kolay90 in the Chrome window. Leave that window open."
         )
     return 0 if payload.get("ok") else 1
 

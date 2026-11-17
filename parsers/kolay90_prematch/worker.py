@@ -116,8 +116,10 @@ class Kolay90PrematchWorker:
 
         result = ensure_desktop(autostart=True)
         print(
-            "[KOLAY90 PREMATCH] RealVNC desktop "
+            "[KOLAY90 PREMATCH] TigerVNC desktop "
             f"display={result.get('display')} "
+            f"display_running={str(bool(result.get('display_running'))).lower()} "
+            f"xfce_available={str(bool(result.get('xfce_available'))).lower()} "
             f"vnc_listening={str(bool(result.get('vnc_listening'))).lower()} "
             f"cdp_listening={str(bool(result.get('cdp_listening'))).lower()} "
             f"ok={str(bool(result.get('ok'))).lower()} "

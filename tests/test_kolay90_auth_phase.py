@@ -110,8 +110,10 @@ def test_same_profile_does_not_launch_a_second_chrome(monkeypatch, tmp_path):
             "cdp_url": "http://127.0.0.1:9222",
             "cdp_listening": False,
             "chrome_profile": str(tmp_path),
-            "vnc_server": "/usr/bin/vncserver-virtual",
+            "vnc_server": "/usr/bin/tigervncserver",
             "chrome_bin": "/usr/bin/google-chrome",
+            "display_running": True,
+            "xfce_available": True,
         },
     )
     result = vnc_session.ensure_desktop(autostart=True)
@@ -147,6 +149,8 @@ def test_restart_replaces_only_the_profile_chrome(monkeypatch, tmp_path):
             "cdp_listening": False,
             "chrome_bin": "/usr/bin/google-chrome",
             "chrome_profile": str(tmp_path),
+            "display_running": True,
+            "xfce_available": True,
         },
     )
     result = vnc_session.restart_browser()
