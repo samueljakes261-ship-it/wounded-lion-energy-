@@ -4,6 +4,7 @@ import {
   bookmakersFromOpportunities,
   bookmakersFromStatus,
   filterOpportunities,
+  includesTurkishBookmaker,
   keepLastGoodSnapshot,
   parseOptionalNumber,
 } from "./opportunity-filters"
@@ -117,6 +118,18 @@ describe("opportunity display filters", () => {
       overUnder,
     ])
     expect(bookmakersFromOpportunities([overUnder])).toEqual(["Betkanyon", "Orbit"])
+  })
+
+  it("recognises Turkish bookmakers and leaves Betfair alone", () => {
+    expect(includesTurkishBookmaker(withOnWin)).toBe(true)
+    expect(
+      includesTurkishBookmaker({
+        opportunityType: "BACK_LAY",
+        profitPercentage: 1,
+        back: { bookmaker: "Betfair", odds: 2.1 },
+        lay: { bookmaker: "Betfair", odds: 2.2 },
+      })
+    ).toBe(false)
   })
 
   it("does not treat Betfair as a Kenyan/Turkish bookmaker chip", () => {

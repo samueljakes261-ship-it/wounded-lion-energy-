@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from collector import (
@@ -46,6 +46,21 @@ def root():
         "application": "ArbScanner",
         "status": "running"
     }
+
+
+@app.post("/kolay90/prematch")
+def ingest_kolay90_prematch(body: dict, authorization: str = Header(default="")):
+    """Accept Kolay90 prematch odds from the operator's Windows PC.
+
+    The body is MatchOdds fields. Browser cookies and passwords are rejected
+    by the snapshot parser, which only keeps the known odds columns.
+    """
+    from parsers.kolay90_prematch.snapshot import IngestRejected, accept_remote_snapshot
+
+    try:
+        return accept_remote_snapshot(body, authorization)
+    except IngestRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
 
 
 @app.get("/health")

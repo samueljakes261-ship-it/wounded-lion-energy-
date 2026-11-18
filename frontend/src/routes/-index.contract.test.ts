@@ -98,6 +98,16 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     expect(SOURCE).toMatch(/<OpportunityCard/)
   })
 
+  it("shows a temporary maintenance notice for Turkish LIVE only", () => {
+    expect(SOURCE).toContain(
+      "Turkish bookmakers' LIVE feeds are temporarily disabled while we carry out maintenance and repairs. PREMATCH services remain available."
+    )
+    expect(SOURCE).toContain('data-testid="turkish-live-maintenance"')
+    expect(SOURCE).toMatch(/mode === "live" \? \(/)
+    expect(SOURCE).toContain('data-testid="betfair-opportunities"')
+    expect(SOURCE).toMatch(/key === "orbit" \|\| key === "betkanyon" \|\| key === "onwin"/)
+  })
+
   it("shows BACK vs LAY opportunities first", () => {
     const layIndex = SOURCE.indexOf("backLayOpportunities.map")
     const backIndex = SOURCE.indexOf("backBackOpportunities.map")

@@ -303,9 +303,6 @@ function CollectorStatusPanel({
     mode === "prematch"
       ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch", "kolay90_prematch", "betfair"]
       : ["orbit", "betkanyon", "onwin", "betfair"]
-  const collectors = order
-    .map((key) => status.collectors[key])
-    .filter((c): c is CollectorHealth => Boolean(c))
   const matched =
     mode === "prematch"
       ? (status as CollectorStatusResponse & { prematchMatchedEvents?: number })
@@ -324,23 +321,36 @@ function CollectorStatusPanel({
           <div className="text-xs font-semibold text-slate-500 tracking-wide">
             {t(lang, "collectors")}
           </div>
-          {collectors.map((collector) => {
-            const shown =
-              status.scheduledRestart &&
-              (collector.collectorStatus === "STARTING" ||
-                collector.collectorStatus === "RECOVERING" ||
-                collector.collectorStatus === "STOPPED")
+          {order.map((key) => {
+            const collector = status.collectors[key]
+            if (!collector) {
+              return null
+            }
+            const suspended =
+              mode === "live" && (key === "orbit" || key === "betkanyon" || key === "onwin")
+            const shown = suspended
+              ? "MAINTENANCE"
+              : status.scheduledRestart &&
+                  (collector.collectorStatus === "STARTING" ||
+                    collector.collectorStatus === "RECOVERING" ||
+                    collector.collectorStatus === "STOPPED")
                 ? "RUNNING"
                 : collector.collectorStatus
             return (
             <div key={collector.name} className="flex items-center gap-1.5">
               <CircleDot className="w-3 h-3 text-slate-500" />
               <span className="text-sm text-slate-300">{collector.name}</span>
-              <Badge className={COLLECTOR_STATUS_STYLES[shown]}>
+              <Badge
+                className={
+                  suspended
+                    ? "bg-amber-500/20 text-amber-200 border-amber-500/40"
+                    : COLLECTOR_STATUS_STYLES[shown as CollectorHealth["collectorStatus"]]
+                }
+              >
                 {shown}
               </Badge>
               <span className="text-xs text-slate-500">
-                {formatAge(collector.ageSeconds)}
+                {suspended ? "temporarily paused" : formatAge(collector.ageSeconds)}
               </span>
               {collector.name === "Betfair" ? (
                 <span className="text-xs text-slate-500">
@@ -1052,6 +1062,22 @@ function Dashboard() {
               )}
             </section>
 
+            {mode === "live" ? (
+              <Card
+                className="bg-slate-900 border-amber-500/40"
+                data-testid="turkish-live-maintenance"
+              >
+                <CardContent className="py-8">
+                  <div className="text-xs font-semibold tracking-wide text-amber-200">
+                    Maintenance
+                  </div>
+                  <p className="mt-2 text-base leading-relaxed text-slate-100">
+                    Turkish bookmakers' LIVE feeds are temporarily disabled while we carry out maintenance and repairs. PREMATCH services remain available.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+            <>
             <section className="space-y-3">
               <h2 className="text-sm font-semibold tracking-wide text-slate-400">
                 {t(lang, "backVsLay")}
@@ -1121,6 +1147,8 @@ function Dashboard() {
                 </CollapsibleContent>
               </Collapsible>
             ) : null}
+            </>
+            )}
           </div>
         )}
       </div>

@@ -50,6 +50,14 @@ export function parseOptionalNumber(raw: string): number | null {
   return Number.isFinite(value) ? value : null
 }
 
+const TURKISH_BOOKMAKERS = new Set(["betkanyon", "orbit", "onwin", "kolay90"])
+
+export function includesTurkishBookmaker(opportunity: FilterableOpportunity): boolean {
+  return displayedBookmakers(opportunity).some((name) =>
+    TURKISH_BOOKMAKERS.has(name.trim().toLowerCase())
+  )
+}
+
 export function bookmakersFromOpportunities(
   opportunities: FilterableOpportunity[]
 ): string[] {

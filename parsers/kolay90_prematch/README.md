@@ -102,3 +102,32 @@ Optional environment, all on the VPS process:
 
 Do not copy cookies. Do not paste tokens. Do not start a second Chrome profile
 for the worker.
+
+## Windows collector that posts odds to the VPS
+
+Use this when Chrome runs on the Windows PC and the engine runs on the VPS.
+The PC only makes an outbound HTTPS request. Port 9222 stays on
+`127.0.0.1`. Cookies, passwords, and the Chrome profile are not sent.
+
+Put the same secret in the PC `.env` and the VPS `.env`:
+
+```
+KOLAY90_INGEST_TOKEN=
+KOLAY90_INGEST_URL=https://YOUR_VPS/kolay90/prematch
+```
+
+On Windows, from the repo root:
+
+```
+powershell -ExecutionPolicy Bypass -File .\scripts\start-kolay90-local.ps1
+```
+
+The script checks the pid file, starts Chrome with
+`experiments\kolay90_direct\chrome_profile` only when port 9222 is
+closed, then polls on the existing prematch interval. Finish Cloudflare
+and login in that window. After `getMaclar` returns odds, they are
+posted to `POST /kolay90/prematch`. The VPS stores those rows and the
+existing prematch matcher reads them on its next tick. A failed post
+is retried and does not refresh the VPS timestamp. `SESSION_EXPIRED`
+waits for login in the same window and then continues. A second start
+prints that the collector is already running.

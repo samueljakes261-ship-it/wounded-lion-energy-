@@ -1849,11 +1849,14 @@ def _run_prematch_tick(bankroll, now_dt):
     global _prematch_last_back_lay, _prematch_back_lay_sig
     global _prematch_last_cache_n
 
+    from parsers.kolay90_prematch.snapshot import prefer_remote_kolay90, remote_is_fresh
+
     if (
         _betkanyon_prematch_worker is None
         and _orbit_prematch_worker is None
         and _kolay90_prematch_worker is None
         and _onwin_prematch_worker is None
+        and not remote_is_fresh(now_dt)
     ):
         return
 
@@ -1864,8 +1867,12 @@ def _run_prematch_tick(bankroll, now_dt):
         matches.extend(_orbit_prematch_worker.get_matches())
     if _onwin_prematch_worker is not None:
         matches.extend(_onwin_prematch_worker.get_matches())
-    if _kolay90_prematch_worker is not None:
-        matches.extend(_kolay90_prematch_worker.get_matches())
+    worker_kolay90 = (
+        _kolay90_prematch_worker.get_matches()
+        if _kolay90_prematch_worker is not None
+        else []
+    )
+    matches.extend(prefer_remote_kolay90(worker_kolay90, now_dt))
     matches = [
         match
         for match in matches
@@ -2173,6 +2180,16 @@ def _write_status(
     orbit_pm_age = (now - orbit_pm_last) if orbit_pm_last else None
     k90_pm_age = (now - k90_pm_last) if k90_pm_last else None
     onwin_pm_age = (now - onwin_pm_last) if onwin_pm_last else None
+    from parsers.kolay90_prematch.snapshot import remote_collection_age
+
+    remote_age = remote_collection_age(now_dt)
+    if remote_age is not None:
+        k90_pm_status = dict(k90_pm_status)
+        k90_pm_status["status"] = "running"
+        k90_pm_status["error"] = None
+        k90_pm_status["consecutive_failures"] = 0
+        k90_pm_status["last_update_at"] = now - remote_age
+        k90_pm_age = remote_age
 
     payload = {
         "generatedAt": _iso_dt(now_dt),
@@ -2225,7 +2242,8 @@ def _write_status(
                 "Kolay90 Prematch",
                 k90_pm_status.get("status"),
                 k90_pm_age,
-                _worker_alive(
+                remote_age is not None
+                or _worker_alive(
                     _kolay90_prematch_worker._thread
                     if _kolay90_prematch_worker
                     else None
