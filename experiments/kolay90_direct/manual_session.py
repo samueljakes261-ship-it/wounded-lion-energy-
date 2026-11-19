@@ -28,7 +28,7 @@ HERE = Path(__file__).resolve().parent
 PROFILE = HERE / "chrome_profile"
 CDP_URL = "http://127.0.0.1:9222"
 CDP_PORT = 9222
-HOME = "https://kolay90.com/"
+HOME = "https://kolay91.com/"
 
 from parsers.kolay90_prematch.agreement import is_agreement_page
 from parsers.kolay90_prematch.login import _looks_like_challenge, inspect_page
@@ -160,7 +160,7 @@ def list_pages(browser) -> list[dict]:
 def find_kolay90_page(rows: list[dict]):
     for row in rows:
         host = (urlsplit(row.get("url") or "").hostname or "").lower()
-        if host == "kolay90.com" or host.endswith(".kolay90.com"):
+        if host == "kolay91.com" or host.endswith(".kolay91.com"):
             return row
     return None
 
@@ -184,7 +184,7 @@ def classify_session_state(
     if has_account or (application and not has_login_control):
         return "AUTHENTICATED_APP"
     host = (urlsplit(url).hostname or "").lower()
-    if host.endswith("kolay90.com") or host == "kolay90.com":
+    if host.endswith("kolay91.com") or host == "kolay91.com":
         return "KOLAY90_UNKNOWN"
     return "UNKNOWN"
 
@@ -231,7 +231,7 @@ def parse_in_page_response(result: dict) -> dict:
 def in_page_getmaclar(page) -> dict:
     result = page.evaluate(
         """async () => {
-            const response = await fetch("https://kolay90.com/service/getMaclar");
+            const response = await fetch("https://kolay91.com/service/getMaclar");
             return {
                 status: response.status,
                 contentType: response.headers.get("content-type"),

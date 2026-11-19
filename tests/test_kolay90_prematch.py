@@ -315,7 +315,7 @@ def test_cloudflare_title_includes_localized_moment():
 
         @property
         def url(self):
-            return "https://kolay90.com/"
+            return "https://kolay91.com/"
 
     from parsers.kolay90_prematch.login import _looks_like_challenge
 
@@ -328,13 +328,13 @@ def test_agreement_page_and_accept_button():
         is_agreement_page,
     )
 
-    assert is_agreement_page("https://kolay90.com/sozlesme.html", "User Agreement", "") is True
+    assert is_agreement_page("https://kolay91.com/sozlesme.html", "User Agreement", "") is True
     assert is_agreement_page(
-        "https://kolay90.com/",
+        "https://kolay91.com/",
         "Sözleşme",
         "bu sitedeki tüm içerikler bilgilendirme ve eğlence amaçlı olduğunu kabul ediyormusunuz",
     ) is True
-    assert is_agreement_page("https://kolay90.com/", "Just a moment...", "Cloudflare Privacy") is False
+    assert is_agreement_page("https://kolay91.com/", "Just a moment...", "Cloudflare Privacy") is False
     classified = classify_agreement_buttons(
         [
             {"index": 0, "text": "Reddet"},
@@ -381,7 +381,7 @@ def test_session_probe_redacts_query_and_detects_challenge():
         safe_url,
     )
 
-    assert safe_url("https://kolay90.com/?__cf_chl_rt_tk=secret") == "https://kolay90.com/"
+    assert safe_url("https://kolay91.com/?__cf_chl_rt_tk=secret") == "https://kolay91.com/"
     flags = marker_flags("Just a moment... Cloudflare Privacy")
     assert flags["just a moment"] is True
     assert flags["cloudflare"] is True
@@ -406,7 +406,7 @@ def test_diagnose_redacts_apikey_and_cf_token():
 
     text = redact_error(
         "connect failed wss://browser.zenrows.com/?apikey=supersecretkey "
-        "https://kolay90.com/?__cf_chl_rt_tk=tokensecret"
+        "https://kolay91.com/?__cf_chl_rt_tk=tokensecret"
     )
     assert "supersecretkey" not in text
     assert "tokensecret" not in text
@@ -517,7 +517,7 @@ def test_authentication_loss_sets_required_flag():
     assert lost["auth_state"] == "KOLAY90_AUTHENTICATION_REQUIRED"
     assert lost["kept_last_good"] is True
     assert classify_session_state(cloudflare=True) == "CLOUDFLARE"
-    assert classify_session_state(url="https://kolay90.com/sozlesme.html") == "AGREEMENT"
+    assert classify_session_state(url="https://kolay91.com/sozlesme.html") == "AGREEMENT"
     assert classify_session_state(has_password=True) == "LOGIN"
 
 
@@ -567,7 +567,7 @@ def test_list_pages_does_not_wait_on_title():
     from parsers.kolay90_prematch.cdp import find_kolay90_page, list_pages
 
     class FakePage:
-        url = "https://kolay90.com/#!/maclar/1"
+        url = "https://kolay91.com/#!/maclar/1"
 
         def title(self):
             raise AssertionError("page.title() must not be called during attach")
@@ -581,7 +581,7 @@ def test_list_pages_does_not_wait_on_title():
     rows = list_pages(FakeBrowser())
     found = find_kolay90_page(rows)
     assert found is not None
-    assert "kolay90.com" in found["url"]
+    assert "kolay91.com" in found["url"]
 
 
 def test_find_kolay90_page_and_cdp_reconnect_does_not_launch_chrome(monkeypatch):
@@ -596,7 +596,7 @@ def test_find_kolay90_page_and_cdp_reconnect_does_not_launch_chrome(monkeypatch)
     monkeypatch.setattr(cdp, "connect_existing_chrome", fake_connect)
     rows = [
         {"url": "https://example.com/", "title": "x"},
-        {"url": "https://kolay90.com/#!/maclar/1", "title": "Kolay90"},
+        {"url": "https://kolay91.com/#!/maclar/1", "title": "Kolay90"},
     ]
     found = find_kolay90_page(rows)
     assert found["title"] == "Kolay90"

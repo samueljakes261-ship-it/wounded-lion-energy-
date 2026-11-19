@@ -42,7 +42,7 @@ def test_cdp_url_is_localhost():
 def test_find_kolay90_page():
     rows = [
         {"url": "https://example.com/", "title": "Example"},
-        {"url": "https://kolay90.com/sports", "title": "Kolay90"},
+        {"url": "https://kolay91.com/sports", "title": "Kolay90"},
     ]
     found = find_kolay90_page(rows)
     assert found is not None
@@ -53,7 +53,7 @@ def test_find_kolay90_page():
 def test_session_state_classification():
     assert classify_session_state(cloudflare=True) == "CLOUDFLARE"
     assert classify_session_state(
-        url="https://kolay90.com/sozlesme.html", title="Sozlesme", text=""
+        url="https://kolay91.com/sozlesme.html", title="Sozlesme", text=""
     ) == "AGREEMENT"
     assert classify_session_state(has_password=True) == "LOGIN"
     assert classify_session_state(has_account=True) == "AUTHENTICATED_APP"
@@ -143,7 +143,7 @@ def test_parse_in_page_response_json_and_hata():
 def test_redact_does_not_keep_apikey_or_cf_token():
     text = redact(
         "wss://browser.zenrows.com/?apikey=supersecret "
-        "https://kolay90.com/?__cf_chl_rt_tk=tokensecret"
+        "https://kolay91.com/?__cf_chl_rt_tk=tokensecret"
     )
     assert "supersecret" not in text
     assert "tokensecret" not in text

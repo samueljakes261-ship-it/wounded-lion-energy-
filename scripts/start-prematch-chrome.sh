@@ -23,7 +23,7 @@ if [ -z "$CHROME" ]; then
 fi
 
 echo "[prematch-chrome] starting $CHROME on port ${PORT}"
-echo "[prematch-chrome] tabs: https://kolay90.com/  $SPORT_PAGE"
+echo "[prematch-chrome] tabs: https://kolay91.com/  $SPORT_PAGE"
 # Intentionally no --no-sandbox / --disable-gpu: this host supports the real
 # Chrome sandbox and a virtual display, and those two flags (a) trigger
 # Chrome's "unsupported command-line flag" banner and (b) force software
@@ -38,5 +38,5 @@ exec "$CHROME" \
   --no-default-browser-check \
   --disable-dev-shm-usage \
   --window-size=1280,900 \
-  "https://kolay90.com/" \
+  "https://kolay91.com/" \
   "$SPORT_PAGE"

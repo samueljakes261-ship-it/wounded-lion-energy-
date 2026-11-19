@@ -208,7 +208,7 @@ def test_prematch_tick_reads_the_remote_snapshot_without_a_local_worker(
 def test_chrome_debug_address_stays_on_localhost():
     argv = chrome_argv(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     assert "--remote-debugging-address=127.0.0.1" in argv
-    assert "https://kolay90.com/" in argv
+    assert "https://kolay91.com/" in argv
     assert "--headless" not in argv
     assert not any("0.0.0.0" in part for part in argv)
 

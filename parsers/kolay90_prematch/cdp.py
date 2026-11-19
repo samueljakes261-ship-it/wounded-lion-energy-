@@ -39,7 +39,7 @@ def list_pages(browser) -> list[dict]:
 def find_kolay90_page(rows: list[dict]):
     for row in rows:
         host = (urlsplit(row.get("url") or "").hostname or "").lower()
-        if host == "kolay90.com" or host.endswith(".kolay90.com"):
+        if host == "kolay91.com" or host.endswith(".kolay91.com"):
             return row
     return None
 

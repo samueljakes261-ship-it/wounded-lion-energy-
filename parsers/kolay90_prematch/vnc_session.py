@@ -269,7 +269,7 @@ def chrome_argv(
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-dev-shm-usage",
-        "https://kolay90.com/",
+        "https://kolay91.com/",
     ]
 
 

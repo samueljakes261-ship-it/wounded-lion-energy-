@@ -155,7 +155,7 @@ def take_snapshot(page, network: list[dict], previous_fp: str | None = None) -> 
     kolay_statuses = [
         item.get("status")
         for item in network
-        if "kolay90.com" in (item.get("url") or "")
+        if "kolay91.com" in (item.get("url") or "")
     ]
     iframe_srcs = [safe_url(src) for src in (env.get("iframeSrcs") or []) if src]
     return {

@@ -6,7 +6,7 @@ import json
 
 from parsers.kolay90_prematch.parser import is_unauthenticated
 
-ENDPOINT = "https://kolay90.com/service/getMaclar"
+ENDPOINT = "https://kolay91.com/service/getMaclar"
 UNAUTH_MARKER = "Lütfen Tekrar Giriş Yapınız"
 
 

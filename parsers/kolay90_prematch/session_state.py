@@ -29,7 +29,7 @@ def classify_session_state(
     if has_account or (application and not has_login_control):
         return "AUTHENTICATED_APP"
     host = (urlsplit(url or "").hostname or "").lower()
-    if host == "kolay90.com" or host.endswith(".kolay90.com"):
+    if host == "kolay91.com" or host.endswith(".kolay91.com"):
         return "KOLAY90_UNKNOWN"
     return "UNKNOWN"
 

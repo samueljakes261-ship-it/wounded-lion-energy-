@@ -172,7 +172,7 @@ def connect_without_health_write(browser_ws: str) -> dict:
         context = browser.contexts[0] if browser.contexts else browser.new_context()
         page = context.new_page()
         nav_started = time.monotonic()
-        response = page.goto("https://kolay90.com", wait_until="domcontentloaded", timeout=90000)
+        response = page.goto("https://kolay91.com", wait_until="domcontentloaded", timeout=90000)
         result["navigate_ms"] = int((time.monotonic() - nav_started) * 1000)
         result["page_loaded"] = True
         result["page_url"] = page.url

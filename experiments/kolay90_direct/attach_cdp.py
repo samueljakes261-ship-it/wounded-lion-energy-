@@ -60,7 +60,7 @@ def list_pages(browser) -> list[dict]:
 def find_kolay90_page(rows: list[dict]):
     for row in rows:
         host = (urlsplit(row["url"]).hostname or "").lower()
-        if host == "kolay90.com" or host.endswith(".kolay90.com"):
+        if host == "kolay91.com" or host.endswith(".kolay91.com"):
             return row
     return None
 
@@ -171,7 +171,7 @@ def run() -> dict:
         if found is None:
             report["result"] = "GETMACLAR_NOT_REACHED"
             report["kolay90_page_found"] = False
-            log("No kolay90.com tab found. Open Kolay90 in this Chrome and re-run.")
+            log("No kolay91.com tab found. Open Kolay90 in this Chrome and re-run.")
             return report
 
         log("Authenticated Kolay90 page found.")

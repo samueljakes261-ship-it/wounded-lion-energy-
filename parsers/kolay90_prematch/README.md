@@ -1,6 +1,6 @@
 # Kolay90 prematch (authenticated Chrome)
 
-Kolay90 prematch uses one Chrome window that a person has logged into.
+The bookmaker site is https://kolay91.com/. Kolay90 prematch uses one Chrome window that a person has logged into.
 It does not use ZenRows, cookie replay, or standalone HTTP clients.
 
 On the VPS that window lives on a TigerVNC virtual desktop running XFCE.
@@ -85,7 +85,7 @@ Optional environment, all on the VPS process:
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
   --remote-debugging-port=9222 `
   --user-data-dir="$PWD\experiments\kolay90_direct\chrome_profile" `
-  https://kolay90.com/
+  https://kolay91.com/
 ```
 
 2. In that window: open Kolay90 if needed.

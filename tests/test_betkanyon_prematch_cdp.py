@@ -181,7 +181,7 @@ def test_passed_requesthelper_is_not_treated_as_cloudflare_wall():
     assert looks_like_cloudflare_page(PassedPage()) is False
     assert looks_like_cloudflare_page(ChallengePage()) is True
     rows = [
-        {"url": "https://kolay90.com/", "title": "Kolay90", "page": object()},
+        {"url": "https://kolay91.com/", "title": "Kolay90", "page": object()},
         {
             "url": "https://sport.bksp3.com/0587cccf-5a4f-430c-a2b4-b1b98af7e3ad/Tools/RequestHelper",
             "title": "",

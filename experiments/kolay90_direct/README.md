@@ -32,7 +32,7 @@ Chrome command if you start it yourself:
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
   --remote-debugging-port=9222 `
   --user-data-dir="$PWD\experiments\kolay90_direct\chrome_profile" `
-  https://kolay90.com/
+  https://kolay91.com/
 ```
 
 Complete Cloudflare, accept the agreement, and log in in that window.

@@ -10,7 +10,7 @@ from parsers.kolay90_prematch.agreement import (
     is_agreement_page,
 )
 
-HOME = "https://kolay90.com/"
+HOME = "https://kolay91.com/"
 APP_MARKERS = (
     "giriş",
     "giris",

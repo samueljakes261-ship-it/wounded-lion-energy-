@@ -97,7 +97,7 @@ def test_commands_do_not_disable_auth_or_hide_chrome(monkeypatch):
     assert "1600x900" in vnc
     assert "--remote-debugging-address=127.0.0.1" in chrome
     assert "--remote-debugging-port=9222" in chrome
-    assert chrome[-1] == "https://kolay90.com/"
+    assert chrome[-1] == "https://kolay91.com/"
     assert vnc[:3] == ["/usr/bin/tigervncserver", ":1", "-geometry"]
 
 

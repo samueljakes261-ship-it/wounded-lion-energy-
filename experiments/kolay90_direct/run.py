@@ -29,8 +29,8 @@ from parser import (
     validate_against_raw,
 )
 
-ENDPOINT = "https://kolay90.com/service/getMaclar"
-HOME = "https://kolay90.com/"
+ENDPOINT = "https://kolay91.com/service/getMaclar"
+HOME = "https://kolay91.com/"
 PROFILE = HERE / "browser_profile"
 OUT = HERE / "output"
 USER_AGENT = (
@@ -378,8 +378,8 @@ def run() -> dict:
                     "User-Agent": USER_AGENT,
                     "X-Requested-With": "XMLHttpRequest",
                     "Accept": "application/json, text/plain, */*",
-                    "Origin": "https://kolay90.com",
-                    "Referer": "https://kolay90.com/",
+                    "Origin": "https://kolay91.com",
+                    "Referer": "https://kolay91.com/",
                 },
             ),
         ]
