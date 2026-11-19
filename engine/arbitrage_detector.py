@@ -38,3 +38,13 @@ class ArbitrageDetector:
             profit_percentage=profit_percentage,
 
         )
+
+    def detect_two_way(self, over_odds: float, under_odds: float):
+        """Two-way Over/Under: only OVER and UNDER of the same line.
+
+        Does not change detect() 1X2 behavior.
+        """
+        implied_probability = (1 / over_odds) + (1 / under_odds)
+        arbitrage_exists = implied_probability < 1
+        profit_percentage = max(0, (1 - implied_probability) * 100)
+        return implied_probability, arbitrage_exists, profit_percentage

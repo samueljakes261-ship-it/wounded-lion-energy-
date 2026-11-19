@@ -1,9 +1,104 @@
 import asyncio
 import json
+import random
+import string
+from urllib.parse import urlparse
 
 import websockets
 
-from config import ORBIT_WS_URL, ORBIT_COOKIES
+from config import ORBIT_COOKIES
+from parsers.orbit.proxy import (
+    configured_proxy_url,
+    log_acquisition_mode,
+    reraise_proxy_connect_failure,
+)
+
+# config.ORBIT_WS_URL hardcodes a specific SockJS server-id/session-id
+# pair (".../multiple-market-prices/610/2a9f9a94-.../websocket") that
+# was captured from a single past browser session. SockJS session ids
+# are single-use/ephemeral -- reusing an old one after that original
+# connection ended causes the server to silently drop the opening
+# handshake (observed: connect() then TimeoutError, no error frame).
+# A fresh, randomly-generated server-id/session-id pair on the SAME
+# base path works immediately as long as ORBIT_COOKIES is still a
+# valid authenticated session (verified live). So we only reuse the
+# fixed base path from config and generate the volatile suffix here,
+# every time connect() is called (including on reconnects).
+ORBIT_WS_BASE = (
+    "wss://www.orbitxch.com/customer/ws/multiple-market-prices"
+)
+
+# Returned by receive() for a SockJS heartbeat ("h"). Distinct from a
+# market-price payload (those always carry "marketDefinition") so the
+# feed can treat heartbeats as connection liveness without pretending
+# they are odds updates.
+ORBIT_HEARTBEAT = {"__orbit_internal__": "heartbeat"}
+
+
+def _fresh_sockjs_path() -> str:
+    server_id = str(random.randint(0, 999)).zfill(3)
+    session_id = "".join(
+        random.choices(string.ascii_letters + string.digits, k=8)
+    )
+    return f"{ORBIT_WS_BASE}/{server_id}/{session_id}/websocket"
+
+
+def is_orbit_heartbeat(frame) -> bool:
+    return isinstance(frame, dict) and frame.get("__orbit_internal__") == "heartbeat"
+
+
+_WS_HEADERS = {
+    "Origin": "https://www.orbitxch.com",
+    "Cookie": ORBIT_COOKIES,
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/150.0.0.0 Safari/537.36"
+    ),
+}
+
+
+async def open_orbit_websocket(url, *, ping_interval, ping_timeout):
+    """Connect the Orbit SockJS URL. Proxy is applied only when configured."""
+    log_acquisition_mode()
+    connect_kwargs = {
+        "additional_headers": _WS_HEADERS,
+        "open_timeout": 15,
+        "ping_interval": ping_interval,
+        "ping_timeout": ping_timeout,
+    }
+    proxy_url = configured_proxy_url()
+    if proxy_url is not None:
+        # Disable websockets' default proxy=True (env HTTP_PROXY).
+        # Use the same python-socks from_url path proven on the VPS.
+        connect_kwargs["proxy"] = None
+        dest = urlparse(url)
+        dest_host = dest.hostname
+        dest_port = dest.port or 443
+        try:
+            from python_socks.sync import Proxy
+
+            def _open_socks():
+                return Proxy.from_url(proxy_url).connect(
+                    dest_host,
+                    dest_port,
+                    timeout=15,
+                )
+
+            connect_kwargs["sock"] = await asyncio.to_thread(_open_socks)
+            connect_kwargs["server_hostname"] = dest_host
+        except Exception as exc:
+            print(
+                "[ORBIT] Orbit SOCKS5 proxy connection failed "
+                f"({type(exc).__name__})"
+            )
+            raise ConnectionError("Orbit SOCKS5 proxy connection failed") from exc
+    try:
+        return await websockets.connect(url, **connect_kwargs)
+    except Exception as exc:
+        if proxy_url is not None:
+            reraise_proxy_connect_failure(exc)
+        raise
 
 
 class OrbitWebSocketClient:
@@ -11,22 +106,27 @@ class OrbitWebSocketClient:
         self.ws = None
 
     async def connect(self):
-        print("Connecting...")
+        url = _fresh_sockjs_path()
 
-        self.ws = await websockets.connect(
-            ORBIT_WS_URL,
-            additional_headers={
-                "Origin": "https://www.orbitxch.com",
-                "Cookie": ORBIT_COOKIES,
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/150.0.0.0 Safari/537.36"
-                ),
-            },
+        print("[ORBIT] Connecting websocket...")
+
+        self.ws = await open_orbit_websocket(
+            url,
+            ping_interval=20,
+            ping_timeout=20,
         )
 
-        print("Connected!")
+        # SockJS opening frame ("o") confirms the transport is actually
+        # live before we report success -- otherwise a caller could
+        # start subscribing on a socket that never really opened.
+        open_frame = await asyncio.wait_for(self.ws.recv(), timeout=10)
+
+        if open_frame != "o":
+            raise ConnectionError(
+                f"Expected SockJS open frame 'o', got: {open_frame!r}"
+            )
+
+        print("[ORBIT] Websocket connected")
 
     async def subscribe(self, market_id: str, event_id: str):
         payload = json.dumps(
@@ -43,12 +143,7 @@ class OrbitWebSocketClient:
             ]
         )
 
-        print("Sending subscription...")
-        print(payload)
-
         await self.ws.send(payload)
-
-        print("Waiting for live messages...")
 
     async def receive(self):
         while True:
@@ -58,13 +153,17 @@ class OrbitWebSocketClient:
             if message == "o":
                 continue
 
-            # SockJS heartbeat
+            # SockJS heartbeat -- connection is alive. Must surface
+            # this to the feed: swallowing it here made
+            # asyncio.wait_for(receive(), 30s) raise TimeoutError on
+            # a perfectly healthy socket whenever prices were quiet,
+            # which tore down and resubscribed every live market.
             if message == "h":
-                continue
+                return ORBIT_HEARTBEAT
 
             # SockJS close frame
             if message.startswith("c"):
-                print("Socket closed:", message)
+                print(f"[ORBIT] Socket closed by server: {message}")
                 return None
 
             # SockJS message frame
@@ -83,21 +182,22 @@ class OrbitWebSocketClient:
                     return inner
 
                 except Exception as e:
-                    print("Failed to decode frame:")
-                    print(message)
-                    print(e)
+                    print(
+                        f"[ORBIT] Failed to decode frame "
+                        f"({type(e).__name__}: {e})"
+                    )
                     continue
 
             # Sometimes Orbit sends raw JSON directly
             try:
                 return json.loads(message)
             except Exception:
-                print("Unknown frame:")
-                print(message)
+                print("[ORBIT] Unknown websocket frame (ignored)")
 
     async def close(self):
         if self.ws:
             await self.ws.close()
+            self.ws = None
 
 
 async def demo():

@@ -1,7 +1,7 @@
-from parsers.betkanyon.fetcher import BetkanyonFetcher
-from parsers.betkanyon.decryptor import BetkanyonDecryptor
-from parsers.betkanyon.parser import parse_json
 from parsers.betkanyon.adapter import BetkanyonAdapter
+from parsers.betkanyon.decryptor import BetkanyonDecryptor
+from parsers.betkanyon.fetcher import BetkanyonFetcher
+from parsers.betkanyon.parser import parse_json
 
 
 class BetkanyonFeed:
@@ -14,6 +14,14 @@ class BetkanyonFeed:
 
         self._match_odds = []
         self._parsed_event_count = 0
+        self.last_cycle_empty = False
+        self.last_stats = {
+            "events": 0,
+            "odds": 0,
+            "http_status": None,
+            "content_type": None,
+            "payload_bytes": 0,
+        }
 
     def collect_once(self):
         """
@@ -28,10 +36,24 @@ class BetkanyonFeed:
         """
 
         encrypted = self.fetcher.fetch()
+        meta = getattr(self.fetcher, "last_meta", {}) or {}
+        if not encrypted:
+            return self._keep_last_good("empty payload")
 
         decrypted = self.decryptor.decrypt(encrypted)
+        if decrypted is None:
+            return self._keep_last_good("empty decrypt")
 
-        parsed = parse_json(decrypted)
+        try:
+            parsed = parse_json(decrypted)
+        except Exception:
+            if self._match_odds:
+                print(
+                    "[BETKANYON] malformed cycle ignored; "
+                    f"keeping {len(self._match_odds)} last MatchOdds"
+                )
+                return self._match_odds
+            raise
 
         matches = []
 
@@ -43,18 +65,52 @@ class BetkanyonFeed:
 
                 matches.append(match)
 
-        self._match_odds = matches
+        self.last_cycle_empty = not matches
+        if not matches:
+            self.last_stats = {
+                "events": len(parsed),
+                "odds": 0,
+                "http_status": meta.get("http_status"),
+                "content_type": meta.get("content_type"),
+                "payload_bytes": meta.get("payload_bytes") or 0,
+            }
+            return self._keep_last_good("empty parse")
         self._parsed_event_count = len(parsed)
+        self.last_stats = {
+            "events": len(parsed),
+            "odds": len(matches),
+            "http_status": meta.get("http_status"),
+            "content_type": meta.get("content_type"),
+            "payload_bytes": meta.get("payload_bytes") or 0,
+        }
 
-        return matches
+        if matches:
+            self._match_odds = matches
+        elif self._match_odds:
+            print(
+                "[BETKANYON] empty cycle ignored; "
+                f"keeping {len(self._match_odds)} last MatchOdds"
+            )
+        else:
+            self._match_odds = matches
+
+        return self._match_odds
+
+    def _keep_last_good(self, reason: str):
+        if self._match_odds:
+            print(
+                f"[BETKANYON] {reason} ignored; "
+                f"keeping {len(self._match_odds)} last MatchOdds"
+            )
+            return self._match_odds
+        return []
 
     def get_match_odds(self):
 
         return self._match_odds
 
     def get_parsed_event_count(self):
-        """Raw event count from the most recent collect_once() call
-        (before the MatchOdds adapter filter), for status logging."""
+        """Event/odds-row count from the most recent collect_once() parse."""
 
         return self._parsed_event_count
 

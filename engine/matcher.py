@@ -54,6 +54,12 @@ class EventMatcher:
         if sport1 != sport2:
             return False
 
+        # Live vs prematch must never match even if team names agree.
+        feed1 = getattr(match1, "feed_type", "live") or "live"
+        feed2 = getattr(match2, "feed_type", "live") or "live"
+        if feed1 != feed2:
+            return False
+
         #
         # Normalize home and away teams
         #

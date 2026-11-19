@@ -1,0 +1,47 @@
+[
+  {
+    "id": 759101283,
+    "periodName": "",
+    "mainGameId": 759101283,
+    "startTs": 1788080400,
+    "sport": {"id": 6, "name": "Volleyball"},
+    "liga": {"id": 3, "name": "PlusLiga"},
+    "opponent1": {"fullName": "Home Volley", "id": 31},
+    "opponent2": {"fullName": "Away Volley", "id": 32},
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "events": [
+          [{"type": 1, "cf": 1.90}],
+          [{"type": 3, "cf": 2.10}]
+        ]
+      },
+      {
+        "groupId": 17,
+        "events": [
+          [{"type": 9, "parameter": 175.5, "cf": 1.83}],
+          [{"type": 10, "parameter": 175.5, "cf": 1.83}]
+        ]
+      }
+    ]
+  },
+  {
+    "id": 759101284,
+    "periodName": "1st Set",
+    "mainGameId": 759101283,
+    "startTs": 1788080400,
+    "sport": {"id": 6, "name": "Volleyball"},
+    "liga": {"id": 3, "name": "PlusLiga"},
+    "opponent1": {"fullName": "Home Volley", "id": 31},
+    "opponent2": {"fullName": "Away Volley", "id": 32},
+    "eventGroups": [
+      {
+        "groupId": 17,
+        "events": [
+          [{"type": 9, "parameter": 44.5, "cf": 1.90}],
+          [{"type": 10, "parameter": 44.5, "cf": 1.90}]
+        ]
+      }
+    ]
+  }
+]
