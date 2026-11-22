@@ -108,3 +108,7 @@ experiments/onwin_direct_api/output/
 
 # Isolated OnWin PREMATCH direct-access experiment
 experiments/onwin_prematch_direct/output/
+
+# Isolated OnWin Playwright experiment (profile, responses, status)
+experiments/onwin_playwright/chrome_profile/
+experiments/onwin_playwright/output/
