@@ -77,6 +77,17 @@ def ingest_onwin_live(body: dict, authorization: str = Header(default="")):
         raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
 
 
+@app.post("/onwin/prematch")
+def ingest_onwin_prematch(body: dict, authorization: str = Header(default="")):
+    """Accept OnWin prematch odds from the same Windows Chrome as live."""
+    from parsers.onwin.prematch_snapshot import IngestRejected, accept_remote_snapshot
+
+    try:
+        return accept_remote_snapshot(body, authorization)
+    except IngestRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
+
+
 @app.get("/health")
 def health():
 

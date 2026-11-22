@@ -1864,6 +1864,10 @@ def _run_prematch_tick(bankroll, now_dt):
     global _prematch_last_cache_n
 
     from parsers.kolay90_prematch.snapshot import prefer_remote_kolay90, remote_is_fresh
+    from parsers.onwin.prematch_snapshot import (
+        prefer_remote_onwin,
+        remote_is_fresh as onwin_prematch_fresh,
+    )
 
     if (
         _betkanyon_prematch_worker is None
@@ -1871,6 +1875,7 @@ def _run_prematch_tick(bankroll, now_dt):
         and _kolay90_prematch_worker is None
         and _onwin_prematch_worker is None
         and not remote_is_fresh(now_dt)
+        and not onwin_prematch_fresh(now_dt)
     ):
         return
 
@@ -1879,8 +1884,12 @@ def _run_prematch_tick(bankroll, now_dt):
         matches.extend(_betkanyon_prematch_worker.get_matches())
     if _orbit_prematch_worker is not None:
         matches.extend(_orbit_prematch_worker.get_matches())
-    if _onwin_prematch_worker is not None:
-        matches.extend(_onwin_prematch_worker.get_matches())
+    worker_onwin = (
+        _onwin_prematch_worker.get_matches()
+        if _onwin_prematch_worker is not None
+        else []
+    )
+    matches.extend(prefer_remote_onwin(worker_onwin, now_dt))
     worker_kolay90 = (
         _kolay90_prematch_worker.get_matches()
         if _kolay90_prematch_worker is not None
@@ -1931,7 +1940,9 @@ def _run_prematch_tick(bankroll, now_dt):
         total_arbs,
         kolay90_n=len(kolay90_matches),
         onwin_n=(
-            len(onwin_matches) if _onwin_prematch_worker is not None else None
+            len(onwin_matches)
+            if _onwin_prematch_worker is not None or onwin_prematch_fresh(now_dt)
+            else None
         ),
     )
     if (
@@ -2206,6 +2217,10 @@ def _write_status(
         k90_pm_status["last_update_at"] = now - remote_age
         k90_pm_age = remote_age
 
+    from parsers.onwin.prematch_snapshot import (
+        remote_collection_age as onwin_prematch_remote_age,
+    )
+
     remote_onwin_age = onwin_remote_age(now_dt)
     if remote_onwin_age is not None and not onwin_alive:
         onwin_status = dict(onwin_status)
@@ -2215,6 +2230,19 @@ def _write_status(
         onwin_status["last_update_at"] = now - remote_onwin_age
         onwin_age = remote_onwin_age
         onwin_alive = True
+
+    prematch_remote_age = onwin_prematch_remote_age(now_dt)
+    onwin_pm_alive = _worker_alive(
+        _onwin_prematch_worker._thread if _onwin_prematch_worker else None
+    )
+    if prematch_remote_age is not None:
+        onwin_pm_status = dict(onwin_pm_status)
+        onwin_pm_status["status"] = "running"
+        onwin_pm_status["error"] = None
+        onwin_pm_status["consecutive_failures"] = 0
+        onwin_pm_status["last_update_at"] = now - prematch_remote_age
+        onwin_pm_age = prematch_remote_age
+        onwin_pm_alive = True
 
     payload = {
         "generatedAt": _iso_dt(now_dt),
@@ -2281,11 +2309,7 @@ def _write_status(
                 "OnWin Prematch",
                 onwin_pm_status.get("status"),
                 onwin_pm_age,
-                _worker_alive(
-                    _onwin_prematch_worker._thread
-                    if _onwin_prematch_worker
-                    else None
-                ),
+                onwin_pm_alive,
                 onwin_pm_status,
                 now_dt,
                 max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,

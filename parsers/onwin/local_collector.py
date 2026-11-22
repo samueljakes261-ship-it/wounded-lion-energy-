@@ -1,7 +1,7 @@
-"""Collect OnWin live odds from the Chrome window Kolay91 already uses.
+"""Collect OnWin live and prematch odds from the Kolay91 Chrome.
 
-Attaches to 127.0.0.1:9222, reads the sportsbook responses that page
-already makes, and POSTs MatchOdds to the VPS. Does not start ZenRows
+Attaches to 127.0.0.1:9222. Live stays on the live soccer tab. Prematch
+opens a second tab. Odds are posted to the VPS. Does not start ZenRows
 and does not close Chrome.
 """
 
@@ -13,17 +13,23 @@ import sys
 import time
 from pathlib import Path
 
+from parsers.onwin.parser import FOOTBALL_SPORT_ID
+from parsers.onwin.prematch_snapshot import match_to_payload as prematch_to_payload
 from parsers.onwin.remote_snapshot import match_to_payload
 from parsers.onwin.state import OnwinState
+from parsers.onwin_prematch.parser import FINISHED_STATUSES, parse_prematch
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INGEST_URL = "https://api.lintonbeautynrb.org/onwin/live"
+DEFAULT_PREMATCH_URL = "https://api.lintonbeautynrb.org/onwin/prematch"
 DEFAULT_CDP = "http://127.0.0.1:9222"
 DEFAULT_PAGE = "https://onwin4505.com/sportsbook/live/main-line/soccer"
+DEFAULT_PREMATCH_PAGE = "https://onwin4505.com/sportsbook/prelive/main-line/soccer"
 UPDATE_FRAGMENTS = (
     "find_event_snapshots.erisgaming",
     "get_main_line_gap.erisgaming",
 )
+PREMATCH_RELOAD_SECONDS = 90.0
 PID_NAME = "onwin_local_collector.pid"
 
 
@@ -57,16 +63,52 @@ def unwrap_sports(payload):
     return None
 
 
-def _for_onwin_page(request, page) -> bool:
-    frame = None
+def snapshot_lane(payload) -> str | None:
+    """Tell a full main-line body apart when it has no page frame.
+
+    A live tree is in-progress events. A prematch tree is events that
+    have not started. A mix is left undecided so one response cannot
+    replace the other feed.
+    """
+    football = (payload or {}).get("sports", {}).get(FOOTBALL_SPORT_ID) or {}
+    live = False
+    upcoming = False
+    for category in (football.get("categories") or {}).values():
+        if not isinstance(category, dict):
+            continue
+        for tournament in (category.get("tournaments") or {}).values():
+            if not isinstance(tournament, dict):
+                continue
+            events = tournament.get("events") or {}
+            if not isinstance(events, dict):
+                continue
+            for event in events.values():
+                if not isinstance(event, dict):
+                    continue
+                status = str((event.get("diff") or {}).get("status") or "")
+                if not status or status in FINISHED_STATUSES:
+                    continue
+                if status == "in_progress":
+                    live = True
+                else:
+                    upcoming = True
+                if live and upcoming:
+                    return None
+    if live:
+        return "live"
+    if upcoming:
+        return "prematch"
+    return None
+
+
+def _owner_page(request):
     try:
         frame = request.frame
     except Exception:
-        frame = None
-    owner = getattr(frame, "page", None) if frame is not None else None
-    if owner is not None and owner != page:
-        return False
-    return "kolay" not in (request.url or "").lower()
+        return None
+    if frame is None:
+        return None
+    return getattr(frame, "page", None)
 
 
 def _cdp_url() -> str:
@@ -75,6 +117,10 @@ def _cdp_url() -> str:
 
 def _page_url() -> str:
     return (os.environ.get("ONWIN_PAGE_URL") or DEFAULT_PAGE).strip()
+
+
+def _prematch_page_url() -> str:
+    return (os.environ.get("ONWIN_PREMATCH_PAGE_URL") or DEFAULT_PREMATCH_PAGE).strip()
 
 
 def _pid_path() -> Path:
@@ -119,15 +165,14 @@ def _release_pid() -> None:
         pass
 
 
-def transmit(matches) -> bool:
+def transmit(matches, url: str, label: str, to_payload) -> bool:
     import requests
 
-    url = (os.environ.get("ONWIN_INGEST_URL") or DEFAULT_INGEST_URL).strip()
     token = (os.environ.get("ONWIN_INGEST_TOKEN") or "").strip()
     if not token:
         _log("ONWIN_INGEST_TOKEN is required")
         return False
-    body = {"matches": [match_to_payload(match) for match in matches]}
+    body = {"matches": [to_payload(match) for match in matches]}
     headers = {"Authorization": f"Bearer {token}"}
     delay = 1.0
     for attempt in range(1, 4):
@@ -143,11 +188,11 @@ def transmit(matches) -> bool:
                     payload = {}
                 if payload.get("accepted") is True:
                     _log(
-                        f"VPS accepted {payload.get('count')} live odds "
+                        f"VPS accepted {payload.get('count')} {label} odds "
                         f"collected_at={payload.get('collected_at')}"
                     )
                     return True
-                _log(f"VPS kept the previous snapshot ({payload.get('reason')})")
+                _log(f"VPS kept the previous {label} snapshot ({payload.get('reason')})")
                 return False
             detail = ""
             try:
@@ -161,29 +206,39 @@ def transmit(matches) -> bool:
     return False
 
 
-def _attach(cdp_url: str):
-    from playwright.sync_api import sync_playwright
+def _live_ingest_url() -> str:
+    return (os.environ.get("ONWIN_INGEST_URL") or DEFAULT_INGEST_URL).strip()
 
-    playwright = sync_playwright().start()
-    try:
-        browser = playwright.chromium.connect_over_cdp(cdp_url)
-    except Exception:
-        playwright.stop()
-        raise
-    if not browser.contexts:
-        playwright.stop()
-        raise RuntimeError("attached Chrome has no window")
-    created = False
-    for context in browser.contexts:
-        for page in context.pages:
-            if "onwin" in (page.url or "").lower():
-                return playwright, context, page, created
+
+def _prematch_ingest_url() -> str:
+    return (os.environ.get("ONWIN_PREMATCH_INGEST_URL") or DEFAULT_PREMATCH_URL).strip()
+
+
+def _open_tabs(browser):
+    """Return (context, live_page, prematch_page, pages_this_run_opened)."""
     context = browser.contexts[0]
-    return playwright, context, context.new_page(), True
+    live_page = None
+    prematch_page = None
+    for page in context.pages:
+        url = (page.url or "").lower()
+        if "onwin" not in url:
+            continue
+        if "sportsbook/prelive" in url or "/prematch" in url:
+            prematch_page = prematch_page or page
+        elif "sportsbook/live" in url:
+            live_page = live_page or page
+    created = []
+    if live_page is None:
+        live_page = context.new_page()
+        created.append(live_page)
+    if prematch_page is None:
+        prematch_page = context.new_page()
+        created.append(prematch_page)
+    return context, live_page, prematch_page, created
 
 
-def _release(playwright, page, created: bool) -> None:
-    if created and page is not None:
+def _release(playwright, pages) -> None:
+    for page in pages or []:
         try:
             page.close()
         except Exception:
@@ -197,6 +252,7 @@ def _release(playwright, page, created: bool) -> None:
 
 def main() -> int:
     from dotenv import load_dotenv
+    from playwright.sync_api import sync_playwright
 
     load_dotenv(ROOT / ".env", override=True)
     load_dotenv(ROOT / ".env.local", override=True)
@@ -206,11 +262,13 @@ def main() -> int:
     _claim_pid()
     state = OnwinState()
     box = {"last_post": 0.0, "saw_snapshot": False}
+    prematch = {"matches": [], "last_post": 0.0, "last_reload": time.time()}
     playwright = None
-    page = None
-    created = False
+    created = []
+    live_page = None
+    prematch_page = None
 
-    def publish(force: bool = False) -> None:
+    def publish_live(force: bool = False) -> None:
         if not state.initialized:
             return
         matches = state.get_match_odds()
@@ -219,12 +277,25 @@ def main() -> int:
         now = time.time()
         if not force and now - box["last_post"] < 2:
             return
-        if transmit(matches):
+        if transmit(matches, _live_ingest_url(), "live", match_to_payload):
             box["last_post"] = now
+
+    def publish_prematch(force: bool = False) -> None:
+        matches = prematch["matches"]
+        if not matches:
+            return
+        now = time.time()
+        if not force and now - prematch["last_post"] < 2:
+            return
+        if transmit(matches, _prematch_ingest_url(), "prematch", prematch_to_payload):
+            prematch["last_post"] = now
 
     def on_finished(request):
         try:
-            if not _for_onwin_page(request, page):
+            if "kolay" in (request.url or "").lower():
+                return
+            owner = _owner_page(request)
+            if owner is not None and owner is not live_page and owner is not prematch_page:
                 return
             kind = feed_kind(request.url)
             if kind is None:
@@ -234,6 +305,20 @@ def main() -> int:
                 return
             payload = unwrap_sports(json.loads(response.body()))
             if payload is None:
+                return
+            lane = "live"
+            if owner is prematch_page:
+                lane = "prematch"
+            elif owner is None and kind == "snapshot":
+                lane = snapshot_lane(payload) or ""
+            if lane == "prematch" and kind == "snapshot":
+                matches = parse_prematch(payload)
+                if matches:
+                    prematch["matches"] = matches
+                    _log(f"prematch odds={len(matches)}")
+                    publish_prematch()
+                return
+            if lane != "live":
                 return
             if kind == "snapshot":
                 state.load_initial(payload)
@@ -246,40 +331,60 @@ def main() -> int:
                 changed = state.apply_update(payload)
                 if changed:
                     _log(f"update changed_1x2={len(changed)} events={state.event_count}")
-            publish()
+            publish_live()
         except Exception as exc:
             _log(f"response skipped ({type(exc).__name__})")
 
+    def _goto(page, url: str, label: str) -> None:
+        _log(f"Opening {label} {url}")
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as exc:
+            _log(f"{label} navigation did not finish ({type(exc).__name__}). The tab stays open.")
+
     try:
         _log(f"Attaching to the Kolay91 Chrome at {_cdp_url()}")
-        playwright, context, page, created = _attach(_cdp_url())
+        playwright = sync_playwright().start()
+        browser = playwright.chromium.connect_over_cdp(_cdp_url())
+        if not browser.contexts:
+            raise RuntimeError("attached Chrome has no window")
+        context, live_page, prematch_page, created = _open_tabs(browser)
     except Exception as exc:
         _log(
             "Could not attach to the Kolay91 Chrome. "
             "Leave that collector running, then start this again."
         )
         _log(type(exc).__name__)
+        _release(playwright, [])
         _release_pid()
         return 2
     try:
         context.on("requestfinished", on_finished)
-        if "sportsbook/live" not in (page.url or "").lower():
-            _log(f"Opening {_page_url()} in that window")
-            try:
-                page.goto(_page_url(), wait_until="domcontentloaded", timeout=60000)
-            except Exception as exc:
-                _log(f"Navigation did not finish ({type(exc).__name__}). The tab stays open.")
+        if "sportsbook/live" not in (live_page.url or "").lower():
+            _goto(live_page, _page_url(), "live")
         else:
-            _log("Using the Onwin tab already open in that Chrome")
-        _log("Watching get_main_line.erisgaming. Ctrl+C stops this collector only.")
+            _log("Using the Onwin live tab already open in that Chrome")
+        if "sportsbook/prelive" not in (prematch_page.url or "").lower():
+            _goto(prematch_page, _prematch_page_url(), "prematch")
+        else:
+            _log("Using the Onwin prematch tab already open in that Chrome")
+        prematch["last_reload"] = time.time()
+        _log("Watching live and prematch get_main_line.erisgaming. Ctrl+C stops this collector only.")
         while True:
-            page.wait_for_timeout(5000)
-            publish(force=time.time() - box["last_post"] >= 10)
+            live_page.wait_for_timeout(5000)
+            publish_live(force=time.time() - box["last_post"] >= 10)
+            publish_prematch(force=time.time() - prematch["last_post"] >= 60)
+            if time.time() - prematch["last_reload"] >= PREMATCH_RELOAD_SECONDS:
+                prematch["last_reload"] = time.time()
+                try:
+                    prematch_page.reload(wait_until="domcontentloaded", timeout=60000)
+                except Exception as exc:
+                    _log(f"prematch reload did not finish ({type(exc).__name__})")
     except KeyboardInterrupt:
         _log("Stopped. The Kolay91 Chrome stays open.")
         return 0
     finally:
-        _release(playwright, page, created)
+        _release(playwright, created)
         _release_pid()
 
 

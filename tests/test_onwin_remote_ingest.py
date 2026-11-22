@@ -6,7 +6,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from models.match import MatchOdds
-from parsers.onwin.local_collector import feed_kind, unwrap_sports
+from parsers.onwin.local_collector import feed_kind, snapshot_lane, unwrap_sports
+from parsers.onwin.parser import FOOTBALL_SPORT_ID
+from parsers.onwin.prematch_snapshot import (
+    accept_remote_snapshot as accept_prematch,
+    load_fresh_matches as load_prematch,
+    match_to_payload as prematch_payload,
+    prefer_remote_onwin,
+)
 from parsers.onwin.remote_snapshot import (
     accept_remote_snapshot,
     live_feed,
@@ -111,3 +118,50 @@ def test_live_feed_is_fresh_only_inside_the_engine_window(snapshot_file):
     assert feed["matches"][0].bookmaker == "OnWin"
     assert feed["matches"][0].feed_type == "live"
     assert live_feed(NOW + timedelta(seconds=31)) is None
+
+
+def _tree(status: str) -> dict:
+    return {
+        "sports": {
+            FOOTBALL_SPORT_ID: {
+                "categories": {
+                    "c": {
+                        "tournaments": {
+                            "t": {"events": {"e": {"diff": {"status": status}}}}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+def test_snapshot_lane_separates_live_and_prematch():
+    assert snapshot_lane(_tree("in_progress")) == "live"
+    assert snapshot_lane(_tree("not_started")) == "prematch"
+    mixed = _tree("in_progress")
+    mixed["sports"][FOOTBALL_SPORT_ID]["categories"]["c"]["tournaments"]["t2"] = {
+        "events": {"e2": {"diff": {"status": "not_started"}}}
+    }
+    assert snapshot_lane(mixed) is None
+
+
+def test_prematch_ingest_uses_the_same_token_and_stays_out_of_live(snapshot_file, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "ONWIN_PREMATCH_REMOTE_SNAPSHOT",
+        str(tmp_path / "onwin_prematch.json"),
+    )
+    row = prematch_payload(_match())
+    row["feed_type"] = "prematch"
+    row["collected_at"] = (NOW - timedelta(minutes=5)).isoformat()
+    result = accept_prematch({"matches": [row]}, "Bearer local-test-token", NOW)
+    assert result["accepted"] is True
+    assert result["collected_at"] == NOW.isoformat()
+    stored = load_prematch(NOW)
+    assert stored[0].feed_type == "prematch"
+    assert stored[0].home_team == "Home"
+    assert prefer_remote_onwin([_match()], NOW)[0].feed_type == "prematch"
+    assert load_prematch(NOW + timedelta(seconds=901)) is None
+    with pytest.raises(Exception) as rejected:
+        accept_prematch({"matches": [match_to_payload(_match())]}, "Bearer local-test-token", NOW)
+    assert rejected.value.status_code == 400
