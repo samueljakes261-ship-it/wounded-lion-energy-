@@ -163,6 +163,39 @@ def test_comparison_counts_shared_events_without_a_browser():
     assert result["only_production"] == 0
 
 
+def test_service_worker_requests_are_kept_without_a_frame():
+    from experiments.onwin_playwright.run import _for_page
+
+    class WorkerRequest:
+        url = "https://api-onwin-tr--prd--sb.4297.lol/rpc/get_main_line.erisgaming"
+
+        @property
+        def frame(self):
+            raise RuntimeError("Service Worker requests do not have an associated frame.")
+
+    class KolayWorker:
+        url = "https://kolay91.com/service/getMaclar"
+
+        @property
+        def frame(self):
+            raise RuntimeError("Service Worker requests do not have an associated frame.")
+
+    class OtherTab:
+        url = "https://kolay91.com/"
+
+        class Frame:
+            page = object()
+
+        @property
+        def frame(self):
+            return self.Frame()
+
+    target = object()
+    assert _for_page(WorkerRequest(), target) is True
+    assert _for_page(KolayWorker(), target) is False
+    assert _for_page(OtherTab(), target) is False
+
+
 def test_experiment_joins_the_kolay_chrome_without_closing_it(monkeypatch):
     from experiments.onwin_playwright.session import cdp_url, release
 

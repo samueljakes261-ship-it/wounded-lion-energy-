@@ -34,22 +34,27 @@ def _append(record: dict) -> None:
 
 
 def _for_page(request, page) -> bool:
-    frame = getattr(request, "frame", None)
+    """Keep this tab's traffic, including service-worker calls with no frame."""
+    frame = None
+    try:
+        frame = request.frame
+    except Exception:
+        frame = None
     owner = getattr(frame, "page", None) if frame is not None else None
     if owner is not None and owner != page:
         return False
-    host = (safe_endpoint(request.url).get("host") or "").lower()
+    host = (safe_endpoint(getattr(request, "url", "") or "").get("host") or "").lower()
     return "kolay" not in host
 
 
 def _attach(context, page, observer: OnwinObserver) -> None:
     def on_request(request):
-        if not _for_page(request, page):
-            return
-        host = safe_endpoint(request.url).get("host") or ""
-        if observer.note_host(host):
-            _log(f"host {host}")
         try:
+            if not _for_page(request, page):
+                return
+            host = safe_endpoint(request.url).get("host") or ""
+            if observer.note_host(host):
+                _log(f"host {host}")
             record = observer.observe_request(
                 request.method,
                 request.url,
@@ -74,9 +79,9 @@ def _attach(context, page, observer: OnwinObserver) -> None:
             _log(f"WS {endpoint.get('host')}{endpoint.get('path')}")
 
     def on_finished(request):
-        if not _for_page(request, page):
-            return
         try:
+            if not _for_page(request, page):
+                return
             response = request.response()
             if response is None:
                 return
