@@ -149,7 +149,13 @@ def transmit(matches) -> bool:
                     return True
                 _log(f"VPS kept the previous snapshot ({payload.get('reason')})")
                 return False
-            _log(f"VPS returned HTTP {response.status_code}; retry {attempt}/3")
+            detail = ""
+            try:
+                detail = str(response.json().get("detail") or "")
+            except ValueError:
+                detail = ""
+            suffix = f" {detail}" if detail else ""
+            _log(f"VPS returned HTTP {response.status_code}{suffix}; retry {attempt}/3")
         time.sleep(delay)
         delay *= 2
     return False

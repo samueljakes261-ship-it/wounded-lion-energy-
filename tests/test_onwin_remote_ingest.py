@@ -80,17 +80,21 @@ def test_ingest_stores_live_rows_and_rejects_a_bad_token(snapshot_file):
     assert rejected.value.status_code == 401
 
 
-def test_stale_or_prematch_rows_do_not_enter_the_live_feed(snapshot_file):
+def test_pc_clock_skew_is_stored_at_vps_receipt_time(snapshot_file):
     row = match_to_payload(_match())
     row["feed_type"] = "prematch"
     with pytest.raises(Exception) as rejected:
         accept_remote_snapshot({"matches": [row]}, "Bearer local-test-token", NOW)
     assert rejected.value.status_code == 400
-    accept_remote_snapshot(
-        {"matches": [match_to_payload(_match())]},
+    skewed = match_to_payload(_match())
+    skewed["collected_at"] = (NOW - timedelta(minutes=5)).isoformat()
+    result = accept_remote_snapshot(
+        {"matches": [skewed]},
         "Bearer local-test-token",
         NOW,
     )
+    assert result["accepted"] is True
+    assert result["collected_at"] == NOW.isoformat()
     assert live_feed(NOW)["matches"][0].home_team == "Home"
     assert live_feed(NOW + timedelta(seconds=31)) is None
 

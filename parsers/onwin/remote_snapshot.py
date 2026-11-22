@@ -87,9 +87,9 @@ def match_from_payload(row: dict, now: datetime) -> MatchOdds:
     collected = _parse_time(row.get("collected_at"))
     if start is None or collected is None:
         raise IngestRejected(400, "match timestamps are missing")
-    age = (now - collected).total_seconds()
-    if age < -30 or age > max_age_seconds():
-        raise IngestRejected(409, "stale")
+    # Receipt time is the VPS clock. The PC clock is not compared here:
+    # a difference of more than MAX_ODDS_AGE_SECONDS was rejecting every
+    # live batch with HTTP 409 before the engine ever saw it.
     try:
         home = float(row["home_odds"])
         draw = float(row["draw_odds"])
@@ -166,16 +166,32 @@ def accept_remote_snapshot(body: dict, authorization: str, now: datetime | None 
     if len(rows) > 20000:
         raise IngestRejected(413, "too many matches")
     parsed = [match_from_payload(row, current_time) for row in rows]
-    newest = max(match.collected_at for match in parsed)
+    received = [
+        MatchOdds(
+            bookmaker=match.bookmaker,
+            competition=match.competition,
+            sport=match.sport,
+            market=match.market,
+            home_team=match.home_team,
+            away_team=match.away_team,
+            home_odds=match.home_odds,
+            draw_odds=match.draw_odds,
+            away_odds=match.away_odds,
+            start_time=match.start_time,
+            collected_at=current_time,
+            feed_type="live",
+        )
+        for match in parsed
+    ]
     previous = _read()
     previous_collected = _parse_time((previous or {}).get("collected_at"))
-    if previous_collected is not None and newest <= previous_collected:
+    if previous_collected is not None and current_time <= previous_collected:
         return {"accepted": False, "reason": "not_newer"}
     stored = {
-        "collected_at": _iso(newest),
+        "collected_at": _iso(current_time),
         "received_at": _iso(current_time),
-        "count": len(parsed),
-        "matches": [match_to_payload(match) for match in parsed],
+        "count": len(received),
+        "matches": [match_to_payload(match) for match in received],
     }
     _write(stored)
     return {"accepted": True, "count": len(parsed), "collected_at": stored["collected_at"]}
