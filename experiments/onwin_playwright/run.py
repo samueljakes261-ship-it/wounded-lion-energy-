@@ -1,12 +1,12 @@
-"""Run the local Onwin Playwright experiment.
+"""Run the local Onwin Playwright experiment in the Kolay91 Chrome.
 
-From the repo root:
+From the repo root, with the Kolay91 collector already running:
 
     python -m experiments.onwin_playwright.run
 
-Chromium opens on this machine. Finish any Onwin or Cloudflare check in
-that window. Odds stay in experiments/onwin_playwright/output/ and are
-not sent to the engine. Ctrl+C closes the browser.
+A new tab opens in that same Chrome window. Finish any Onwin check
+there. Odds stay in experiments/onwin_playwright/output/ and are not
+sent to the engine. Ctrl+C closes only the Onwin tab.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from experiments.onwin_playwright.observe import OUTPUT, OnwinObserver
 from experiments.onwin_playwright.redact import safe_endpoint
-from experiments.onwin_playwright.session import launch_context, page_url
+from experiments.onwin_playwright.session import attach_existing_chrome, cdp_url, page_url, release
 
 LOG = OUTPUT / "requests.jsonl"
 
@@ -33,8 +33,19 @@ def _append(record: dict) -> None:
         handle.write(json.dumps(record) + "\n")
 
 
-def _attach(context, observer: OnwinObserver) -> None:
+def _for_page(request, page) -> bool:
+    frame = getattr(request, "frame", None)
+    owner = getattr(frame, "page", None) if frame is not None else None
+    if owner is not None and owner != page:
+        return False
+    host = (safe_endpoint(request.url).get("host") or "").lower()
+    return "kolay" not in host
+
+
+def _attach(context, page, observer: OnwinObserver) -> None:
     def on_request(request):
+        if not _for_page(request, page):
+            return
         host = safe_endpoint(request.url).get("host") or ""
         if observer.note_host(host):
             _log(f"host {host}")
@@ -63,6 +74,8 @@ def _attach(context, observer: OnwinObserver) -> None:
             _log(f"WS {endpoint.get('host')}{endpoint.get('path')}")
 
     def on_finished(request):
+        if not _for_page(request, page):
+            return
         try:
             response = request.response()
             if response is None:
@@ -102,15 +115,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     observer = OnwinObserver()
-    _log(f"Opening {page_url()}")
-    _log("ZenRows is not used. Complete any check in the browser window.")
+    _log(f"Attaching to the Kolay91 Chrome at {cdp_url()}")
+    _log(f"Opening {page_url()} as a new tab in that window")
+    _log("ZenRows is not used. The Kolay91 tab stays where it is.")
     playwright = None
-    context = None
+    page = None
     try:
-        playwright, context = launch_context()
+        playwright, context, page = attach_existing_chrome()
+    except Exception as exc:
+        observer.note_error(f"attach {type(exc).__name__}")
+        _log(
+            "Could not attach to the Kolay91 Chrome. "
+            "Leave that collector running, then start this again."
+        )
+        _log(f"EXPERIMENT_RESULT=NOT_DEMONSTRATED")
+        return 2
+    try:
         observer.browser_status = "open"
-        page = context.pages[0] if context.pages else context.new_page()
-        _attach(context, observer)
+        _attach(context, page, observer)
         try:
             page.goto(page_url(), wait_until="domcontentloaded", timeout=60000)
         except Exception as exc:
@@ -148,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"metadata={status['x_message_metadata_present']}"
             )
     except KeyboardInterrupt:
-        _log("Stopped")
+        _log("Stopped. The Kolay91 Chrome stays open.")
     finally:
         if observer.browser_status == "open":
             observer.browser_status = "closed"
@@ -156,16 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             observer.write_artifacts(args.production_snapshot)
         except Exception as exc:
             _log(f"Could not write status ({type(exc).__name__})")
-        if context is not None:
-            try:
-                context.close()
-            except Exception:
-                pass
-        if playwright is not None:
-            try:
-                playwright.stop()
-            except Exception:
-                pass
+        release(playwright, page)
     result = "NOT_DEMONSTRATED"
     if observer.parser_rows > 0 and observer.main_line_responses >= 1:
         result = "CAPTURED_ONCE"

@@ -1,19 +1,14 @@
-"""Headed local Chromium for the Onwin experiment.
+"""Attach the Onwin experiment to the Chrome window Kolay91 already uses.
 
-The debugging port is not opened. The profile stays in this experiment
-directory and is not read by the production collector.
+That Chrome listens on 127.0.0.1:9222. This module opens one more tab in
+it. It does not launch a second browser and it does not close Chrome.
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-PROFILE = ROOT / "experiments" / "onwin_playwright" / "chrome_profile"
-# Same live page the production feed opens. Override with ONWIN_EXPERIMENT_URL
-# when Onwin has moved to another mirror. This module does not import the
-# production browser.
+DEFAULT_CDP = "http://127.0.0.1:9222"
 DEFAULT_PAGE = "https://onwin4505.com/sportsbook/live/main-line/soccer"
 MAIN_LINE = "get_main_line.erisgaming"
 UPDATE_FRAGMENTS = (
@@ -26,33 +21,36 @@ def page_url() -> str:
     return (os.environ.get("ONWIN_EXPERIMENT_URL") or DEFAULT_PAGE).strip()
 
 
-def prepare_profile() -> Path:
-    PROFILE.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(PROFILE, 0o700)
-    except OSError:
-        pass
-    return PROFILE
+def cdp_url() -> str:
+    return (os.environ.get("ONWIN_EXPERIMENT_CDP") or DEFAULT_CDP).strip()
 
 
-def launch_context():
-    """Return (playwright, context). Chromium is headed unless ONWIN_EXPERIMENT_HEADLESS=1."""
+def attach_existing_chrome():
+    """Return (playwright, context, page) for a new tab in the Kolay Chrome."""
     from playwright.sync_api import sync_playwright
 
-    headless = (os.environ.get("ONWIN_EXPERIMENT_HEADLESS") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    channel = (os.environ.get("ONWIN_EXPERIMENT_CHANNEL") or "").strip() or None
     playwright = sync_playwright().start()
-    kwargs = {
-        "user_data_dir": str(prepare_profile()),
-        "headless": headless,
-        "viewport": {"width": 1400, "height": 900},
-        "args": ["--disable-dev-shm-usage"],
-    }
-    if channel:
-        kwargs["channel"] = channel
-    context = playwright.chromium.launch_persistent_context(**kwargs)
-    return playwright, context
+    try:
+        browser = playwright.chromium.connect_over_cdp(cdp_url())
+        if not browser.contexts:
+            raise RuntimeError("attached Chrome has no window")
+        context = browser.contexts[0]
+        page = context.new_page()
+    except Exception:
+        playwright.stop()
+        raise
+    return playwright, context, page
+
+
+def release(playwright, page) -> None:
+    """Close the Onwin tab and drop the debugger. Chrome keeps running."""
+    if page is not None:
+        try:
+            page.close()
+        except Exception:
+            pass
+    if playwright is not None:
+        try:
+            playwright.stop()
+        except Exception:
+            pass

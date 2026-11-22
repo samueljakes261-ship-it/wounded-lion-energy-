@@ -163,6 +163,32 @@ def test_comparison_counts_shared_events_without_a_browser():
     assert result["only_production"] == 0
 
 
+def test_experiment_joins_the_kolay_chrome_without_closing_it(monkeypatch):
+    from experiments.onwin_playwright.session import cdp_url, release
+
+    monkeypatch.delenv("ONWIN_EXPERIMENT_CDP", raising=False)
+    assert cdp_url() == "http://127.0.0.1:9222"
+    closed = {}
+
+    class Page:
+        def close(self):
+            closed["page"] = True
+
+    class Playwright:
+        def stop(self):
+            closed["playwright"] = True
+
+    release(Playwright(), Page())
+    assert closed == {"page": True, "playwright": True}
+    session = (ROOT / "experiments" / "onwin_playwright" / "session.py").read_text(encoding="utf-8")
+    experiment = (ROOT / "experiments" / "onwin_playwright" / "run.py").read_text(encoding="utf-8")
+    assert "connect_over_cdp" in session
+    assert "browser.close" not in session
+    assert "launch_persistent_context" not in session
+    assert "context.close" not in experiment
+    assert "browser.close" not in experiment
+
+
 def test_production_modules_do_not_import_the_experiment():
     collector = (ROOT / "collector.py").read_text(encoding="utf-8")
     browser = (ROOT / "parsers" / "onwin" / "browser.py").read_text(encoding="utf-8")
