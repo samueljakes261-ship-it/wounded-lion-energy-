@@ -181,3 +181,9 @@ def test_production_modules_do_not_import_the_experiment():
     assert "OnwinBrowser" not in imports
     counts = count_payload(_payload())
     assert counts["odds"] == 4
+    observer = OnwinObserver()
+    assert observer.note_host("onwin4505.com") is True
+    assert observer.note_host("onwin4505.com") is False
+    observer.note_page("https://onwin4505.com/sportsbook/live/main-line/soccer?token=secret")
+    assert observer.page_url == "onwin4505.com/sportsbook/live/main-line/soccer"
+    assert "secret" not in observer.page_url

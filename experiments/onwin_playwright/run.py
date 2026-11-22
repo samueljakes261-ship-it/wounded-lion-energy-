@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from experiments.onwin_playwright.observe import OUTPUT, OnwinObserver
+from experiments.onwin_playwright.redact import safe_endpoint
 from experiments.onwin_playwright.session import launch_context, page_url
 
 LOG = OUTPUT / "requests.jsonl"
@@ -32,8 +33,11 @@ def _append(record: dict) -> None:
         handle.write(json.dumps(record) + "\n")
 
 
-def _attach(page, observer: OnwinObserver) -> None:
+def _attach(context, observer: OnwinObserver) -> None:
     def on_request(request):
+        host = safe_endpoint(request.url).get("host") or ""
+        if observer.note_host(host):
+            _log(f"host {host}")
         try:
             record = observer.observe_request(
                 request.method,
@@ -74,8 +78,8 @@ def _attach(page, observer: OnwinObserver) -> None:
                 f"bytes={record.get('bytes')} parser_rows={record.get('parser_rows')}"
             )
 
-    page.on("request", on_request)
-    page.on("requestfinished", on_finished)
+    context.on("request", on_request)
+    context.on("requestfinished", on_finished)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         playwright, context = launch_context()
         observer.browser_status = "open"
         page = context.pages[0] if context.pages else context.new_page()
-        _attach(page, observer)
+        _attach(context, observer)
         try:
             page.goto(page_url(), wait_until="domcontentloaded", timeout=60000)
         except Exception as exc:
@@ -113,18 +117,25 @@ def main(argv: list[str] | None = None) -> int:
                 observer.browser_status = "closed"
                 observer.note_error(type(exc).__name__)
                 break
-            observer.write_artifacts(args.production_snapshot)
+            try:
+                observer.note_title(page.title())
+            except Exception:
+                pass
+            try:
+                observer.write_artifacts(args.production_snapshot)
+            except OSError as exc:
+                observer.note_error(f"status file {type(exc).__name__}")
             status = observer.status()
             _log(
                 "status "
-                f"browser={status['browser_status']} "
+                f"page={status['page'] or '-'} "
+                f"title={status['page_title'] or '-'} "
                 f"auth={status['auth_status']} "
                 f"events={status['events']} "
                 f"odds={status['odds']} "
                 f"parser_rows={status['parser_rows']} "
                 f"token={status['x_token_present']} "
-                f"metadata={status['x_message_metadata_present']} "
-                f"token_refreshed={status['token_refreshed']}"
+                f"metadata={status['x_message_metadata_present']}"
             )
     except KeyboardInterrupt:
         _log("Stopped")

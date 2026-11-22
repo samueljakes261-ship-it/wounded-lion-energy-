@@ -19,6 +19,18 @@ from experiments.onwin_playwright.session import MAIN_LINE, UPDATE_FRAGMENTS
 OUTPUT = Path(__file__).resolve().parent / "output"
 
 
+def _write_private(path: Path, text: str) -> None:
+    """Write without chmod. Windows rejects chmod-altered files with Errno 22."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        temporary.replace(path)
+    except OSError:
+        path.write_text(text, encoding="utf-8", newline="\n")
+        temporary.unlink(missing_ok=True)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -66,15 +78,32 @@ class OnwinObserver:
         self.metadata_refreshed = False
         self.parser_ok = False
         self.comparison = None
+        self.page_title = ""
+        self.hosts: list[str] = []
         self._seen_paths: set[str] = set()
 
     def note_page(self, url: str) -> None:
-        self.page_url = safe_endpoint(url).get("path") or ""
-        host = safe_endpoint(url).get("host") or ""
-        if host:
-            self.page_url = host + self.page_url
+        endpoint = safe_endpoint(url)
+        host = endpoint.get("host") or ""
+        path = endpoint.get("path") or ""
+        self.page_url = f"{host}{path}" if host else path
+        self.note_host(host)
         if self.auth_status == "not_started":
             self.auth_status = "page_open"
+
+    def note_title(self, title: str) -> None:
+        self.page_title = (title or "")[:80]
+        lowered = self.page_title.lower()
+        if self.auth_status == "odds_captured":
+            return
+        if any(token in lowered for token in ("just a moment", "cloudflare", "attention required")):
+            self.auth_status = "cloudflare_check"
+
+    def note_host(self, host: str) -> bool:
+        if not host or host in self.hosts or len(self.hosts) >= 20:
+            return False
+        self.hosts.append(host)
+        return True
 
     def note_error(self, message: str) -> None:
         self.last_error = message[:300]
@@ -187,12 +216,7 @@ class OnwinObserver:
         OUTPUT.mkdir(parents=True, exist_ok=True)
         payload = getattr(self, "_payload", None)
         if isinstance(payload, dict):
-            target = OUTPUT / "latest_get_main_line.json"
-            target.write_text(json.dumps(payload), encoding="utf-8")
-            try:
-                target.chmod(0o600)
-            except OSError:
-                pass
+            _write_private(OUTPUT / "latest_get_main_line.json", json.dumps(payload))
         if production_snapshot and production_snapshot.exists() and getattr(self, "_matches", None) is not None:
             from parsers.onwin.parser import OnWinParser
 
@@ -210,17 +234,15 @@ class OnwinObserver:
         if "x-token" in lowered and "fingerprint" not in lowered:
             raise RuntimeError("status would expose a token")
         path = OUTPUT / "status.json"
-        path.write_text(text, encoding="utf-8")
-        try:
-            path.chmod(0o600)
-        except OSError:
-            pass
+        _write_private(path, text)
 
     def status(self) -> dict:
         return {
             "browser_status": self.browser_status,
             "auth_status": self.auth_status,
             "page": self.page_url,
+            "page_title": self.page_title,
+            "hosts": list(self.hosts),
             "last_api_at": self.last_api_at,
             "last_odds_at": self.last_odds_at,
             "last_endpoint": self.last_endpoint,
