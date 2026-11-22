@@ -63,6 +63,20 @@ def ingest_kolay90_prematch(body: dict, authorization: str = Header(default=""))
         raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
 
 
+@app.post("/onwin/live")
+def ingest_onwin_live(body: dict, authorization: str = Header(default="")):
+    """Accept OnWin live odds from the operator's Windows Chrome.
+
+    The body is MatchOdds fields. The ZenRows OnWin worker is not started.
+    """
+    from parsers.onwin.remote_snapshot import IngestRejected, accept_remote_snapshot
+
+    try:
+        return accept_remote_snapshot(body, authorization)
+    except IngestRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.reason) from exc
+
+
 @app.get("/health")
 def health():
 

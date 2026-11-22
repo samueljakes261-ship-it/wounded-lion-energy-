@@ -327,7 +327,7 @@ function CollectorStatusPanel({
               return null
             }
             const suspended =
-              mode === "live" && (key === "orbit" || key === "betkanyon" || key === "onwin")
+              mode === "live" && (key === "orbit" || key === "betkanyon")
             const shown = suspended
               ? "MAINTENANCE"
               : status.scheduledRestart &&
@@ -1067,16 +1067,16 @@ function Dashboard() {
                 className="bg-slate-900 border-amber-500/40"
                 data-testid="turkish-live-maintenance"
               >
-                <CardContent className="py-8">
+                <CardContent className="py-4">
                   <div className="text-xs font-semibold tracking-wide text-amber-200">
                     Maintenance
                   </div>
-                  <p className="mt-2 text-base leading-relaxed text-slate-100">
-                    Turkish bookmakers' LIVE feeds are temporarily disabled while we carry out maintenance and repairs. PREMATCH services remain available.
+                  <p className="mt-2 text-sm leading-relaxed text-slate-100">
+                    BetKanyon and Orbit LIVE remain paused. Onwin LIVE is collected from the local Chrome session. PREMATCH services remain available.
                   </p>
                 </CardContent>
               </Card>
-            ) : (
+            ) : null}
             <>
             <section className="space-y-3">
               <h2 className="text-sm font-semibold tracking-wide text-slate-400">
@@ -1148,7 +1148,6 @@ function Dashboard() {
               </Collapsible>
             ) : null}
             </>
-            )}
           </div>
         )}
       </div>

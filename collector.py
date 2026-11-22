@@ -1491,6 +1491,20 @@ async def collect_opportunities(bankroll=1000):
         onwin_stale = True
     else:
         onwin_stale = _check_feed_freshness("OnWin", onwin_age, now)
+    if onwin_handle is None:
+        from parsers.onwin.remote_snapshot import live_feed
+
+        remote_onwin = live_feed(now_dt)
+        if remote_onwin:
+            onwin_matches = remote_onwin["matches"]
+            onwin_age = remote_onwin["age"]
+            onwin_last_update = remote_onwin["last_update_at"]
+            onwin_stale = False
+            onwin_status = dict(onwin_status)
+            onwin_status["status"] = "running"
+            onwin_status["error"] = None
+            onwin_status["last_update_at"] = onwin_last_update
+            onwin_status["event_count"] = remote_onwin["event_count"]
     betkanyon_stale = _check_feed_freshness("BetKanyon", betkanyon_age, now)
     orbit_stale = _check_feed_freshness("Orbit", orbit_age, now)
 
@@ -2181,6 +2195,7 @@ def _write_status(
     k90_pm_age = (now - k90_pm_last) if k90_pm_last else None
     onwin_pm_age = (now - onwin_pm_last) if onwin_pm_last else None
     from parsers.kolay90_prematch.snapshot import remote_collection_age
+    from parsers.onwin.remote_snapshot import remote_collection_age as onwin_remote_age
 
     remote_age = remote_collection_age(now_dt)
     if remote_age is not None:
@@ -2190,6 +2205,16 @@ def _write_status(
         k90_pm_status["consecutive_failures"] = 0
         k90_pm_status["last_update_at"] = now - remote_age
         k90_pm_age = remote_age
+
+    remote_onwin_age = onwin_remote_age(now_dt)
+    if remote_onwin_age is not None and not onwin_alive:
+        onwin_status = dict(onwin_status)
+        onwin_status["status"] = "running"
+        onwin_status["error"] = None
+        onwin_status["consecutive_failures"] = 0
+        onwin_status["last_update_at"] = now - remote_onwin_age
+        onwin_age = remote_onwin_age
+        onwin_alive = True
 
     payload = {
         "generatedAt": _iso_dt(now_dt),
