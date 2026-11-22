@@ -35,12 +35,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _interesting(url: str) -> bool:
+DATA_TYPES = {"xhr", "fetch", "websocket"}
+
+
+def _interesting(url: str, resource_type: str = "") -> bool:
+    if (resource_type or "").lower() in DATA_TYPES:
+        return True
     lowered = (url or "").lower()
-    return (
-        "erisgaming" in lowered
-        or "api-onwin" in lowered
-        or "538.lol" in lowered
+    return any(
+        fragment in lowered
+        for fragment in (
+            "erisgaming",
+            "api-onwin",
+            "538.lol",
+            "/rpc/",
+            "graphql",
+            "frontserver",
+        )
     )
 
 
@@ -81,6 +92,7 @@ class OnwinObserver:
         self.page_title = ""
         self.hosts: list[str] = []
         self._seen_paths: set[str] = set()
+        self._printed: set[str] = set()
 
     def note_page(self, url: str) -> None:
         endpoint = safe_endpoint(url)
@@ -96,8 +108,15 @@ class OnwinObserver:
         lowered = self.page_title.lower()
         if self.auth_status == "odds_captured":
             return
-        if any(token in lowered for token in ("just a moment", "cloudflare", "attention required")):
+        challenged = any(
+            token in lowered
+            for token in ("just a moment", "cloudflare", "attention required")
+        )
+        if challenged:
             self.auth_status = "cloudflare_check"
+            return
+        if self.auth_status == "cloudflare_check":
+            self.auth_status = "site_open"
 
     def note_host(self, host: str) -> bool:
         if not host or host in self.hosts or len(self.hosts) >= 20:
@@ -108,8 +127,22 @@ class OnwinObserver:
     def note_error(self, message: str) -> None:
         self.last_error = message[:300]
 
-    def observe_request(self, method: str, url: str, headers: dict, post_data: str | None) -> dict | None:
-        if not _interesting(url):
+    def should_print(self, method: str, endpoint: dict) -> bool:
+        key = f"{method} {endpoint.get('host')}{endpoint.get('path')}"
+        if key in self._printed or len(self._printed) >= 80:
+            return False
+        self._printed.add(key)
+        return True
+
+    def observe_request(
+        self,
+        method: str,
+        url: str,
+        headers: dict,
+        post_data: str | None,
+        resource_type: str = "",
+    ) -> dict | None:
+        if not _interesting(url, resource_type):
             return None
         endpoint = safe_endpoint(url)
         record = {

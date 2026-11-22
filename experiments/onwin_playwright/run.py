@@ -44,14 +44,23 @@ def _attach(context, observer: OnwinObserver) -> None:
                 request.url,
                 request.headers,
                 request.post_data,
+                request.resource_type,
             )
         except Exception as exc:
             observer.note_error(f"request {type(exc).__name__}")
             return
-        if record is not None:
+        if record is not None and observer.should_print(record["method"], record["endpoint"]):
             _append({"kind": "request", **record})
             endpoint = record["endpoint"]
-            _log(f"{record['method']} {endpoint.get('host')}{endpoint.get('path')}")
+            _log(
+                f"{record['method']} {request.resource_type} "
+                f"{endpoint.get('host')}{endpoint.get('path')}"
+            )
+
+    def on_websocket(websocket):
+        endpoint = safe_endpoint(websocket.url)
+        if observer.should_print("WS", endpoint):
+            _log(f"WS {endpoint.get('host')}{endpoint.get('path')}")
 
     def on_finished(request):
         try:
@@ -80,6 +89,7 @@ def _attach(context, observer: OnwinObserver) -> None:
 
     context.on("request", on_request)
     context.on("requestfinished", on_finished)
+    context.on("websocket", on_websocket)
 
 
 def main(argv: list[str] | None = None) -> int:

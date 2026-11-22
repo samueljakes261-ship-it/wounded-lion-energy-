@@ -187,3 +187,17 @@ def test_production_modules_do_not_import_the_experiment():
     observer.note_page("https://onwin4505.com/sportsbook/live/main-line/soccer?token=secret")
     assert observer.page_url == "onwin4505.com/sportsbook/live/main-line/soccer"
     assert "secret" not in observer.page_url
+    observer.note_title("Just a moment...")
+    assert observer.auth_status == "cloudflare_check"
+    observer.note_title("Onwin Bahis ve Casino Sitesi")
+    assert observer.auth_status == "site_open"
+    xhr = observer.observe_request(
+        "POST",
+        "https://odds.example/frontserver/command",
+        {},
+        None,
+        "xhr",
+    )
+    assert xhr is not None
+    assert observer.should_print("POST", xhr["endpoint"]) is True
+    assert observer.should_print("POST", xhr["endpoint"]) is False
