@@ -159,6 +159,24 @@ def needs_chrome_restart(error_name: str, listening: bool) -> bool:
     return error_name in {"TimeoutError", "TargetClosedError"}
 
 
+def quiet_for_reload(api_seen: int, last_api: int, quiet_seconds: float, *, threshold: float = 30.0) -> bool:
+    """Reload only after a stretch with no new Onwin API response."""
+    return api_seen == last_api and quiet_seconds >= threshold
+
+
+def chrome_log_excerpt(lines: list[str]) -> str:
+    """Keep the launch error and drop crashpad noise from a dead Chrome."""
+    kept = []
+    for line in lines:
+        lowered = line.lower()
+        if "crashpad" in lowered or "ptrace:" in lowered or "short read" in lowered:
+            continue
+        text = line.strip()
+        if text:
+            kept.append(text)
+    return " | ".join(kept[-8:])[:800]
+
+
 def _acquire_lock():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     handle = LOCK.open("a+", encoding="utf-8")
@@ -409,7 +427,12 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.phase = "watching"
                 _write_status(book)
                 _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
+                _log(f"live tab {book.live_page}")
+                _log(f"prematch tab {book.prematch_page}")
                 prematch["last_reload"] = time.time()
+                last_api = book.api_seen
+                quiet_since = time.time()
+                last_heartbeat = time.time()
                 while True:
                     live_page.wait_for_timeout(5000)
                     try:
@@ -423,6 +446,29 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         raise
                     publish_live(force=True, from_network=False)
                     publish_prematch(force=True, from_network=False)
+                    now = time.time()
+                    if book.api_seen != last_api:
+                        last_api = book.api_seen
+                        quiet_since = now
+                    if now - last_heartbeat >= 30:
+                        last_heartbeat = now
+                        _log(
+                            f"still watching api_seen={book.api_seen} "
+                            f"get_main_line={book.snapshots_seen} "
+                            f"live={book.live_page} prematch={book.prematch_page}"
+                        )
+                        if quiet_for_reload(book.api_seen, last_api, now - quiet_since):
+                            title = ""
+                            try:
+                                title = live_page.title()
+                            except Exception:
+                                title = ""
+                            _log(f"no Onwin API for 30s. live title={title!r}. Reloading the live tab.")
+                            try:
+                                live_page.reload(wait_until="domcontentloaded", timeout=30000)
+                            except Exception as exc:
+                                _log(f"live reload did not finish ({type(exc).__name__})")
+                            quiet_since = time.time()
                     if time.time() - prematch["last_reload"] >= 90:
                         prematch["last_reload"] = time.time()
                         try:
@@ -478,9 +524,10 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 if completed.returncode != 0:
                     log_path = OUTPUT / "chrome.log"
                     if log_path.is_file():
-                        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-15:]
-                        if lines:
-                            _log("chrome.log: " + " | ".join(lines))
+                        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+                        excerpt = chrome_log_excerpt(lines)
+                        if excerpt:
+                            _log("chrome.log: " + excerpt)
                     book.last_error = "chrome did not start"
                     _write_status(book)
                 delay = 180

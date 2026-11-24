@@ -82,12 +82,23 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
 
 
 def test_stuck_debugger_restarts_onwin_chrome():
-    from experiments.onwin_vps.collector import needs_chrome_restart
+    from experiments.onwin_vps.collector import chrome_log_excerpt, needs_chrome_restart, quiet_for_reload
 
     assert needs_chrome_restart("TimeoutError", True) is True
     assert needs_chrome_restart("TargetClosedError", True) is True
     assert needs_chrome_restart("Error", True) is False
     assert needs_chrome_restart("Error", False) is True
+    assert quiet_for_reload(0, 0, 30) is True
+    assert quiet_for_reload(2, 0, 30) is False
+    assert quiet_for_reload(0, 0, 5) is False
+    excerpt = chrome_log_excerpt(
+        [
+            "[1124/160424.101564:ERROR:crashpad/util/process/process_memory.cc:43] short read",
+            "ptrace: No such process (3)",
+            "DevTools listening on 127.0.0.1:9223",
+        ]
+    )
+    assert excerpt == "DevTools listening on 127.0.0.1:9223"
 
 
 def test_publish_defaults_to_the_local_snapshot(monkeypatch):
