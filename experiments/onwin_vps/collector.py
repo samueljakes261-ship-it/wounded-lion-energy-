@@ -366,23 +366,30 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     raise RuntimeError("cdp down")
                 _log(f"Attaching to dedicated Chrome at {cdp_url()}")
                 playwright = sync_playwright().start()
-                browser = playwright.chromium.connect_over_cdp(cdp_url())
+                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=20000)
                 if not browser.contexts:
                     raise RuntimeError("Chrome has no window")
                 context, live_page, prematch_page, created = _open_tabs(browser)
                 book.attached = True
                 book.chrome_listening = True
                 book.last_error = None
+                book.phase = "reloading"
+                book.live_page = live_page.url or ""
+                book.prematch_page = prematch_page.url or ""
+                _write_status(book)
 
                 def _handler(request, live=live_page, pre=prematch_page):
                     on_finished(request, live, pre)
 
                 context.on("requestfinished", _handler)
                 _refresh(live_page, live_page_url(), "live")
+                book.live_page = live_page.url or ""
+                _write_status(book)
                 _refresh(prematch_page, prematch_page_url(), "prematch")
                 book.live_page = live_page.url or ""
                 book.prematch_page = prematch_page.url or ""
                 book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
+                book.phase = "watching"
                 _write_status(book)
                 _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
                 prematch["last_reload"] = time.time()

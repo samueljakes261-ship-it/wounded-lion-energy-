@@ -18,8 +18,10 @@ fi
 
 ours() {
   local pid="$1"
-  local cmd
-  cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+  local proc="/proc/${pid}/cmdline"
+  [ -r "$proc" ] || return 1
+  local cmd=""
+  cmd="$(tr '\0' ' ' < "$proc" || true)" 2>/dev/null || true
   case "$cmd" in
     *experiments.onwin_vps*) return 0 ;;
     *) return 1 ;;

@@ -39,6 +39,7 @@ class CollectionBook:
         self.recovery_attempts = 0
         self.live_page = ""
         self.prematch_page = ""
+        self.phase = "starting"
 
     def note_traffic(self, kind: str, lane: str) -> None:
         if kind == "snapshot":
@@ -106,6 +107,7 @@ class CollectionBook:
             "profile": profile,
             "chrome_listening": self.chrome_listening,
             "attached": self.attached,
+            "phase": self.phase,
             "page_loaded": self.page_loaded,
             "session_valid": self.session_valid,
             "live_page": self.live_page,
