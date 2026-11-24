@@ -32,7 +32,7 @@ chmod 700 "$PROFILE" 2>/dev/null || true
 python3 -m experiments.onwin_vps.safety --port "$PORT" --profile "$PROFILE"
 
 listening() {
-  curl -sf "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1
+  curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1
 }
 
 find_chrome() {
@@ -261,6 +261,7 @@ case "$ACTION" in
     fi
     ;;
   start|foreground)
+    echo "[onwin-vps-chrome] launch requested on port ${PORT}" >&2
     exec 9>"$OUTPUT/chrome.start.lock"
     if ! flock -n 9; then
       echo "[onwin-vps-chrome] waiting for the other Onwin Chrome start to finish"

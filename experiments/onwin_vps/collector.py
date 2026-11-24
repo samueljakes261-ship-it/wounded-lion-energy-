@@ -453,15 +453,26 @@ def run_forever(book: CollectionBook | None = None) -> int:
             if restart and time.time() - last_chrome_restart > 20:
                 last_chrome_restart = time.time()
                 _log("Restarting the Onwin Chrome only. Kolay90 is not touched.")
-                code = subprocess.run(
+                completed = subprocess.run(
                     [str(CHROME_SCRIPT), "restart"],
                     cwd=str(ROOT),
                     check=False,
-                ).returncode
-                if code == 1:
-                    book.last_error = "chrome not found"
+                    capture_output=True,
+                    text=True,
+                )
+                chrome_output = f"{completed.stdout or ''}{completed.stderr or ''}".strip()
+                if chrome_output:
+                    _log(chrome_output)
+                _log(f"chrome.sh restart exited {completed.returncode}")
+                if completed.returncode != 0:
+                    log_path = OUTPUT / "chrome.log"
+                    if log_path.is_file():
+                        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-15:]
+                        if lines:
+                            _log("chrome.log: " + " | ".join(lines))
+                    book.last_error = "chrome did not start"
                     _write_status(book)
-                delay = 5
+                delay = 20
             time.sleep(delay)
     finally:
         try:
