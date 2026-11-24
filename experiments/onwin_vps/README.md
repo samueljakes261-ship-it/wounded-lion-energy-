@@ -14,6 +14,7 @@ git fetch origin cursor/prematch-arbitrage
 git checkout cursor/prematch-arbitrage
 git pull origin cursor/prematch-arbitrage
 chmod +x experiments/onwin_vps/chrome.sh experiments/onwin_vps/collector.sh
+experiments/onwin_vps/chrome.sh install
 experiments/onwin_vps/chrome.sh start
 experiments/onwin_vps/collector.sh start
 experiments/onwin_vps/collector.sh status

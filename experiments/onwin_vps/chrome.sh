@@ -30,6 +30,55 @@ listening() {
   curl -sf "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1
 }
 
+find_chrome() {
+  if [ -n "${ONWIN_VPS_CHROME_BIN:-}" ] && [ -x "${ONWIN_VPS_CHROME_BIN}" ]; then
+    printf '%s\n' "$ONWIN_VPS_CHROME_BIN"
+    return 0
+  fi
+  local path name old_path
+  old_path="$PATH"
+  PATH="${PATH}:/usr/local/bin:/snap/bin"
+  for name in google-chrome-stable google-chrome chromium chromium-browser; do
+    path="$(command -v "$name" 2>/dev/null || true)"
+    if [ -n "$path" ]; then
+      PATH="$old_path"
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  PATH="$old_path"
+  for path in \
+    /usr/bin/google-chrome-stable \
+    /usr/bin/google-chrome \
+    /usr/bin/chromium \
+    /usr/bin/chromium-browser \
+    /snap/bin/chromium \
+    /opt/google/chrome/google-chrome \
+    /opt/google/chrome/chrome
+  do
+    if [ -x "$path" ]; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
+install_chrome() {
+  local arch deb
+  arch="$(uname -m)"
+  if [ "$arch" != "x86_64" ]; then
+    echo "[onwin-vps-chrome] Google Chrome packages are built for x86_64, this host is ${arch}" >&2
+    exit 1
+  fi
+  deb="$(mktemp --suffix=.deb)"
+  echo "[onwin-vps-chrome] downloading Google Chrome"
+  curl -fsSL -o "$deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+  sudo apt-get install -y "$deb"
+  rm -f "$deb"
+  find_chrome >/dev/null
+}
+
 cmdline_is_ours() {
   local pid="$1"
   local cmd
@@ -64,9 +113,18 @@ case "$ACTION" in
     stop_chrome
     exec "$0" start
     ;;
+  install)
+    install_chrome
+    echo "[onwin-vps-chrome] installed $(find_chrome)"
+    ;;
   status)
     echo "[onwin-vps-chrome] headless port=${PORT}"
     echo "[onwin-vps-chrome] profile=${PROFILE}"
+    if chrome_bin="$(find_chrome)"; then
+      echo "[onwin-vps-chrome] chrome_bin=${chrome_bin}"
+    else
+      echo "[onwin-vps-chrome] chrome_bin=missing"
+    fi
     if listening; then
       echo "[onwin-vps-chrome] cdp=listening"
       curl -s "http://127.0.0.1:${PORT}/json/version" || true
@@ -80,9 +138,10 @@ case "$ACTION" in
       echo "[onwin-vps-chrome] already listening on 127.0.0.1:${PORT}"
       exit 0
     fi
-    CHROME="$(command -v google-chrome-stable || command -v google-chrome || true)"
+    CHROME="$(find_chrome || true)"
     if [ -z "$CHROME" ]; then
-      echo "[onwin-vps-chrome] google-chrome was not found" >&2
+      echo "[onwin-vps-chrome] Google Chrome was not found." >&2
+      echo "[onwin-vps-chrome] Install it with: experiments/onwin_vps/chrome.sh install" >&2
       exit 1
     fi
     mkdir -p "$PROFILE"
@@ -117,7 +176,7 @@ case "$ACTION" in
     exit 1
     ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|foreground}" >&2
+    echo "usage: $0 {start|stop|restart|status|install|foreground}" >&2
     exit 2
     ;;
 esac

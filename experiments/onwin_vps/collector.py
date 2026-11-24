@@ -415,7 +415,10 @@ def run_forever(book: CollectionBook | None = None) -> int:
             delay = 15
             if not book.chrome_listening:
                 _log("Starting the Onwin Chrome only. Kolay90 is not touched.")
-                _ensure_chrome()
+                code = _ensure_chrome()
+                if code == 1:
+                    book.last_error = "chrome not found"
+                    _write_status(book)
             time.sleep(delay)
     finally:
         try:

@@ -58,6 +58,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "9223" in chrome
     assert "--remote-debugging-address=127.0.0.1" in chrome
     assert "--headless=new" in chrome
+    assert "/snap/bin/chromium" in chrome
+    assert "chrome.sh install" in chrome
     assert "TigerVNC" not in chrome
     assert "--no-sandbox" not in chrome
     assert "--disable-gpu" not in chrome
