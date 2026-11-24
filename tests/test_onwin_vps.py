@@ -76,6 +76,15 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "ONWIN_VPS" not in local
 
 
+def test_stuck_debugger_restarts_onwin_chrome():
+    from experiments.onwin_vps.collector import needs_chrome_restart
+
+    assert needs_chrome_restart("TimeoutError", True) is True
+    assert needs_chrome_restart("TargetClosedError", True) is True
+    assert needs_chrome_restart("Error", True) is False
+    assert needs_chrome_restart("Error", False) is True
+
+
 def test_publish_defaults_to_the_local_snapshot(monkeypatch):
     monkeypatch.delenv("ONWIN_VPS_PUBLISH", raising=False)
     monkeypatch.delenv("ONWIN_VPS_CDP_URL", raising=False)

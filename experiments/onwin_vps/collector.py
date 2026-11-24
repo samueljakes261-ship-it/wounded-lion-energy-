@@ -152,14 +152,11 @@ def _chrome_listening() -> bool:
         return False
 
 
-def _ensure_chrome() -> int:
-    """Start the Onwin Chrome only. The script itself refuses port 9222."""
-    completed = subprocess.run(
-        [str(CHROME_SCRIPT), "start"],
-        cwd=str(ROOT),
-        check=False,
-    )
-    return int(completed.returncode)
+def needs_chrome_restart(error_name: str, listening: bool) -> bool:
+    """A live port can still be a stuck debugger after a dropped attach."""
+    if not listening:
+        return True
+    return error_name in {"TimeoutError", "TargetClosedError"}
 
 
 def _acquire_lock():
@@ -373,6 +370,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
 
     from playwright.sync_api import sync_playwright
 
+    last_chrome_restart = 0.0
     try:
         while True:
             playwright = None
@@ -385,7 +383,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     raise RuntimeError("cdp down")
                 _log(f"Attaching to dedicated Chrome at {cdp_url()}")
                 playwright = sync_playwright().start()
-                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=20000)
+                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=45000)
                 if not browser.contexts:
                     raise RuntimeError("Chrome has no window")
                 context, live_page, prematch_page, created = _open_tabs(browser)
@@ -451,12 +449,19 @@ def run_forever(book: CollectionBook | None = None) -> int:
             if not failed:
                 continue
             delay = 15
-            if not book.chrome_listening:
-                _log("Starting the Onwin Chrome only. Kolay90 is not touched.")
-                code = _ensure_chrome()
+            restart = needs_chrome_restart(book.last_error or "", book.chrome_listening)
+            if restart and time.time() - last_chrome_restart > 20:
+                last_chrome_restart = time.time()
+                _log("Restarting the Onwin Chrome only. Kolay90 is not touched.")
+                code = subprocess.run(
+                    [str(CHROME_SCRIPT), "restart"],
+                    cwd=str(ROOT),
+                    check=False,
+                ).returncode
                 if code == 1:
                     book.last_error = "chrome not found"
                     _write_status(book)
+                delay = 5
             time.sleep(delay)
     finally:
         try:
