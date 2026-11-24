@@ -1,0 +1,18 @@
+[Unit]
+Description=Onwin VPS collector attached to the dedicated Chrome
+After=onwin-vps-chrome.service
+
+[Service]
+Type=simple
+User=woundedlion
+WorkingDirectory=/home/woundedlion/apps/ArbScanner
+Environment=ONWIN_VPS_CDP_PORT=9223
+Environment=ONWIN_VPS_PUBLISH=0
+EnvironmentFile=-/home/woundedlion/apps/ArbScanner/experiments/onwin_vps/config.env
+ExecStart=/home/woundedlion/apps/ArbScanner/.venv/bin/python -m experiments.onwin_vps
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,442 @@
+"""Onwin collector for a dedicated VPS Chrome.
+
+Google Chrome is started by experiments/onwin_vps/chrome.sh. This process
+only attaches to that Chrome the same way the Windows collector attaches
+to the Kolay91 window: Playwright connects over the debugging port and
+does not launch a browser.
+
+Production ingest stays off unless ONWIN_VPS_PUBLISH=1. While the Windows
+collector is still posting, leave publish off so the two do not write the
+same markets at once.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+from experiments.onwin_vps.book import CollectionBook
+from experiments.onwin_vps.safety import OnwinVpsGuardError, validate_target
+from parsers.onwin.local_collector import (
+    _open_tabs,
+    _owner_page,
+    feed_kind,
+    snapshot_lane,
+    transmit,
+    unwrap_sports,
+)
+from parsers.onwin.prematch_snapshot import match_to_payload as prematch_to_payload
+from parsers.onwin.remote_snapshot import match_to_payload
+from parsers.onwin.state import OnwinState
+from parsers.onwin_prematch.parser import parse_prematch
+
+ROOT = Path(__file__).resolve().parents[2]
+OUTPUT = ROOT / "experiments" / "onwin_vps" / "output"
+DEFAULT_PORT = 9223
+DEFAULT_PAGE = "https://onwin4505.com/sportsbook/live/main-line/soccer"
+DEFAULT_PREMATCH_PAGE = "https://onwin4505.com/sportsbook/prelive/main-line/soccer"
+LOCK = OUTPUT / "collector.lock"
+CHROME_SCRIPT = ROOT / "experiments" / "onwin_vps" / "chrome.sh"
+
+
+def _log(message: str) -> None:
+    print(f"[ONWIN VPS] {message}", flush=True)
+
+
+def publish_enabled() -> bool:
+    return (os.environ.get("ONWIN_VPS_PUBLISH") or "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def cdp_port() -> int:
+    raw = (os.environ.get("ONWIN_VPS_CDP_PORT") or str(DEFAULT_PORT)).strip()
+    return int(raw)
+
+
+def cdp_url() -> str:
+    explicit = (os.environ.get("ONWIN_VPS_CDP_URL") or "").strip()
+    if explicit:
+        return explicit
+    return f"http://127.0.0.1:{cdp_port()}"
+
+
+def profile_dir() -> Path:
+    raw = (os.environ.get("ONWIN_VPS_CHROME_PROFILE") or "").strip()
+    if raw:
+        return Path(raw)
+    return ROOT / "experiments" / "onwin_vps" / "chrome_profile"
+
+
+def live_page_url() -> str:
+    return (os.environ.get("ONWIN_VPS_LIVE_PAGE") or DEFAULT_PAGE).strip()
+
+
+def prematch_page_url() -> str:
+    return (os.environ.get("ONWIN_VPS_PREMATCH_PAGE") or DEFAULT_PREMATCH_PAGE).strip()
+
+
+def _load_config() -> None:
+    path = ROOT / "experiments" / "onwin_vps" / "config.env"
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        key = key.strip()
+        if key and key not in os.environ:
+            os.environ[key] = value.strip().strip('"').strip("'")
+
+
+def _guard() -> None:
+    validate_target(cdp_port(), profile_dir())
+    if ":9222" in cdp_url():
+        raise OnwinVpsGuardError("refusing to attach to port 9222")
+
+
+def _write_status(book: CollectionBook) -> None:
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    payload = book.status(
+        publish=publish_enabled(),
+        cdp_url=cdp_url(),
+        profile=str(profile_dir()),
+    )
+    path = OUTPUT / "status.json"
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _shape(matches) -> tuple[int, int]:
+    events = set()
+    markets = set()
+    for match in matches:
+        events.add((getattr(match, "home_team", ""), getattr(match, "away_team", "")))
+        markets.add(getattr(match, "market", "") or "")
+    return len(events), len(markets)
+
+
+def _deliver(matches, url: str, label: str, to_payload) -> bool | None:
+    """None when ingest is off. True only when the existing API accepts the rows."""
+    if not publish_enabled():
+        _log(f"{label} odds={len(matches)} held locally (ONWIN_VPS_PUBLISH is off)")
+        return None
+    return bool(transmit(matches, url, label, to_payload))
+
+
+def _live_url() -> str:
+    return (os.environ.get("ONWIN_INGEST_URL") or "https://api.lintonbeautynrb.org/onwin/live").strip()
+
+
+def _prematch_url() -> str:
+    return (
+        os.environ.get("ONWIN_PREMATCH_INGEST_URL")
+        or "https://api.lintonbeautynrb.org/onwin/prematch"
+    ).strip()
+
+
+def _chrome_listening() -> bool:
+    try:
+        with urllib.request.urlopen(cdp_url().rstrip("/") + "/json/version", timeout=2) as response:
+            return int(getattr(response, "status", 0) or 0) == 200
+    except Exception:
+        return False
+
+
+def _ensure_chrome() -> int:
+    """Start the Onwin Chrome only. The script itself refuses port 9222."""
+    completed = subprocess.run(
+        [str(CHROME_SCRIPT), "start"],
+        cwd=str(ROOT),
+        check=False,
+    )
+    return int(completed.returncode)
+
+
+def _acquire_lock():
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    handle = LOCK.open("a+", encoding="utf-8")
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        raise OnwinVpsGuardError("another Onwin VPS collector already holds the lock")
+    except ImportError:
+        # Windows has no fcntl. The VPS service is the intended host.
+        pass
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    return handle
+
+
+def _close_created(playwright, created) -> None:
+    for page in created or []:
+        try:
+            page.close()
+        except Exception:
+            pass
+    if playwright is not None:
+        try:
+            playwright.stop()
+        except Exception:
+            pass
+
+
+def _goto(page, url: str, label: str) -> None:
+    _log(f"Opening {label} {url}")
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    except Exception as exc:
+        _log(f"{label} navigation did not finish ({type(exc).__name__}). The tab stays open.")
+
+
+def _pages_loaded(live_url: str, prematch_url: str) -> bool:
+    live = (live_url or "").lower()
+    prematch = (prematch_url or "").lower()
+    return "sportsbook/live" in live and "sportsbook/prelive" in prematch
+
+
+def run_forever(book: CollectionBook | None = None) -> int:
+    _load_config()
+    _guard()
+    book = book or CollectionBook()
+    lock = _acquire_lock()
+    state = OnwinState()
+    saw_live = {"ok": False}
+    prematch = {"matches": [], "last_post": 0.0, "last_reload": 0.0}
+    live_post = {"last": 0.0}
+
+    def publish_live(force: bool = False, from_network: bool = True) -> None:
+        if not state.initialized:
+            return
+        matches = state.get_match_odds()
+        if not matches:
+            return
+        now = time.time()
+        if force:
+            if now - live_post["last"] < 10:
+                return
+        elif now - live_post["last"] < 2:
+            return
+        started = time.perf_counter()
+        published = _deliver(matches, _live_url(), "live", match_to_payload)
+        events, markets = _shape(matches)
+        book.note_odds(
+            "live",
+            len(matches),
+            events=events,
+            markets=markets,
+            publish_ok=published,
+            poll_ms=(time.perf_counter() - started) * 1000,
+            from_network=from_network,
+        )
+        if published is not False:
+            live_post["last"] = now
+        _write_status(book)
+
+    def publish_prematch(force: bool = False, from_network: bool = True) -> None:
+        matches = prematch["matches"]
+        if not matches:
+            return
+        now = time.time()
+        if force:
+            if now - prematch["last_post"] < 60:
+                return
+        elif now - prematch["last_post"] < 2:
+            return
+        started = time.perf_counter()
+        published = _deliver(matches, _prematch_url(), "prematch", prematch_to_payload)
+        events, markets = _shape(matches)
+        book.note_odds(
+            "prematch",
+            len(matches),
+            events=events,
+            markets=markets,
+            publish_ok=published,
+            poll_ms=(time.perf_counter() - started) * 1000,
+            from_network=from_network,
+        )
+        if published is not False:
+            prematch["last_post"] = now
+        _write_status(book)
+
+    def on_finished(request, live_page, prematch_page) -> None:
+        try:
+            if "kolay" in (request.url or "").lower():
+                return
+            owner = _owner_page(request)
+            if owner is not None and owner is not live_page and owner is not prematch_page:
+                return
+            kind = feed_kind(request.url)
+            if kind is None:
+                return
+            lane = ""
+            if owner is prematch_page:
+                lane = "prematch"
+            elif owner is live_page:
+                lane = "live"
+            response = request.response()
+            if response is None or response.status >= 400:
+                book.note_traffic(kind, lane)
+                _write_status(book)
+                return
+            payload = unwrap_sports(json.loads(response.body()))
+            if payload is None:
+                book.note_traffic(kind, lane)
+                _write_status(book)
+                return
+            book.note_response()
+            if owner is None and kind == "snapshot":
+                lane = snapshot_lane(payload) or ""
+            elif owner is None:
+                lane = "live"
+            book.note_traffic(kind, lane)
+            if lane == "prematch" and kind == "snapshot":
+                matches = parse_prematch(payload)
+                if not matches:
+                    _write_status(book)
+                    return
+                prematch["matches"] = matches
+                publish_prematch(from_network=True)
+                return
+            if lane != "live":
+                _write_status(book)
+                return
+            if kind == "snapshot":
+                state.load_initial(payload)
+                saw_live["ok"] = True
+                odds = state.get_match_odds()
+                _log(f"get_main_line events={state.event_count} odds={len(odds)}")
+                if odds:
+                    publish_live(from_network=True)
+                else:
+                    _write_status(book)
+                return
+            if saw_live["ok"]:
+                changed = state.apply_update(payload)
+                odds = state.get_match_odds()
+                if changed and odds:
+                    _log(f"update changed_1x2={len(changed)} events={state.event_count}")
+                    publish_live(from_network=True)
+                else:
+                    _write_status(book)
+        except Exception as exc:
+            book.last_error = type(exc).__name__
+            _log(f"response skipped ({type(exc).__name__})")
+            _write_status(book)
+
+    from playwright.sync_api import sync_playwright
+
+    try:
+        while True:
+            playwright = None
+            created: list = []
+            failed = False
+            try:
+                book.chrome_listening = _chrome_listening()
+                _write_status(book)
+                if not book.chrome_listening:
+                    raise RuntimeError("cdp down")
+                _log(f"Attaching to dedicated Chrome at {cdp_url()}")
+                playwright = sync_playwright().start()
+                browser = playwright.chromium.connect_over_cdp(cdp_url())
+                if not browser.contexts:
+                    raise RuntimeError("Chrome has no window")
+                context, live_page, prematch_page, created = _open_tabs(browser)
+                book.attached = True
+                book.chrome_listening = True
+                book.last_error = None
+
+                def _handler(request, live=live_page, pre=prematch_page):
+                    on_finished(request, live, pre)
+
+                context.on("requestfinished", _handler)
+                if "sportsbook/live" not in (live_page.url or "").lower():
+                    _goto(live_page, live_page_url(), "live")
+                if "sportsbook/prelive" not in (prematch_page.url or "").lower():
+                    _goto(prematch_page, prematch_page_url(), "prematch")
+                book.live_page = live_page.url or ""
+                book.prematch_page = prematch_page.url or ""
+                book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
+                _write_status(book)
+                _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
+                prematch["last_reload"] = time.time()
+                while True:
+                    live_page.wait_for_timeout(5000)
+                    try:
+                        book.live_page = live_page.url or ""
+                        book.prematch_page = prematch_page.url or ""
+                        book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
+                        book.chrome_listening = True
+                        book.attached = True
+                    except Exception as exc:
+                        book.last_error = type(exc).__name__
+                        raise
+                    publish_live(force=True, from_network=False)
+                    publish_prematch(force=True, from_network=False)
+                    if time.time() - prematch["last_reload"] >= 90:
+                        prematch["last_reload"] = time.time()
+                        try:
+                            prematch_page.reload(wait_until="domcontentloaded", timeout=60000)
+                        except Exception as exc:
+                            book.last_error = type(exc).__name__
+                            _log(f"prematch reload did not finish ({type(exc).__name__})")
+                    _write_status(book)
+            except KeyboardInterrupt:
+                _log("Stopped. The dedicated Chrome stays open.")
+                _close_created(playwright, created)
+                return 0
+            except Exception as exc:
+                failed = True
+                book.attached = False
+                book.chrome_listening = _chrome_listening()
+                book.recovery_attempts += 1
+                book.last_error = type(exc).__name__
+                _write_status(book)
+                _log(f"Chrome attach failed ({type(exc).__name__}).")
+            finally:
+                if failed:
+                    _close_created(playwright, created)
+            if not failed:
+                continue
+            delay = 15
+            if not book.chrome_listening:
+                _log("Starting the Onwin Chrome only. Kolay90 is not touched.")
+                code = _ensure_chrome()
+                if code == 3:
+                    delay = 60
+                    book.last_error = "display missing"
+                    _write_status(book)
+            time.sleep(delay)
+    finally:
+        try:
+            lock.close()
+        except Exception:
+            pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    del argv
+    try:
+        return run_forever()
+    except OnwinVpsGuardError as exc:
+        _log(str(exc))
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

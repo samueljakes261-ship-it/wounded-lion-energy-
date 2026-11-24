@@ -112,3 +112,9 @@ experiments/onwin_prematch_direct/output/
 # Isolated OnWin Playwright experiment (profile, responses, status)
 experiments/onwin_playwright/chrome_profile/
 experiments/onwin_playwright/output/
+
+# Isolated OnWin VPS Chrome (profile, logs, local config)
+experiments/onwin_vps/chrome_profile/
+experiments/onwin_vps/output/
+experiments/onwin_vps/config.env
+
