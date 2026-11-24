@@ -203,6 +203,20 @@ def _goto(page, url: str, label: str) -> None:
         _log(f"{label} navigation did not finish ({type(exc).__name__}). The tab stays open.")
 
 
+def _safe_path(url: str) -> str:
+    return (url or "").split("?", 1)[0][-160:]
+
+
+def _on_sportsbook(owner, live_page, prematch_page) -> bool:
+    if owner is None or owner is live_page or owner is prematch_page:
+        return True
+    try:
+        url = (owner.url or "").lower()
+    except Exception:
+        return False
+    return "onwin" in url or "sportsbook" in url
+
+
 def _refresh(page, url: str, label: str) -> None:
     """Load the tab after the listener is attached so the snapshot is not missed."""
     current = (page.url or "").lower()
@@ -210,7 +224,7 @@ def _refresh(page, url: str, label: str) -> None:
     try:
         if marker in current:
             _log(f"Reloading {label}")
-            page.reload(wait_until="domcontentloaded", timeout=60000)
+            page.reload(wait_until="commit", timeout=15000)
         else:
             _goto(page, url, label)
     except Exception as exc:
@@ -289,12 +303,17 @@ def run_forever(book: CollectionBook | None = None) -> int:
 
     def on_finished(request, live_page, prematch_page) -> None:
         try:
-            if "kolay" in (request.url or "").lower():
+            url = request.url or ""
+            lowered = url.lower()
+            if "kolay" in lowered:
                 return
+            if "erisgaming" in lowered or "4297.lol" in lowered:
+                book.note_api(_safe_path(url))
+                _write_status(book)
             owner = _owner_page(request)
-            if owner is not None and owner is not live_page and owner is not prematch_page:
+            if not _on_sportsbook(owner, live_page, prematch_page):
                 return
-            kind = feed_kind(request.url)
+            kind = feed_kind(url)
             if kind is None:
                 return
             lane = ""

@@ -40,6 +40,12 @@ class CollectionBook:
         self.live_page = ""
         self.prematch_page = ""
         self.phase = "starting"
+        self.api_seen = 0
+        self.last_api_path = ""
+
+    def note_api(self, path: str) -> None:
+        self.api_seen += 1
+        self.last_api_path = path
 
     def note_traffic(self, kind: str, lane: str) -> None:
         if kind == "snapshot":
@@ -112,6 +118,8 @@ class CollectionBook:
             "session_valid": self.session_valid,
             "live_page": self.live_page,
             "prematch_page": self.prematch_page,
+            "api_seen": self.api_seen,
+            "last_api_path": self.last_api_path,
             "get_main_line_seen": self.snapshots_seen,
             "updates_seen": self.updates_seen,
             "responses_received": self.responses_received,
