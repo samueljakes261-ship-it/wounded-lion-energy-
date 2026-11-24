@@ -61,7 +61,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "/snap/bin/chromium" in chrome
     assert "chrome.sh install" in chrome
     assert "TigerVNC" not in chrome
-    assert "--no-sandbox" not in chrome
+    assert "retrying without the Chrome sandbox" in chrome
     assert "--disable-gpu" not in chrome
     assert "kolay90_direct/chrome_profile" not in chrome
     assert "chromium.launch" not in collector

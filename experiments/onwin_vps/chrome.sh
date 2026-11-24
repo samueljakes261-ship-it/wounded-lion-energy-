@@ -89,20 +89,95 @@ cmdline_is_ours() {
   esac
 }
 
-stop_chrome() {
-  if [ ! -f "$PID_FILE" ]; then
-    echo "[onwin-vps-chrome] no pid file"
-    return 0
-  fi
+our_pids() {
   local pid
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
-  if [ -n "${pid}" ] && cmdline_is_ours "$pid"; then
-    kill "$pid" 2>/dev/null || true
-    echo "[onwin-vps-chrome] stopped pid ${pid}"
-  else
-    echo "[onwin-vps-chrome] pid ${pid:-missing} is not the Onwin Chrome; left it alone"
+  if [ -n "$pid" ] && cmdline_is_ours "$pid"; then
+    printf '%s\n' "$pid"
   fi
+  local found
+  while read -r found; do
+    [ -n "$found" ] || continue
+    if cmdline_is_ours "$found"; then
+      printf '%s\n' "$found"
+    fi
+  done < <(pgrep -f -- "--user-data-dir=${PROFILE}" || true)
+}
+
+release_our_chrome() {
+  local pid
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done < <(our_pids | sort -u)
+  sleep 0.4
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -9 "$pid" 2>/dev/null || true
+  done < <(our_pids | sort -u)
   rm -f "$PID_FILE"
+  rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonCookie" "$PROFILE/SingletonSocket"
+}
+
+stop_chrome() {
+  local before
+  before="$(our_pids | sort -u || true)"
+  if [ -z "$before" ]; then
+    echo "[onwin-vps-chrome] Onwin Chrome was not running"
+    rm -f "$PID_FILE"
+    return 0
+  fi
+  release_our_chrome
+  echo "[onwin-vps-chrome] stopped the Onwin Chrome"
+}
+
+show_log() {
+  echo "[onwin-vps-chrome] last log lines:" >&2
+  if [ -f "$LOG_FILE" ]; then
+    tail -n 40 "$LOG_FILE" >&2 || true
+  else
+    echo "[onwin-vps-chrome] no log file" >&2
+  fi
+  if grep -qi 'shared librar' "$LOG_FILE" 2>/dev/null; then
+    echo "[onwin-vps-chrome] Chrome is missing a library. After apt finishes, run: sudo apt-get install -f -y" >&2
+  fi
+}
+
+wait_for_cdp() {
+  local _i
+  for _i in $(seq 1 30); do
+    if listening; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
+launch_chrome() {
+  mkdir -p "$PROFILE"
+  args=(
+    "$CHROME"
+    "--headless=new"
+    "--remote-debugging-port=${PORT}"
+    "--remote-debugging-address=127.0.0.1"
+    "--remote-allow-origins=*"
+    "--user-data-dir=${PROFILE}"
+    "--no-first-run"
+    "--no-default-browser-check"
+    "--disable-dev-shm-usage"
+    "--window-size=1280,900"
+  )
+  if [ "$#" -gt 0 ]; then
+    args+=("$@")
+  fi
+  args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
+  if [ "$ACTION" = "foreground" ]; then
+    exec "${args[@]}"
+  fi
+  echo "---- $(date -Is) $* ----" >>"$LOG_FILE"
+  nohup "${args[@]}" >>"$LOG_FILE" 2>&1 &
+  echo $! >"$PID_FILE"
 }
 
 case "$ACTION" in
@@ -144,35 +219,25 @@ case "$ACTION" in
       echo "[onwin-vps-chrome] Install it with: experiments/onwin_vps/chrome.sh install" >&2
       exit 1
     fi
-    mkdir -p "$PROFILE"
+    release_our_chrome
+    : >"$LOG_FILE"
     echo "[onwin-vps-chrome] starting headless ${CHROME} on 127.0.0.1:${PORT}"
-    args=(
-      "$CHROME"
-      "--headless=new"
-      "--remote-debugging-port=${PORT}"
-      "--remote-debugging-address=127.0.0.1"
-      "--remote-allow-origins=*"
-      "--user-data-dir=${PROFILE}"
-      "--no-first-run"
-      "--no-default-browser-check"
-      "--disable-dev-shm-usage"
-      "--window-size=1280,900"
-      "$LIVE_PAGE"
-      "$PREMATCH_PAGE"
-    )
-    if [ "$ACTION" = "foreground" ]; then
-      exec "${args[@]}"
+    launch_chrome
+    if wait_for_cdp; then
+      echo "[onwin-vps-chrome] listening on 127.0.0.1:${PORT}"
+      exit 0
     fi
-    nohup "${args[@]}" >>"$LOG_FILE" 2>&1 &
-    echo $! >"$PID_FILE"
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      if listening; then
-        echo "[onwin-vps-chrome] listening on 127.0.0.1:${PORT}"
-        exit 0
-      fi
-      sleep 0.4
-    done
     echo "[onwin-vps-chrome] Chrome did not open its debugging port" >&2
+    show_log
+    echo "[onwin-vps-chrome] retrying without the Chrome sandbox" >&2
+    release_our_chrome
+    launch_chrome --no-sandbox
+    if wait_for_cdp; then
+      echo "[onwin-vps-chrome] listening on 127.0.0.1:${PORT}"
+      exit 0
+    fi
+    echo "[onwin-vps-chrome] Chrome did not open its debugging port" >&2
+    show_log
     exit 1
     ;;
   *)
