@@ -1,7 +1,7 @@
 """The Onwin VPS runner stays off Kolay90 and off production ingest."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -57,7 +57,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     collector = (ROOT / "experiments" / "onwin_vps" / "collector.py").read_text(encoding="utf-8")
     assert "9223" in chrome
     assert "--remote-debugging-address=127.0.0.1" in chrome
-    assert "--headless" not in chrome
+    assert "--headless=new" in chrome
+    assert "TigerVNC" not in chrome
     assert "--no-sandbox" not in chrome
     assert "--disable-gpu" not in chrome
     assert "kolay90_direct/chrome_profile" not in chrome
@@ -68,15 +69,65 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "ONWIN_VPS" not in local
 
 
-def test_publish_and_kolay_port_stay_off(monkeypatch):
+def test_publish_defaults_to_the_local_snapshot(monkeypatch):
     monkeypatch.delenv("ONWIN_VPS_PUBLISH", raising=False)
     monkeypatch.delenv("ONWIN_VPS_CDP_URL", raising=False)
     monkeypatch.setenv("ONWIN_VPS_CDP_PORT", "9222")
     from experiments.onwin_vps import collector
 
-    assert collector.publish_enabled() is False
+    assert collector.publish_enabled() is True
     with pytest.raises(OnwinVpsGuardError):
         collector._guard()
+
+
+def test_local_snapshot_needs_no_ingest_token(tmp_path, monkeypatch):
+    from models.match import MatchOdds
+    from parsers.onwin.prematch_snapshot import store_local_snapshot as store_prematch
+    from parsers.onwin.remote_snapshot import live_feed, store_local_snapshot
+
+    monkeypatch.delenv("ONWIN_INGEST_TOKEN", raising=False)
+    monkeypatch.setenv("ONWIN_REMOTE_SNAPSHOT", str(tmp_path / "live.json"))
+    monkeypatch.setenv("ONWIN_PREMATCH_REMOTE_SNAPSHOT", str(tmp_path / "pre.json"))
+    monkeypatch.setenv("MAX_ODDS_AGE_SECONDS", "30")
+    match = MatchOdds(
+        bookmaker="OnWin",
+        competition="League",
+        sport="football",
+        market="1X2",
+        home_team="Home",
+        away_team="Away",
+        home_odds=2.1,
+        draw_odds=3.2,
+        away_odds=3.4,
+        start_time=NOW,
+        collected_at=NOW,
+        feed_type="live",
+    )
+    assert store_local_snapshot([], NOW)["accepted"] is False
+    assert not (tmp_path / "live.json").exists()
+    stored = store_local_snapshot([match], NOW)
+    assert stored["accepted"] is True
+    assert stored["count"] == 1
+    feed = live_feed(NOW)
+    assert feed["event_count"] == 1
+    empty = store_local_snapshot([], NOW + timedelta(seconds=5))
+    assert empty["accepted"] is False
+    assert live_feed(NOW)["event_count"] == 1
+    prematch = MatchOdds(
+        bookmaker="OnWin",
+        competition="League",
+        sport="football",
+        market="1X2",
+        home_team="Home",
+        away_team="Away",
+        home_odds=1.9,
+        draw_odds=3.4,
+        away_odds=4.0,
+        start_time=NOW,
+        collected_at=NOW,
+        feed_type="prematch",
+    )
+    assert store_prematch([prematch], NOW)["accepted"] is True
 
 
 def test_status_file_round_trip(tmp_path, monkeypatch):

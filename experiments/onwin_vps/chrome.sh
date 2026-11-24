@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start, stop, or inspect the dedicated Onwin Chrome on the VPS.
-# This does not start a desktop and does not touch the Kolay90 Chrome.
+# Headless Google Chrome. No VNC desktop and no Kolay90 profile.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,13 +14,11 @@ if [ -f "$ROOT/experiments/onwin_vps/config.env" ]; then
 fi
 PORT="${ONWIN_VPS_CDP_PORT:-9223}"
 PROFILE="${ONWIN_VPS_CHROME_PROFILE:-$ROOT/experiments/onwin_vps/chrome_profile}"
-DISPLAY_VALUE="${ONWIN_VPS_DISPLAY:-${DISPLAY:-:1}}"
 LIVE_PAGE="${ONWIN_VPS_LIVE_PAGE:-https://onwin4505.com/sportsbook/live/main-line/soccer}"
 PREMATCH_PAGE="${ONWIN_VPS_PREMATCH_PAGE:-https://onwin4505.com/sportsbook/prelive/main-line/soccer}"
 OUTPUT="$ROOT/experiments/onwin_vps/output"
 PID_FILE="$OUTPUT/chrome.pid"
 LOG_FILE="$OUTPUT/chrome.log"
-DISPLAY_NUMBER="${DISPLAY_VALUE#:}"
 
 mkdir -p "$OUTPUT"
 chmod 700 "$PROFILE" 2>/dev/null || mkdir -p "$PROFILE"
@@ -67,13 +65,8 @@ case "$ACTION" in
     exec "$0" start
     ;;
   status)
-    echo "[onwin-vps-chrome] display=${DISPLAY_VALUE} port=${PORT}"
+    echo "[onwin-vps-chrome] headless port=${PORT}"
     echo "[onwin-vps-chrome] profile=${PROFILE}"
-    if [ -S "/tmp/.X11-unix/X${DISPLAY_NUMBER}" ]; then
-      echo "[onwin-vps-chrome] display_socket=yes"
-    else
-      echo "[onwin-vps-chrome] display_socket=no"
-    fi
     if listening; then
       echo "[onwin-vps-chrome] cdp=listening"
       curl -s "http://127.0.0.1:${PORT}/json/version" || true
@@ -83,11 +76,6 @@ case "$ACTION" in
     fi
     ;;
   start|foreground)
-    if [ ! -S "/tmp/.X11-unix/X${DISPLAY_NUMBER}" ]; then
-      echo "[onwin-vps-chrome] display ${DISPLAY_VALUE} is not running." >&2
-      echo "[onwin-vps-chrome] The existing TigerVNC desktop must already be up. This script will not start one." >&2
-      exit 3
-    fi
     if listening; then
       echo "[onwin-vps-chrome] already listening on 127.0.0.1:${PORT}"
       exit 0
@@ -98,14 +86,13 @@ case "$ACTION" in
       exit 1
     fi
     mkdir -p "$PROFILE"
-    echo "[onwin-vps-chrome] starting ${CHROME} on 127.0.0.1:${PORT}"
-    # Same flags as the working Kolay Chrome. Do not add headless mode,
-    # a sandbox bypass, or a GPU bypass: those change the Cloudflare fingerprint.
-    export DISPLAY="$DISPLAY_VALUE"
+    echo "[onwin-vps-chrome] starting headless ${CHROME} on 127.0.0.1:${PORT}"
     args=(
       "$CHROME"
+      "--headless=new"
       "--remote-debugging-port=${PORT}"
       "--remote-debugging-address=127.0.0.1"
+      "--remote-allow-origins=*"
       "--user-data-dir=${PROFILE}"
       "--no-first-run"
       "--no-default-browser-check"

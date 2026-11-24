@@ -149,12 +149,9 @@ def _authorized(header: str) -> bool:
     return hmac.compare_digest(offered.encode("utf-8"), expected.encode("utf-8"))
 
 
-def accept_remote_snapshot(body: dict, authorization: str, now: datetime | None = None) -> dict:
+def _store_body(body: dict, current_time: datetime) -> dict:
     if not isinstance(body, dict):
         raise IngestRejected(400, "body must be an object")
-    if not _authorized(authorization):
-        raise IngestRejected(401, "unauthorized")
-    current_time = now or datetime.now(timezone.utc)
     rows = body.get("matches")
     if not rows:
         return {"accepted": False, "reason": "no matches"}
@@ -193,6 +190,25 @@ def accept_remote_snapshot(body: dict, authorization: str, now: datetime | None 
     }
     _write(stored)
     return {"accepted": True, "count": len(received), "collected_at": stored["collected_at"]}
+
+
+def accept_remote_snapshot(body: dict, authorization: str, now: datetime | None = None) -> dict:
+    if not isinstance(body, dict):
+        raise IngestRejected(400, "body must be an object")
+    if not _authorized(authorization):
+        raise IngestRejected(401, "unauthorized")
+    return _store_body(body, now or datetime.now(timezone.utc))
+
+
+def store_local_snapshot(matches, now: datetime | None = None) -> dict:
+    """Write prematch odds from a collector on this machine. No ingest token."""
+    current_time = now or datetime.now(timezone.utc)
+    if not matches:
+        return {"accepted": False, "reason": "no matches"}
+    return _store_body(
+        {"matches": [match_to_payload(match) for match in matches]},
+        current_time,
+    )
 
 
 def load_fresh_matches(now: datetime | None = None) -> list[MatchOdds] | None:

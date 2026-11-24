@@ -1,13 +1,12 @@
-"""Onwin collector for a dedicated VPS Chrome.
+"""Onwin collector for a dedicated headless Chrome on the VPS.
 
 Google Chrome is started by experiments/onwin_vps/chrome.sh. This process
-only attaches to that Chrome the same way the Windows collector attaches
-to the Kolay91 window: Playwright connects over the debugging port and
-does not launch a browser.
+attaches to that Chrome the same way the Windows collector attaches to
+the Kolay91 window: Playwright connects over the debugging port and does
+not launch a browser.
 
-Production ingest stays off unless ONWIN_VPS_PUBLISH=1. While the Windows
-collector is still posting, leave publish off so the two do not write the
-same markets at once.
+Odds are written straight into the live and prematch snapshot files the
+engine already reads. No ingest token and no VNC desktop.
 """
 
 from __future__ import annotations
@@ -27,11 +26,10 @@ from parsers.onwin.local_collector import (
     _owner_page,
     feed_kind,
     snapshot_lane,
-    transmit,
     unwrap_sports,
 )
-from parsers.onwin.prematch_snapshot import match_to_payload as prematch_to_payload
-from parsers.onwin.remote_snapshot import match_to_payload
+from parsers.onwin.prematch_snapshot import store_local_snapshot as store_prematch
+from parsers.onwin.remote_snapshot import store_local_snapshot as store_live
 from parsers.onwin.state import OnwinState
 from parsers.onwin_prematch.parser import parse_prematch
 
@@ -49,12 +47,11 @@ def _log(message: str) -> None:
 
 
 def publish_enabled() -> bool:
-    return (os.environ.get("ONWIN_VPS_PUBLISH") or "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    """Local snapshot writes are on unless ONWIN_VPS_PUBLISH is explicitly off."""
+    raw = os.environ.get("ONWIN_VPS_PUBLISH")
+    if raw is None or not str(raw).strip():
+        return True
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def cdp_port() -> int:
@@ -126,23 +123,25 @@ def _shape(matches) -> tuple[int, int]:
     return len(events), len(markets)
 
 
-def _deliver(matches, url: str, label: str, to_payload) -> bool | None:
-    """None when ingest is off. True only when the existing API accepts the rows."""
+def _deliver(matches, label: str) -> bool | None:
+    """True when the engine snapshot file was replaced. None when writes are paused."""
     if not publish_enabled():
         _log(f"{label} odds={len(matches)} held locally (ONWIN_VPS_PUBLISH is off)")
         return None
-    return bool(transmit(matches, url, label, to_payload))
-
-
-def _live_url() -> str:
-    return (os.environ.get("ONWIN_INGEST_URL") or "https://api.lintonbeautynrb.org/onwin/live").strip()
-
-
-def _prematch_url() -> str:
-    return (
-        os.environ.get("ONWIN_PREMATCH_INGEST_URL")
-        or "https://api.lintonbeautynrb.org/onwin/prematch"
-    ).strip()
+    store = store_live if label == "live" else store_prematch
+    try:
+        result = store(matches)
+    except Exception as exc:
+        _log(f"{label} snapshot was not stored ({type(exc).__name__})")
+        return False
+    if result.get("accepted") is True:
+        _log(
+            f"stored {result.get('count')} {label} odds "
+            f"collected_at={result.get('collected_at')}"
+        )
+        return True
+    _log(f"kept the previous {label} snapshot ({result.get('reason')})")
+    return False
 
 
 def _chrome_listening() -> bool:
@@ -233,7 +232,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
         elif now - live_post["last"] < 2:
             return
         started = time.perf_counter()
-        published = _deliver(matches, _live_url(), "live", match_to_payload)
+        published = _deliver(matches, "live")
         events, markets = _shape(matches)
         book.note_odds(
             "live",
@@ -259,7 +258,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
         elif now - prematch["last_post"] < 2:
             return
         started = time.perf_counter()
-        published = _deliver(matches, _prematch_url(), "prematch", prematch_to_payload)
+        published = _deliver(matches, "prematch")
         events, markets = _shape(matches)
         book.note_odds(
             "prematch",
@@ -416,11 +415,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
             delay = 15
             if not book.chrome_listening:
                 _log("Starting the Onwin Chrome only. Kolay90 is not touched.")
-                code = _ensure_chrome()
-                if code == 3:
-                    delay = 60
-                    book.last_error = "display missing"
-                    _write_status(book)
+                _ensure_chrome()
             time.sleep(delay)
     finally:
         try:
