@@ -450,7 +450,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 continue
             delay = 15
             restart = needs_chrome_restart(book.last_error or "", book.chrome_listening)
-            if restart and time.time() - last_chrome_restart > 20:
+            if restart and time.time() - last_chrome_restart > 180:
                 last_chrome_restart = time.time()
                 _log("Restarting the Onwin Chrome only. Kolay90 is not touched.")
                 completed = subprocess.run(
@@ -472,7 +472,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             _log("chrome.log: " + " | ".join(lines))
                     book.last_error = "chrome did not start"
                     _write_status(book)
-                delay = 20
+                delay = 180
             time.sleep(delay)
     finally:
         try:

@@ -205,6 +205,15 @@ stop_xvfb() {
   rm -f "$OUTPUT/xvfb.pid"
 }
 
+ensure_memory() {
+  local avail
+  avail="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
+  if [ -n "$avail" ] && [ "$avail" -lt 400000 ]; then
+    echo "[onwin-vps-chrome] only ${avail} kB memory available. Not starting Chrome, so the VPS stays reachable." >&2
+    exit 1
+  fi
+}
+
 launch_chrome() {
   mkdir -p "$PROFILE"
   export DISPLAY="$DISPLAY_VALUE"
@@ -299,6 +308,7 @@ case "$ACTION" in
       exit 1
     fi
     ensure_display
+    ensure_memory
     release_our_chrome
     : >"$LOG_FILE"
     echo "[onwin-vps-chrome] starting ${CHROME} on ${DISPLAY_VALUE} port 127.0.0.1:${PORT}"
