@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 ACTION="${1:-start}"
+echo "[onwin-vps-chrome] ${ACTION} beginning" >&2
 if [ -f "$ROOT/experiments/onwin_vps/config.env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -230,6 +231,21 @@ launch_chrome() {
   echo $! >"$PID_FILE"
 }
 
+stop_other_starters() {
+  local pid args
+  while read -r pid args; do
+    [ -n "${pid}" ] || continue
+    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "$PPID" ] && continue
+    case "$args" in
+      *experiments/onwin_vps/chrome.sh*)
+        echo "[onwin-vps-chrome] stopping stuck chrome.sh pid ${pid}" >&2
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done < <(ps -eo pid=,args=)
+}
+
 case "$ACTION" in
   stop)
     stop_chrome
@@ -264,8 +280,10 @@ case "$ACTION" in
     echo "[onwin-vps-chrome] launch requested on port ${PORT}" >&2
     exec 9>"$OUTPUT/chrome.start.lock"
     if ! flock -n 9; then
-      echo "[onwin-vps-chrome] waiting for the other Onwin Chrome start to finish"
-      if ! flock -w 60 9; then
+      echo "[onwin-vps-chrome] another chrome.sh holds the launch lock" >&2
+      stop_other_starters
+      sleep 1
+      if ! flock -w 10 9; then
         echo "[onwin-vps-chrome] the other start did not finish" >&2
         exit 1
       fi
