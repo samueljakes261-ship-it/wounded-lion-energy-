@@ -153,10 +153,14 @@ def _chrome_listening() -> bool:
 
 
 def needs_chrome_restart(error_name: str, listening: bool) -> bool:
-    """A live port can still be a stuck debugger after a dropped attach."""
-    if not listening:
-        return True
-    return error_name in {"TimeoutError", "TargetClosedError"}
+    """Restart Chrome only when its debugging port is down.
+
+    TimeoutError and a closed tab, while port 9223 is still open, are a
+    dropped Playwright session. Attach again. Killing Chrome ended the
+    session that was already storing live odds.
+    """
+    del error_name
+    return not listening
 
 
 def quiet_for_reload(api_seen: int, last_api: int, quiet_seconds: float, *, threshold: float = 30.0) -> bool:
@@ -496,9 +500,11 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 continue
             delay = 15
             restart = needs_chrome_restart(book.last_error or "", book.chrome_listening)
-            if restart and time.time() - last_chrome_restart > 180:
+            if not restart:
+                _log("Chrome is still listening on port 9223. Attaching again.")
+            elif time.time() - last_chrome_restart > 180:
                 last_chrome_restart = time.time()
-                _log("Restarting the Onwin Chrome only. Kolay90 is not touched.")
+                _log("Chrome's debugging port is down. Restarting the Onwin Chrome only.")
                 try:
                     completed = subprocess.run(
                         [str(CHROME_SCRIPT), "restart"],

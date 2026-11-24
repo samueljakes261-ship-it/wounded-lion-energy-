@@ -81,13 +81,14 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "ONWIN_VPS" not in local
 
 
-def test_stuck_debugger_restarts_onwin_chrome():
+def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     from experiments.onwin_vps.collector import chrome_log_excerpt, needs_chrome_restart, quiet_for_reload
 
-    assert needs_chrome_restart("TimeoutError", True) is True
-    assert needs_chrome_restart("TargetClosedError", True) is True
+    assert needs_chrome_restart("TimeoutError", True) is False
+    assert needs_chrome_restart("TargetClosedError", True) is False
     assert needs_chrome_restart("Error", True) is False
     assert needs_chrome_restart("Error", False) is True
+    assert needs_chrome_restart("TimeoutError", False) is True
     assert quiet_for_reload(0, 0, 30) is True
     assert quiet_for_reload(2, 0, 30) is False
     assert quiet_for_reload(0, 0, 5) is False
