@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start, stop, or inspect the dedicated Onwin Chrome on the VPS.
-# Headless Google Chrome. No VNC desktop and no Kolay90 profile.
+# Normal Google Chrome on a private Xvfb screen. Not VNC, not display :1.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,6 +14,11 @@ if [ -f "$ROOT/experiments/onwin_vps/config.env" ]; then
 fi
 PORT="${ONWIN_VPS_CDP_PORT:-9223}"
 PROFILE="${ONWIN_VPS_CHROME_PROFILE:-$ROOT/experiments/onwin_vps/chrome_profile}"
+DISPLAY_VALUE="${ONWIN_VPS_DISPLAY:-:98}"
+if [ "$DISPLAY_VALUE" = ":1" ]; then
+  echo "[onwin-vps-chrome] display :1 belongs to Kolay90; using :98"
+  DISPLAY_VALUE=":98"
+fi
 LIVE_PAGE="${ONWIN_VPS_LIVE_PAGE:-https://onwin4505.com/sportsbook/live/main-line/soccer}"
 PREMATCH_PAGE="${ONWIN_VPS_PREMATCH_PAGE:-https://onwin4505.com/sportsbook/prelive/main-line/soccer}"
 OUTPUT="$ROOT/experiments/onwin_vps/output"
@@ -157,11 +162,53 @@ wait_for_cdp() {
   return 1
 }
 
+ensure_display() {
+  local number="${DISPLAY_VALUE#:}"
+  if [ -S "/tmp/.X11-unix/X${number}" ]; then
+    return 0
+  fi
+  local xvfb
+  xvfb="$(command -v Xvfb || true)"
+  if [ -z "$xvfb" ]; then
+    echo "[onwin-vps-chrome] Xvfb is not installed." >&2
+    echo "[onwin-vps-chrome] Onwin Chrome needs its own screen. This does not use VNC." >&2
+    echo "[onwin-vps-chrome] Install it with: sudo apt-get install -y xvfb" >&2
+    exit 1
+  fi
+  echo "[onwin-vps-chrome] starting Xvfb on ${DISPLAY_VALUE}"
+  nohup "$xvfb" "$DISPLAY_VALUE" -screen 0 1280x900x24 -ac +extension GLX +render -noreset >>"$OUTPUT/xvfb.log" 2>&1 &
+  echo $! >"$OUTPUT/xvfb.pid"
+  local _i
+  for _i in $(seq 1 25); do
+    if [ -S "/tmp/.X11-unix/X${number}" ]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "[onwin-vps-chrome] Xvfb did not create ${DISPLAY_VALUE}" >&2
+  exit 1
+}
+
+stop_xvfb() {
+  local pid cmd
+  pid="$(cat "$OUTPUT/xvfb.pid" 2>/dev/null || true)"
+  if [ -n "$pid" ] && [ -r "/proc/${pid}/cmdline" ]; then
+    cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)" 2>/dev/null || true
+    case "$cmd" in
+      *Xvfb*"${DISPLAY_VALUE}"*)
+        kill "$pid" 2>/dev/null || true
+        echo "[onwin-vps-chrome] stopped Xvfb on ${DISPLAY_VALUE}"
+        ;;
+    esac
+  fi
+  rm -f "$OUTPUT/xvfb.pid"
+}
+
 launch_chrome() {
   mkdir -p "$PROFILE"
+  export DISPLAY="$DISPLAY_VALUE"
   args=(
     "$CHROME"
-    "--headless=new"
     "--remote-debugging-port=${PORT}"
     "--remote-debugging-address=127.0.0.1"
     "--remote-allow-origins=*"
@@ -174,13 +221,11 @@ launch_chrome() {
   if [ "$#" -gt 0 ]; then
     args+=("$@")
   fi
-  # Headless Chrome rejects more than one startup address. The collector
-  # opens the prematch tab after it attaches.
-  args+=("$LIVE_PAGE")
+  args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
   if [ "$ACTION" = "foreground" ]; then
     exec "${args[@]}"
   fi
-  echo "---- $(date -Is) $* ----" >>"$LOG_FILE"
+  echo "---- $(date -Is) display=${DISPLAY_VALUE} $* ----" >>"$LOG_FILE"
   nohup "${args[@]}" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
 }
@@ -188,6 +233,7 @@ launch_chrome() {
 case "$ACTION" in
   stop)
     stop_chrome
+    stop_xvfb
     ;;
   restart)
     stop_chrome
@@ -198,7 +244,7 @@ case "$ACTION" in
     echo "[onwin-vps-chrome] installed $(find_chrome)"
     ;;
   status)
-    echo "[onwin-vps-chrome] headless port=${PORT}"
+    echo "[onwin-vps-chrome] display=${DISPLAY_VALUE} port=${PORT}"
     echo "[onwin-vps-chrome] profile=${PROFILE}"
     if chrome_bin="$(find_chrome)"; then
       echo "[onwin-vps-chrome] chrome_bin=${chrome_bin}"
@@ -226,9 +272,10 @@ case "$ACTION" in
       echo "[onwin-vps-chrome] Install it with: experiments/onwin_vps/chrome.sh install" >&2
       exit 1
     fi
+    ensure_display
     release_our_chrome
     : >"$LOG_FILE"
-    echo "[onwin-vps-chrome] starting headless ${CHROME} on 127.0.0.1:${PORT}"
+    echo "[onwin-vps-chrome] starting ${CHROME} on ${DISPLAY_VALUE} port 127.0.0.1:${PORT}"
     launch_chrome
     if wait_for_cdp; then
       echo "[onwin-vps-chrome] listening on 127.0.0.1:${PORT}"

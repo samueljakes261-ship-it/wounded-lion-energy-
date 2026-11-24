@@ -1,8 +1,9 @@
 # Onwin VPS Chrome
 
-Headless Google Chrome on port 9223, with its own profile. The collector
-attaches over the debugging port and writes live and prematch odds into
-the snapshot files the engine already reads. No VNC desktop and no ingest
+Google Chrome on port 9223, with its own profile, on a private Xvfb
+screen (`:98`). That screen is not VNC and it is not Kolay90's display.
+The collector attaches over the debugging port and writes live and
+prematch odds into the snapshot files the engine already reads. No ingest
 token.
 
 Stop the Windows Onwin collector before starting this one. Both write the

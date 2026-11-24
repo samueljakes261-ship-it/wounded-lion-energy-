@@ -203,6 +203,20 @@ def _goto(page, url: str, label: str) -> None:
         _log(f"{label} navigation did not finish ({type(exc).__name__}). The tab stays open.")
 
 
+def _refresh(page, url: str, label: str) -> None:
+    """Load the tab after the listener is attached so the snapshot is not missed."""
+    current = (page.url or "").lower()
+    marker = "sportsbook/prelive" if label == "prematch" else "sportsbook/live"
+    try:
+        if marker in current:
+            _log(f"Reloading {label}")
+            page.reload(wait_until="domcontentloaded", timeout=60000)
+        else:
+            _goto(page, url, label)
+    except Exception as exc:
+        _log(f"{label} reload did not finish ({type(exc).__name__}). The tab stays open.")
+
+
 def _pages_loaded(live_url: str, prematch_url: str) -> bool:
     live = (live_url or "").lower()
     prematch = (prematch_url or "").lower()
@@ -364,10 +378,8 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     on_finished(request, live, pre)
 
                 context.on("requestfinished", _handler)
-                if "sportsbook/live" not in (live_page.url or "").lower():
-                    _goto(live_page, live_page_url(), "live")
-                if "sportsbook/prelive" not in (prematch_page.url or "").lower():
-                    _goto(prematch_page, prematch_page_url(), "prematch")
+                _refresh(live_page, live_page_url(), "live")
+                _refresh(prematch_page, prematch_page_url(), "prematch")
                 book.live_page = live_page.url or ""
                 book.prematch_page = prematch_page.url or ""
                 book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
