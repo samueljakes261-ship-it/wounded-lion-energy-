@@ -163,9 +163,16 @@ def needs_chrome_restart(error_name: str, listening: bool) -> bool:
     return not listening
 
 
-def quiet_for_reload(api_seen: int, last_api: int, quiet_seconds: float, *, threshold: float = 30.0) -> bool:
-    """Reload only after a stretch with no new Onwin API response."""
-    return api_seen == last_api and quiet_seconds >= threshold
+def should_reload_live(title: str, page_url: str) -> bool:
+    """Leave a sportsbook tab alone, including while Cloudflare is checking it.
+
+    Reloading that tab every 30 seconds timed out and stopped get_main_line
+    from being sent. Reload only when the tab has left the sportsbook.
+    """
+    title_l = (title or "").lower()
+    if "just a moment" in title_l or "cloudflare" in title_l:
+        return False
+    return "sportsbook/live" not in (page_url or "").lower()
 
 
 def chrome_log_excerpt(lines: list[str]) -> str:
@@ -434,8 +441,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log(f"live tab {book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
                 prematch["last_reload"] = time.time()
-                last_api = book.api_seen
-                quiet_since = time.time()
                 last_heartbeat = time.time()
                 while True:
                     live_page.wait_for_timeout(5000)
@@ -451,28 +456,24 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     publish_live(force=True, from_network=False)
                     publish_prematch(force=True, from_network=False)
                     now = time.time()
-                    if book.api_seen != last_api:
-                        last_api = book.api_seen
-                        quiet_since = now
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
+                        title = ""
+                        try:
+                            title = live_page.title()
+                        except Exception:
+                            title = ""
                         _log(
                             f"still watching api_seen={book.api_seen} "
                             f"get_main_line={book.snapshots_seen} "
-                            f"live={book.live_page} prematch={book.prematch_page}"
+                            f"last_api={book.last_api_path} title={title!r} "
+                            f"live={book.live_page}"
                         )
-                        if quiet_for_reload(book.api_seen, last_api, now - quiet_since):
-                            title = ""
-                            try:
-                                title = live_page.title()
-                            except Exception:
-                                title = ""
-                            _log(f"no Onwin API for 30s. live title={title!r}. Reloading the live tab.")
-                            try:
-                                live_page.reload(wait_until="domcontentloaded", timeout=30000)
-                            except Exception as exc:
-                                _log(f"live reload did not finish ({type(exc).__name__})")
-                            quiet_since = time.time()
+                        if "just a moment" in title.lower() or "cloudflare" in title.lower():
+                            _log("Cloudflare check is on the live tab. Waiting for it to finish.")
+                        elif should_reload_live(title, book.live_page):
+                            _log("Live tab left the sportsbook. Opening it again.")
+                            _goto(live_page, live_page_url(), "live")
                     if time.time() - prematch["last_reload"] >= 90:
                         prematch["last_reload"] = time.time()
                         try:
