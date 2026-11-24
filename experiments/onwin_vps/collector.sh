@@ -67,6 +67,7 @@ case "$ACTION" in
       rm -f "$PID_FILE"
       exit 0
     fi
+    pkill -TERM -P "$pid" 2>/dev/null || true
     kill "$pid" 2>/dev/null || true
     echo "[onwin-vps] stopped pid ${pid}"
     rm -f "$PID_FILE"

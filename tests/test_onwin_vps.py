@@ -1,6 +1,8 @@
 """The Onwin VPS runner stays off Kolay90 and off production ingest."""
 
 import json
+import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -66,6 +68,9 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "TigerVNC" not in chrome
     assert "retrying without the Chrome sandbox" in chrome
     assert 'args+=("$LIVE_PAGE" "$PREMATCH_PAGE")' in chrome
+    assert "9>&-" in chrome
+    assert "lock_holders" in chrome
+    assert "ps -eo pid=,args=" not in chrome
     assert "Reloading" in collector
     assert "--disable-gpu" not in chrome
     assert "kolay90_direct/chrome_profile" not in chrome
@@ -157,3 +162,44 @@ def test_status_file_round_trip(tmp_path, monkeypatch):
     assert payload["prematch_odds"] == 3
     assert payload["last_live_success"] is None
     assert payload["cdp_url"].endswith(":9223")
+
+
+def test_reclaim_releases_a_lock_leaked_to_a_child():
+    script = ROOT / "experiments" / "onwin_vps" / "chrome.sh"
+    lock = ROOT / "experiments" / "onwin_vps" / "output" / "chrome.start.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    holder = subprocess.Popen(
+        ["bash", "-c", 'exec 9>"$1"; flock -n 9; sleep 30', "bash", str(lock)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.time() + 5
+        held = False
+        while time.time() < deadline:
+            probe = subprocess.run(
+                ["bash", "-c", 'exec 9>"$1"; flock -n 9', "bash", str(lock)],
+                check=False,
+            )
+            if probe.returncode != 0:
+                held = True
+                break
+            time.sleep(0.05)
+        assert held
+        completed = subprocess.run(
+            [str(script), "reclaim-lock"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert str(holder.pid) in completed.stderr
+        released = subprocess.run(
+            ["bash", "-c", 'exec 9>"$1"; flock -n 9', "bash", str(lock)],
+            check=False,
+        )
+        assert released.returncode == 0
+    finally:
+        holder.kill()
+        holder.wait(timeout=5)

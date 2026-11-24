@@ -453,13 +453,24 @@ def run_forever(book: CollectionBook | None = None) -> int:
             if restart and time.time() - last_chrome_restart > 180:
                 last_chrome_restart = time.time()
                 _log("Restarting the Onwin Chrome only. Kolay90 is not touched.")
-                completed = subprocess.run(
-                    [str(CHROME_SCRIPT), "restart"],
-                    cwd=str(ROOT),
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
+                try:
+                    completed = subprocess.run(
+                        [str(CHROME_SCRIPT), "restart"],
+                        cwd=str(ROOT),
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=75,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    chrome_output = f"{exc.stdout or ''}{exc.stderr or ''}".strip()
+                    if chrome_output:
+                        _log(chrome_output)
+                    _log("chrome.sh restart timed out")
+                    book.last_error = "chrome did not start"
+                    _write_status(book)
+                    time.sleep(180)
+                    continue
                 chrome_output = f"{completed.stdout or ''}{completed.stderr or ''}".strip()
                 if chrome_output:
                     _log(chrome_output)

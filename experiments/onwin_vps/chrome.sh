@@ -177,7 +177,8 @@ ensure_display() {
     exit 1
   fi
   echo "[onwin-vps-chrome] starting Xvfb on ${DISPLAY_VALUE}"
-  nohup "$xvfb" "$DISPLAY_VALUE" -screen 0 1280x900x24 -ac +extension GLX +render -noreset >>"$OUTPUT/xvfb.log" 2>&1 &
+  # Close the launch-lock fd. A background Xvfb must not keep the lock after this script exits.
+  nohup "$xvfb" "$DISPLAY_VALUE" -screen 0 1280x900x24 -ac +extension GLX +render -noreset >>"$OUTPUT/xvfb.log" 2>&1 9>&- &
   echo $! >"$OUTPUT/xvfb.pid"
   local _i
   for _i in $(seq 1 25); do
@@ -233,26 +234,48 @@ launch_chrome() {
   fi
   args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
   if [ "$ACTION" = "foreground" ]; then
+    exec 9>&-
     exec "${args[@]}"
   fi
   echo "---- $(date -Is) display=${DISPLAY_VALUE} $* ----" >>"$LOG_FILE"
-  nohup "${args[@]}" >>"$LOG_FILE" 2>&1 &
+  # Close the launch-lock fd. Chrome must not keep the lock after this script exits.
+  nohup "${args[@]}" >>"$LOG_FILE" 2>&1 9>&- &
   echo $! >"$PID_FILE"
 }
 
-stop_other_starters() {
-  local pid args
-  while read -r pid args; do
-    [ -n "${pid}" ] || continue
+lock_holders() {
+  local pid_dir pid fd target lock_path
+  lock_path="$(readlink -f "$OUTPUT/chrome.start.lock" 2>/dev/null || printf '%s' "$OUTPUT/chrome.start.lock")"
+  for pid_dir in /proc/[0-9]*; do
+    pid="${pid_dir#/proc/}"
     [ "$pid" = "$$" ] && continue
+    [ "$pid" = "${BASHPID:-}" ] && continue
     [ "$pid" = "$PPID" ] && continue
-    case "$args" in
-      *experiments/onwin_vps/chrome.sh*)
-        echo "[onwin-vps-chrome] stopping stuck chrome.sh pid ${pid}" >&2
-        kill "$pid" 2>/dev/null || true
-        ;;
-    esac
-  done < <(ps -eo pid=,args=)
+    for fd in "$pid_dir"/fd/*; do
+      [ -L "$fd" ] || continue
+      target="$(readlink "$fd" 2>/dev/null || true)"
+      case "$target" in
+        "$lock_path"|"$lock_path (deleted)")
+          printf '%s\n' "$pid"
+          break
+          ;;
+      esac
+    done
+  done
+}
+
+release_lock_holders() {
+  local signal="${1:-TERM}" pid cmd
+  local -a pids=()
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    pids+=("$pid")
+  done < <(lock_holders 9>&-)
+  for pid in "${pids[@]+"${pids[@]}"}"; do
+    cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+    echo "[onwin-vps-chrome] releasing launch lock held by pid ${pid} (${signal}): ${cmd}" >&2
+    kill -s "$signal" "$pid" 2>/dev/null || true
+  done
 }
 
 case "$ACTION" in
@@ -264,6 +287,11 @@ case "$ACTION" in
     stop_chrome
     echo "[onwin-vps-chrome] starting a new Onwin Chrome"
     exec "$0" start
+    ;;
+  reclaim-lock)
+    release_lock_holders TERM
+    sleep 0.4
+    release_lock_holders KILL
     ;;
   install)
     install_chrome
@@ -289,11 +317,14 @@ case "$ACTION" in
     echo "[onwin-vps-chrome] launch requested on port ${PORT}" >&2
     exec 9>"$OUTPUT/chrome.start.lock"
     if ! flock -n 9; then
-      echo "[onwin-vps-chrome] another chrome.sh holds the launch lock" >&2
-      stop_other_starters
-      sleep 1
-      if ! flock -w 10 9; then
-        echo "[onwin-vps-chrome] the other start did not finish" >&2
+      echo "[onwin-vps-chrome] another start holds the launch lock" >&2
+      release_lock_holders TERM
+      sleep 0.4
+      release_lock_holders KILL
+      sleep 0.2
+      if ! flock -w 5 9; then
+        echo "[onwin-vps-chrome] the launch lock is still held" >&2
+        release_lock_holders TERM
         exit 1
       fi
     fi
@@ -331,7 +362,7 @@ case "$ACTION" in
     exit 1
     ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|install|foreground}" >&2
+    echo "usage: $0 {start|stop|restart|status|install|foreground|reclaim-lock}" >&2
     exit 2
     ;;
 esac
