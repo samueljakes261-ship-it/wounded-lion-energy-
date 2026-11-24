@@ -237,6 +237,7 @@ case "$ACTION" in
     ;;
   restart)
     stop_chrome
+    echo "[onwin-vps-chrome] starting a new Onwin Chrome"
     exec "$0" start
     ;;
   install)
@@ -261,7 +262,13 @@ case "$ACTION" in
     ;;
   start|foreground)
     exec 9>"$OUTPUT/chrome.start.lock"
-    flock -w 45 9
+    if ! flock -n 9; then
+      echo "[onwin-vps-chrome] waiting for the other Onwin Chrome start to finish"
+      if ! flock -w 60 9; then
+        echo "[onwin-vps-chrome] the other start did not finish" >&2
+        exit 1
+      fi
+    fi
     if listening; then
       echo "[onwin-vps-chrome] already listening on 127.0.0.1:${PORT}"
       exit 0
