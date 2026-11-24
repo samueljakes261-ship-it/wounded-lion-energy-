@@ -81,8 +81,11 @@ install_chrome() {
 
 cmdline_is_ours() {
   local pid="$1"
-  local cmd
-  cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+  local cmd=""
+  local proc="/proc/${pid}/cmdline"
+  if [ -r "$proc" ]; then
+    cmd="$(tr '\0' ' ' < "$proc" 2>/dev/null || true)" 2>/dev/null || true
+  fi
   case "$cmd" in
     *"--user-data-dir=${PROFILE}"*) return 0 ;;
     *) return 1 ;;
@@ -171,7 +174,9 @@ launch_chrome() {
   if [ "$#" -gt 0 ]; then
     args+=("$@")
   fi
-  args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
+  # Headless Chrome rejects more than one startup address. The collector
+  # opens the prematch tab after it attaches.
+  args+=("$LIVE_PAGE")
   if [ "$ACTION" = "foreground" ]; then
     exec "${args[@]}"
   fi
@@ -209,6 +214,8 @@ case "$ACTION" in
     fi
     ;;
   start|foreground)
+    exec 9>"$OUTPUT/chrome.start.lock"
+    flock -w 45 9
     if listening; then
       echo "[onwin-vps-chrome] already listening on 127.0.0.1:${PORT}"
       exit 0
