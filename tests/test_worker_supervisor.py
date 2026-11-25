@@ -28,6 +28,11 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def _no_kolay_live_chrome(monkeypatch):
+    monkeypatch.setattr(collector, "_get_kolay90_live_worker", lambda: None)
+
+
 def test_start_workers_continues_when_onwin_constructor_raises(monkeypatch):
     started = {"betkanyon": False, "orbit": False}
     monkeypatch.setenv("ONWIN_LIVE", "1")

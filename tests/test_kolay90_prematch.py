@@ -555,12 +555,10 @@ def test_getmaclar_context_fallback_on_403():
 
 
 def test_in_page_getmaclar_is_bare_fetch():
-    from parsers.kolay90_prematch import fetch as fetch_mod
+    from parsers.kolay90_prematch.fetch import FETCH_JS
 
-    source = fetch_mod.fetch_getmaclar.__code__.co_consts
-    joined = " ".join(str(item) for item in source if isinstance(item, str))
-    assert "await fetch(url)" in joined
-    assert "x-requested-with" not in joined.lower()
+    assert "await fetch(url" in FETCH_JS
+    assert "x-requested-with" not in FETCH_JS.lower()
 
 
 def test_list_pages_does_not_wait_on_title():

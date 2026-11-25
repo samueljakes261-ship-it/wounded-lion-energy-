@@ -10,6 +10,7 @@ from collector import (
     stop_betfair_worker,
     stop_betkanyon_prematch_worker,
     stop_betkanyon_worker,
+    stop_kolay90_live_worker,
     stop_kolay90_prematch_worker,
     stop_onwin_prematch_worker,
     stop_onwin_worker,
@@ -35,6 +36,7 @@ async def restart_workers_gracefully():
         stop_betkanyon_prematch_worker()
         await stop_orbit_prematch_worker()
         stop_kolay90_prematch_worker()
+        stop_kolay90_live_worker()
         stop_onwin_prematch_worker()
         stop_betfair_worker()
         if is_prematch_only():
@@ -105,6 +107,7 @@ async def main():
         stop_betkanyon_prematch_worker()
         await stop_orbit_prematch_worker()
         stop_kolay90_prematch_worker()
+        stop_kolay90_live_worker()
         stop_onwin_prematch_worker()
         stop_betfair_worker()
         print("Workers stopped. Goodbye.")

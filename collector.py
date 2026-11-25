@@ -702,6 +702,7 @@ _betkanyon_prematch_worker: BetkanyonPrematchWorker | None = None
 _orbit_prematch_worker: OrbitPrematchWorker | None = None
 _onwin_prematch_worker: OnwinPrematchWorker | None = None
 _kolay90_prematch_worker: Kolay90PrematchWorker | None = None
+_kolay90_live_worker = None
 _prematch_last_matched = 0
 _prematch_last_opportunities = 0
 _prematch_last_back_lay = 0
@@ -767,6 +768,24 @@ def stop_kolay90_prematch_worker():
     if _kolay90_prematch_worker is not None:
         _kolay90_prematch_worker.stop()
         _kolay90_prematch_worker = None
+
+
+def _get_kolay90_live_worker():
+    """Kolay91 live polls. Separate from the prematch worker and its 90s interval."""
+    global _kolay90_live_worker
+    if _kolay90_live_worker is None:
+        from parsers.kolay90_prematch.live_worker import Kolay90LiveWorker
+
+        _kolay90_live_worker = Kolay90LiveWorker()
+        _kolay90_live_worker.start()
+    return _kolay90_live_worker
+
+
+def stop_kolay90_live_worker():
+    global _kolay90_live_worker
+    if _kolay90_live_worker is not None:
+        _kolay90_live_worker.stop()
+        _kolay90_live_worker = None
 
 
 # ============================================================
@@ -848,6 +867,7 @@ def start_workers():
         ("BetKanyon", _get_betkanyon_worker),
         ("Orbit", _get_orbit_worker),
     ]
+    starters.append(("Kolay90 live", _get_kolay90_live_worker))
     if onwin_live_enabled():
         starters.insert(0, ("OnWin", _get_onwin_handle))
     else:
@@ -928,6 +948,9 @@ async def _ensure_workers_alive():
 
     if _onwin_handle is not None and not _worker_alive(_onwin_handle._process):
         await _restart_worker("onwin", stop_onwin_worker, _get_onwin_handle)
+
+    if _kolay90_live_worker is not None and not _worker_alive(_kolay90_live_worker._thread):
+        await _restart_worker("kolay90", stop_kolay90_live_worker, _get_kolay90_live_worker)
 
     if _betkanyon_worker is not None and not _worker_alive(_betkanyon_worker._thread):
         await _restart_worker("betkanyon", stop_betkanyon_worker, _get_betkanyon_worker)
@@ -1525,6 +1548,13 @@ async def collect_opportunities(bankroll=1000):
 
     if not orbit_stale:
         matches.extend(orbit_matches)
+
+    if _kolay90_live_worker is not None:
+        kolay_status = _kolay90_live_worker.get_status()
+        kolay_last = kolay_status.get("last_update_at")
+        kolay_age = (now - kolay_last) if kolay_last else None
+        if not _check_feed_freshness("Kolay90", kolay_age, now):
+            matches.extend(_kolay90_live_worker.get_matches())
 
     # Live pipeline must never ingest prematch MatchOdds even if a
     # worker handle were accidentally shared.
@@ -2197,6 +2227,13 @@ def _write_status(
         if _onwin_prematch_worker is not None
         else {"status": "stopped", "error": None, "last_update_at": None}
     )
+    kolay_live_status = (
+        _kolay90_live_worker.get_status()
+        if _kolay90_live_worker is not None
+        else {"status": "stopped", "error": None, "last_update_at": None}
+    )
+    kolay_live_last = kolay_live_status.get("last_update_at")
+    kolay_live_age = (now - kolay_live_last) if kolay_live_last else None
     bk_pm_last = bk_pm_status.get("last_update_at")
     orbit_pm_last = orbit_pm_status.get("last_update_at")
     k90_pm_last = k90_pm_status.get("last_update_at")
@@ -2264,6 +2301,16 @@ def _write_status(
             "orbit": _collector_snapshot(
                 "Orbit", orbit_status.get("status"), orbit_age,
                 orbit_alive, orbit_status, now_dt,
+            ),
+            "kolay90": _collector_snapshot(
+                "Kolay90",
+                kolay_live_status.get("status"),
+                kolay_live_age,
+                _worker_alive(
+                    _kolay90_live_worker._thread if _kolay90_live_worker else None
+                ),
+                kolay_live_status,
+                now_dt,
             ),
             "betkanyon_prematch": _collector_snapshot(
                 "BetKanyon Prematch",
@@ -2420,6 +2467,7 @@ def get_collector_status():
                     ("onwin", "OnWin"),
                     ("betkanyon", "BetKanyon"),
                     ("orbit", "Orbit"),
+                    ("kolay90", "Kolay90"),
                     ("betkanyon_prematch", "BetKanyon Prematch"),
                     ("orbit_prematch", "Orbit Prematch"),
                     ("onwin_prematch", "OnWin Prematch"),

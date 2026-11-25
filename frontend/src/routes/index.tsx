@@ -302,7 +302,7 @@ function CollectorStatusPanel({
   const order =
     mode === "prematch"
       ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch", "kolay90_prematch", "betfair"]
-      : ["orbit", "betkanyon", "onwin", "betfair"]
+      : ["orbit", "betkanyon", "onwin", "kolay90", "betfair"]
   const matched =
     mode === "prematch"
       ? (status as CollectorStatusResponse & { prematchMatchedEvents?: number })

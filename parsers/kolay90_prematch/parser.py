@@ -304,6 +304,119 @@ def parse_event(
     )
 
 
+def is_live_event(item: dict, now: datetime | None = None) -> bool:
+    """In-play row from getMaclar. Prematch kickoffs stay on the prematch parser."""
+    if not isinstance(item, dict):
+        return False
+    if is_prematch_event(item, now):
+        return False
+    start = start_time_from_event(item)
+    if start is None:
+        return False
+    marker = str(item.get("zs") or "").casefold()
+    if any(token in marker for token in ("bitti", "finished", "maç sonu", "mac sonu")):
+        return False
+    if marker.strip() in {"ms", "ft"}:
+        return False
+    return True
+
+
+def parse_live_event(
+    item: Any,
+    collected_at: datetime | None = None,
+    leagues: dict | None = None,
+    now: datetime | None = None,
+    *,
+    allow_upcoming: bool = False,
+) -> Kolay90PrematchOdds | None:
+    """Same 1X2 record as prematch, marked live.
+
+    getMaclar live rows are the events the prematch gate rejects.
+    The live/upcoming board may also list fixtures that have not kicked off;
+    those stay feed_type=live and are not written into the prematch book.
+    """
+    if not isinstance(item, dict):
+        return None
+    event_id = item.get("_id")
+    if event_id in (None, ""):
+        return None
+    if not is_football_event(item, leagues):
+        return None
+    if allow_upcoming:
+        if start_time_from_event(item) is None:
+            return None
+        if not is_live_event(item, now) and not is_prematch_event(item, now):
+            return None
+    elif not is_live_event(item, now):
+        return None
+    home_team = item.get("ev_sahibi")
+    away_team = item.get("deplasman")
+    if not home_team or not away_team:
+        return None
+    raw = extract_1x2(item)
+    if raw is None:
+        return None
+    try:
+        home = float(raw[0])
+        draw = float(raw[1])
+        away = float(raw[2])
+    except (TypeError, ValueError):
+        return None
+    start = start_time_from_event(item)
+    if start is None:
+        return None
+    collected = collected_at or datetime.now(timezone.utc)
+    lig_id = item.get("lig_id")
+    code = item.get("code")
+    competition = _league_name(item, leagues) or (str(lig_id) if lig_id is not None else "")
+    match = MatchOdds(
+        bookmaker=BOOKMAKER,
+        competition=competition,
+        sport=SPORT,
+        market=MARKET,
+        home_team=str(home_team),
+        away_team=str(away_team),
+        home_odds=home,
+        draw_odds=draw,
+        away_odds=away,
+        start_time=start,
+        collected_at=collected,
+        feed_type="live",
+        tournament_id=str(lig_id) if lig_id is not None else None,
+    )
+    return Kolay90PrematchOdds(
+        match=match,
+        event_id=str(event_id),
+        bookmaker_code=str(code) if code is not None else None,
+        raw_home=raw[0],
+        raw_draw=raw[1],
+        raw_away=raw[2],
+    )
+
+
+def parse_live_payload(
+    payload: Any,
+    collected_at: datetime | None = None,
+    *,
+    allow_upcoming: bool = False,
+    now: datetime | None = None,
+) -> list[Kolay90PrematchOdds]:
+    leagues = league_catalog(payload)
+    by_id: dict[str, Kolay90PrematchOdds] = {}
+    for item in unwrap_events(payload):
+        parsed = parse_live_event(
+            item,
+            collected_at,
+            leagues=leagues,
+            now=now,
+            allow_upcoming=allow_upcoming,
+        )
+        if parsed is None:
+            continue
+        by_id[parsed.event_id] = parsed
+    return list(by_id.values())
+
+
 def parse_payload(payload: Any, collected_at: datetime | None = None) -> list[Kolay90PrematchOdds]:
     leagues = league_catalog(payload)
     by_id: dict[str, Kolay90PrematchOdds] = {}
