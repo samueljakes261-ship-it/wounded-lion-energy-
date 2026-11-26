@@ -157,6 +157,23 @@ def _owner_page(request):
     return getattr(frame, "page", None)
 
 
+def resolve_lane(owner_lane: str, kind: str, payload) -> str:
+    """Keep a main-line body when the page wrapper was not one of our tabs.
+
+    A live response whose frame page is a different Playwright wrapper used
+    to be dropped. The sports tree still says whether the events are
+    in progress. An update with no page stays on the live book, which is
+    where gap traffic belongs.
+    """
+    if owner_lane:
+        return owner_lane
+    if kind == "snapshot":
+        return snapshot_lane(payload) or ""
+    if kind == "update":
+        return "live"
+    return ""
+
+
 def page_lane(owner, live_page, prematch_page) -> str:
     """Which sportsbook tab sent this response.
 

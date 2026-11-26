@@ -305,7 +305,7 @@ launch_chrome() {
     "--disable-background-timer-throttling"
     "--disable-backgrounding-occluded-windows"
     "--disable-renderer-backgrounding"
-    "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling"
+    "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,BackForwardCache,TabDiscarding"
     "--window-size=1280,900"
   )
   if [ "$#" -gt 0 ]; then

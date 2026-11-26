@@ -220,6 +220,41 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_wake_silent_live(
         live_requests=0, seconds_open=50, on_sportsbook=True, challenge=False, already_woke=True
     ) is False
+    assert should_wake_silent_live(
+        live_requests=0,
+        seconds_open=34,
+        on_sportsbook=True,
+        challenge=False,
+        already_woke=False,
+        wakes=1,
+        max_wakes=4,
+        gap_seconds=25,
+    ) is True
+    assert should_wake_silent_live(
+        live_requests=0,
+        seconds_open=20,
+        on_sportsbook=True,
+        challenge=False,
+        already_woke=False,
+        wakes=1,
+        max_wakes=4,
+        gap_seconds=25,
+    ) is False
+    assert should_wake_silent_live(
+        live_requests=0,
+        seconds_open=200,
+        on_sportsbook=True,
+        challenge=False,
+        already_woke=False,
+        wakes=4,
+        max_wakes=4,
+        gap_seconds=25,
+    ) is False
+    from parsers.onwin.local_collector import resolve_lane
+
+    assert resolve_lane("", "snapshot", _live_tree()) == "live"
+    assert resolve_lane("prematch", "snapshot", _live_tree()) == "prematch"
+    assert resolve_lane("", "update", None) == "live"
     assert should_republish(seconds_since_network=10, hold_seconds=LIVE_HOLD_SECONDS) is True
     assert should_republish(seconds_since_network=LIVE_HOLD_SECONDS, hold_seconds=LIVE_HOLD_SECONDS) is True
     assert should_republish(seconds_since_network=LIVE_HOLD_SECONDS + 1, hold_seconds=LIVE_HOLD_SECONDS) is False

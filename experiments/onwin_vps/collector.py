@@ -29,9 +29,9 @@ from parsers.onwin.local_collector import (
     feed_kind,
     page_lane,
     PREMATCH_REOPEN_SECONDS,
+    resolve_lane,
     should_reload_live,
     should_reload_prematch,
-    snapshot_lane,
     unwrap_sports,
 )
 from parsers.onwin.prematch_snapshot import peek_stored as peek_prematch
@@ -202,17 +202,22 @@ def should_wake_silent_live(
     challenge: bool,
     already_woke: bool,
     minimum_seconds: float = 8,
+    wakes: int = 0,
+    max_wakes: int = 1,
+    gap_seconds: float = 30,
 ) -> bool:
-    """Reload one sportsbook tab once if it has not sent a feed since we attached.
+    """Open a silent sportsbook tab again until it sends a feed.
 
     The tabs usually fetch get_main_line before the collector is listening.
     Leaving an already-open tab alone then keeps the previous snapshot and
-    records no new responses. One reload, after a few seconds with no
-    request, is caught by the listener. A Cloudflare check is left alone.
+    records no new responses. Live may need more than one open, because the
+    first one can be backgrounded before the page subscribes. A Cloudflare
+    check is left alone.
     """
-    if already_woke or challenge or not on_sportsbook or live_requests > 0:
+    done = wakes if wakes else (1 if already_woke else 0)
+    if done >= max_wakes or challenge or not on_sportsbook or live_requests > 0:
         return False
-    return seconds_open >= minimum_seconds
+    return seconds_open >= minimum_seconds + done * gap_seconds
 
 
 def should_republish(*, seconds_since_network: float, hold_seconds: float) -> bool:
@@ -321,6 +326,45 @@ def _reload_once(page, label: str) -> None:
         page.reload(wait_until="commit", timeout=15000)
     except Exception as exc:
         _log(f"{label} reload did not finish ({type(exc).__name__}). The tab stays open.")
+
+
+def _force_open(page, url: str, label: str, attempt: int) -> None:
+    """Load the sportsbook again, bypassing the cached document.
+
+    A restored tab can show the right URL and never call get_main_line.
+    Reloading from cache leaves it that way. The document is fetched again
+    so the page script subscribes while this collector is listening.
+    """
+    _log(f"Opening {label} again so it sends a feed (attempt {attempt}).")
+    try:
+        page.bring_to_front()
+    except Exception:
+        pass
+    reloaded = False
+    try:
+        session = page.context.new_cdp_session(page)
+        session.send("Page.reload", {"ignoreCache": True})
+        reloaded = True
+        detach = getattr(session, "detach", None)
+        if detach is not None:
+            try:
+                detach()
+            except Exception:
+                pass
+    except Exception as exc:
+        _log(f"{label} cache-bypass reload was not available ({type(exc).__name__}).")
+    if reloaded:
+        return
+    try:
+        page.goto(url, wait_until="commit", timeout=15000)
+    except Exception as exc:
+        _log(f"{label} open did not finish ({type(exc).__name__}). The tab stays open.")
+
+
+def _request_key(request) -> str:
+    impl = getattr(request, "_impl_obj", None)
+    guid = getattr(impl, "_guid", None) if impl is not None else None
+    return str(guid or "")
 
 
 def _goto(page, url: str, label: str) -> None:
@@ -522,10 +566,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _write_status(book)
                 return
             book.note_response()
-            if owner is None and kind == "snapshot":
-                lane = snapshot_lane(payload) or ""
-            elif owner is None:
-                lane = "live"
+            lane = resolve_lane(lane, kind, payload)
             book.note_traffic(kind, lane)
             if lane == "prematch" and kind == "snapshot":
                 matches = parse_prematch(payload)
@@ -607,10 +648,29 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.prematch_page = prematch_page.url or ""
                 _write_status(book)
 
+                seen_requests: set[str] = set()
+
                 def _handler(request, live=live_page, pre=prematch_page):
+                    key = _request_key(request)
+                    if key:
+                        if key in seen_requests:
+                            return
+                        seen_requests.add(key)
                     on_finished(request, live, pre)
 
+                def _on_response(response, live=live_page, pre=prematch_page):
+                    try:
+                        request = response.request
+                    except Exception:
+                        return
+                    _handler(request, live, pre)
+
                 context.on("requestfinished", _handler)
+                for watched in (live_page, prematch_page):
+                    try:
+                        watched.on("response", _on_response)
+                    except Exception:
+                        pass
                 try:
                     live_page.set_default_timeout(20000)
                     prematch_page.set_default_timeout(20000)
@@ -639,7 +699,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 watching_since = last_heartbeat
                 last_prematch_open = time.time()
                 blips = {"n": 0}
-                quiet = {"focus": "live", "woke_live": False, "woke_prematch": False}
+                quiet = {"focus": "live", "live_wakes": 0, "woke_prematch": False}
                 while True:
                     republish()
                     try:
@@ -673,23 +733,27 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         continue
                     now = time.time()
                     open_for = now - watching_since
+                    if book.live_requests == 0:
+                        try:
+                            live_page.bring_to_front()
+                        except Exception:
+                            pass
                     if should_wake_silent_live(
                         live_requests=book.live_requests,
                         seconds_open=open_for,
                         on_sportsbook="sportsbook/live" in (book.live_page or "").lower(),
                         challenge=is_challenge_text("", book.live_page),
-                        already_woke=quiet["woke_live"],
+                        already_woke=False,
+                        wakes=quiet["live_wakes"],
+                        max_wakes=4,
+                        gap_seconds=25,
                     ):
-                        quiet["woke_live"] = True
+                        quiet["live_wakes"] += 1
                         _log(
-                            "No live feed since attach. The tab had already loaded. "
-                            "Reloading it once so this collector sees the response."
+                            "No live feed since attach. The live tab stays in front "
+                            "until it sends get_main_line."
                         )
-                        try:
-                            live_page.bring_to_front()
-                        except Exception:
-                            pass
-                        _reload_once(live_page, "live")
+                        _force_open(live_page, live_page_url(), "live", quiet["live_wakes"])
                     if should_wake_silent_live(
                         live_requests=book.prematch_requests,
                         seconds_open=open_for,
@@ -700,14 +764,15 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     ):
                         quiet["woke_prematch"] = True
                         _log(
-                            "No prematch feed since attach. The tab had already loaded. "
-                            "Reloading it once so this collector sees the response."
+                            "No prematch feed since attach. Reloading that tab in the "
+                            "background. The live tab stays in front."
                         )
-                        try:
-                            prematch_page.bring_to_front()
-                        except Exception:
-                            pass
                         _reload_once(prematch_page, "prematch")
+                        if book.live_requests == 0:
+                            try:
+                                live_page.bring_to_front()
+                            except Exception:
+                                pass
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
                         live_read = read_tab_quickly(live_page)
