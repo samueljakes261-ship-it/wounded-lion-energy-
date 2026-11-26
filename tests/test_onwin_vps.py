@@ -192,6 +192,23 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     )
     from parsers.onwin.state import OnwinState
 
+    from experiments.onwin_vps.collector import should_wake_silent_live
+    from parsers.onwin.local_collector import page_lane
+
+    assert page_lane(type("P", (), {"url": "https://onwin4921.com/sportsbook/live/main-line/soccer"})(), None, None) == "live"
+    assert page_lane(type("P", (), {"url": "https://onwin4921.com/sportsbook/prelive/main-line/soccer"})(), None, None) == "prematch"
+    assert should_wake_silent_live(
+        live_requests=0, seconds_open=50, on_sportsbook=True, challenge=False, already_woke=False
+    ) is True
+    assert should_wake_silent_live(
+        live_requests=1, seconds_open=50, on_sportsbook=True, challenge=False, already_woke=False
+    ) is False
+    assert should_wake_silent_live(
+        live_requests=0, seconds_open=50, on_sportsbook=True, challenge=True, already_woke=False
+    ) is False
+    assert should_wake_silent_live(
+        live_requests=0, seconds_open=50, on_sportsbook=True, challenge=False, already_woke=True
+    ) is False
     assert should_republish(seconds_since_network=10, hold_seconds=LIVE_HOLD_SECONDS) is True
     assert should_republish(seconds_since_network=LIVE_HOLD_SECONDS, hold_seconds=LIVE_HOLD_SECONDS) is True
     assert should_republish(seconds_since_network=LIVE_HOLD_SECONDS + 1, hold_seconds=LIVE_HOLD_SECONDS) is False

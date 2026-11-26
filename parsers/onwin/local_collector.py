@@ -157,6 +157,30 @@ def _owner_page(request):
     return getattr(frame, "page", None)
 
 
+def page_lane(owner, live_page, prematch_page) -> str:
+    """Which sportsbook tab sent this response.
+
+    Playwright sometimes hands back a different page wrapper than the one
+    saved at attach. The URL still says live or prelive, and that is enough
+    to keep a live response from being dropped.
+    """
+    if owner is None:
+        return ""
+    if owner is prematch_page:
+        return "prematch"
+    if owner is live_page:
+        return "live"
+    try:
+        url = (getattr(owner, "url", "") or "").lower()
+    except Exception:
+        return ""
+    if "sportsbook/prelive" in url or "/prematch" in url:
+        return "prematch"
+    if "sportsbook/live" in url:
+        return "live"
+    return ""
+
+
 def _cdp_url() -> str:
     return (os.environ.get("ONWIN_CDP_URL") or DEFAULT_CDP).strip()
 
