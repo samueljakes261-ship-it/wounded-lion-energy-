@@ -71,7 +71,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "9>&-" in chrome
     assert "lock_holders" in chrome
     assert "ps -eo pid=,args=" not in chrome
-    assert "Reloading" in collector
+    assert "already on the sportsbook" in collector
+    assert "page.reload" not in collector
     assert "--disable-gpu" not in chrome
     assert "kolay90_direct/chrome_profile" not in chrome
     assert "chromium.launch" not in collector
@@ -83,6 +84,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
 
 def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     from experiments.onwin_vps.collector import chrome_log_excerpt, needs_chrome_restart, should_reload_live
+    from parsers.onwin.local_collector import health_url, should_reload_prematch
 
     assert needs_chrome_restart("TimeoutError", True) is False
     assert needs_chrome_restart("TargetClosedError", True) is False
@@ -93,6 +95,12 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_reload_live("Just a moment...", sportsbook) is False
     assert should_reload_live("Onwin Bahis ve Casino Sitesi", sportsbook) is False
     assert should_reload_live("Onwin", "https://onwin4920.com/") is True
+    prelive = "https://onwin4920.com/sportsbook/prelive/main-line/soccer"
+    assert should_reload_prematch("Just a moment...", prelive) is False
+    assert should_reload_prematch("Onwin Bahis ve Casino Sitesi", prelive) is False
+    assert should_reload_prematch("Onwin", "https://onwin4920.com/") is True
+    assert should_reload_prematch("", "about:blank") is False
+    assert health_url("https://api.example/onwin/live") == "https://api.example/health"
     excerpt = chrome_log_excerpt(
         [
             "[1124/160424.101564:ERROR:crashpad/util/process/process_memory.cc:43] short read",
@@ -101,6 +109,46 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
         ]
     )
     assert excerpt == "DevTools listening on 127.0.0.1:9223"
+
+
+def test_a_failed_post_does_not_call_the_vps_down(monkeypatch, capsys):
+    import requests
+
+    from models.match import MatchOdds
+    from parsers.onwin.local_collector import transmit
+    from parsers.onwin.remote_snapshot import match_to_payload
+
+    def post(url, json, headers, timeout):
+        raise requests.ConnectionError("timed out")
+
+    monkeypatch.setenv("ONWIN_INGEST_TOKEN", "local-test-token")
+    monkeypatch.setattr("parsers.onwin.local_collector.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(requests, "post", post)
+    match = MatchOdds(
+        bookmaker="OnWin",
+        competition="League",
+        sport="football",
+        market="1X2",
+        home_team="Home",
+        away_team="Away",
+        home_odds=2.1,
+        draw_odds=3.2,
+        away_odds=3.4,
+        start_time=NOW,
+        collected_at=NOW,
+        feed_type="live",
+    )
+    assert transmit(
+        [match],
+        "https://api.example/onwin/live",
+        "live",
+        match_to_payload,
+        vps_up=True,
+    ) is False
+    logged = capsys.readouterr().out
+    assert "VPS unavailable" not in logged
+    assert "VPS is up" in logged
+    assert "ConnectionError" in logged
 
 
 def test_publish_defaults_to_the_local_snapshot(monkeypatch):

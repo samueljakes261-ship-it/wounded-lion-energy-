@@ -97,6 +97,37 @@ def test_full_sports_tree_rejects_thin_get_main_line():
     assert _is_full_sports_tree([{"sports": {SPORT: {"categories": {}}}}]) is True
 
 
+def test_feed_leaves_an_open_prelive_tab_alone():
+    feed = OnwinPrematchFeed.__new__(OnwinPrematchFeed)
+    feed.browser = None
+    feed._page = type(
+        "Page",
+        (),
+        {"url": "https://onwin4505.com/sportsbook/prelive/main-line/soccer"},
+    )()
+    feed._latest = PAYLOAD
+    feed._last_good = []
+    feed.last_stats = {}
+    feed._ensure_page = lambda: None
+    called = {"goto": 0, "wait": 0}
+
+    def goto():
+        called["goto"] += 1
+
+    def wait(timeout_s=180):
+        called["wait"] += 1
+        return False
+
+    feed._goto = goto
+    feed._wait_for_tree = wait
+
+    result = feed.collect_once()
+
+    assert called == {"goto": 0, "wait": 0}
+    assert len(result) == 1
+    assert result[0].home_team == "PreHome"
+
+
 def test_feed_keeps_last_good_when_cycle_has_no_tree():
     feed = OnwinPrematchFeed.__new__(OnwinPrematchFeed)
     previous = {"sports": {SPORT: {"categories": {}}}}

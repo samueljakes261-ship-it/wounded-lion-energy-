@@ -124,7 +124,7 @@ def transmit(matches) -> bool:
         try:
             response = requests.post(url, json=body, headers=headers, timeout=20)
         except requests.RequestException as exc:
-            _log(f"VPS unavailable ({type(exc).__name__}); retry {attempt}/3")
+            _log(f"Kolay90 post failed ({type(exc).__name__}); retry {attempt}/3")
         else:
             if response.status_code == 200:
                 try:

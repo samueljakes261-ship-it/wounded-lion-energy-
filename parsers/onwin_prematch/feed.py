@@ -72,7 +72,23 @@ class OnwinPrematchFeed:
         page.on("requestfinished", self._on_finished)
         self._page = page
 
+    def _on_prelive(self) -> bool:
+        page = self._page
+        if page is None:
+            return False
+        try:
+            url = page.url or ""
+        except Exception:
+            return False
+        return "sportsbook/prelive" in url.lower()
+
     def _goto(self):
+        if self._on_prelive():
+            print(
+                "[ONWIN PREMATCH] prelive tab is already open. Leaving it there.",
+                flush=True,
+            )
+            return
         try:
             self._page.goto(
                 PRELIVE_PAGE,
@@ -98,12 +114,16 @@ class OnwinPrematchFeed:
     def collect_once(self) -> list:
         self._ensure_page()
         previous = self._latest
-        # Drop the previous handle so this cycle waits for a fresh
-        # full sports tree instead of returning the last capture
-        # immediately. Thin get_main_line bodies never replace it.
-        self._latest = None
-        self._goto()
-        got = self._wait_for_tree()
+        # A prelive tab that is already open keeps running. Navigating
+        # again was reloading the sportsbook before get_main_line returned.
+        # Drop the previous handle only when this cycle has to open the
+        # page, so a thin body cannot replace a tree we already hold.
+        if self._on_prelive():
+            got = True if self._latest is not None else self._wait_for_tree()
+        else:
+            self._latest = None
+            self._goto()
+            got = self._wait_for_tree()
         if not got:
             self._latest = previous
             if self._last_good:

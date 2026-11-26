@@ -12,6 +12,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from parsers.onwin.parser import FOOTBALL_SPORT_ID
 from parsers.onwin.prematch_snapshot import match_to_payload as prematch_to_payload
@@ -29,12 +30,45 @@ UPDATE_FRAGMENTS = (
     "find_event_snapshots.erisgaming",
     "get_main_line_gap.erisgaming",
 )
-PREMATCH_RELOAD_SECONDS = 90.0
+# After a navigation, leave the tab alone this long. A second goto during
+# that window was reloading prelive before get_main_line came back.
+PREMATCH_REOPEN_SECONDS = 180.0
 PID_NAME = "onwin_local_collector.pid"
 
 
 def _log(message: str) -> None:
     print(f"[ONWIN LOCAL] {message}", flush=True)
+
+
+def _left_sportsbook(title: str, page_url: str, marker: str) -> bool:
+    """True only when the tab has left the sportsbook.
+
+    A Cloudflare check, a blank tab that is still loading, and a tab
+    already on that sportsbook stay open. Reloading any of them was
+    aborting get_main_line before it was sent.
+    """
+    title_l = (title or "").lower()
+    if "just a moment" in title_l or "cloudflare" in title_l:
+        return False
+    url = (page_url or "").lower()
+    if not url or url.startswith("about:"):
+        return False
+    return marker not in url
+
+
+def should_reload_live(title: str, page_url: str) -> bool:
+    return _left_sportsbook(title, page_url, "sportsbook/live")
+
+
+def should_reload_prematch(title: str, page_url: str) -> bool:
+    return _left_sportsbook(title, page_url, "sportsbook/prelive")
+
+
+def health_url(ingest_url: str) -> str:
+    parts = urlsplit(ingest_url or "")
+    if not parts.scheme or not parts.netloc:
+        return ""
+    return urlunsplit((parts.scheme, parts.netloc, "/health", "", ""))
 
 
 def feed_kind(url: str) -> str | None:
@@ -165,7 +199,31 @@ def _release_pid() -> None:
         pass
 
 
-def transmit(matches, url: str, label: str, to_payload) -> bool:
+def probe_vps(ingest_url: str) -> bool | None:
+    """Ask /health before any odds post.
+
+    A failed post is not the same thing as the VPS being down. None means
+    this process has not checked yet.
+    """
+    import requests
+
+    target = health_url(ingest_url)
+    if not target:
+        _log("Onwin ingest URL has no host, so VPS health was not checked")
+        return False
+    try:
+        response = requests.get(target, timeout=8)
+    except requests.RequestException as exc:
+        _log(f"Could not reach the VPS at {target} ({type(exc).__name__})")
+        return False
+    if response.status_code == 200:
+        _log(f"VPS is up ({target})")
+        return True
+    _log(f"VPS answered {target} with HTTP {response.status_code}")
+    return False
+
+
+def transmit(matches, url: str, label: str, to_payload, *, vps_up: bool | None = None) -> bool:
     import requests
 
     token = (os.environ.get("ONWIN_INGEST_TOKEN") or "").strip()
@@ -179,7 +237,16 @@ def transmit(matches, url: str, label: str, to_payload) -> bool:
         try:
             response = requests.post(url, json=body, headers=headers, timeout=20)
         except requests.RequestException as exc:
-            _log(f"VPS unavailable ({type(exc).__name__}); retry {attempt}/3")
+            if vps_up:
+                _log(
+                    f"VPS is up; {label} post failed ({type(exc).__name__}); "
+                    f"retry {attempt}/3"
+                )
+            else:
+                _log(
+                    f"Could not reach the VPS for {label} "
+                    f"({type(exc).__name__}); retry {attempt}/3"
+                )
         else:
             if response.status_code == 200:
                 try:
@@ -262,7 +329,8 @@ def main() -> int:
     _claim_pid()
     state = OnwinState()
     box = {"last_post": 0.0, "saw_snapshot": False}
-    prematch = {"matches": [], "last_post": 0.0, "last_reload": time.time()}
+    prematch = {"matches": [], "last_post": 0.0}
+    vps_up = probe_vps(_live_ingest_url())
     playwright = None
     created = []
     live_page = None
@@ -277,7 +345,7 @@ def main() -> int:
         now = time.time()
         if not force and now - box["last_post"] < 2:
             return
-        if transmit(matches, _live_ingest_url(), "live", match_to_payload):
+        if transmit(matches, _live_ingest_url(), "live", match_to_payload, vps_up=vps_up):
             box["last_post"] = now
 
     def publish_prematch(force: bool = False) -> None:
@@ -287,7 +355,13 @@ def main() -> int:
         now = time.time()
         if not force and now - prematch["last_post"] < 2:
             return
-        if transmit(matches, _prematch_ingest_url(), "prematch", prematch_to_payload):
+        if transmit(
+            matches,
+            _prematch_ingest_url(),
+            "prematch",
+            prematch_to_payload,
+            vps_up=vps_up,
+        ):
             prematch["last_post"] = now
 
     def on_finished(request):
@@ -368,18 +442,28 @@ def main() -> int:
             _goto(prematch_page, _prematch_page_url(), "prematch")
         else:
             _log("Using the Onwin prematch tab already open in that Chrome")
-        prematch["last_reload"] = time.time()
         _log("Watching live and prematch get_main_line.erisgaming. Ctrl+C stops this collector only.")
+        _log("Prematch stays on the open prelive tab. It is not reloaded on a timer.")
+        last_prematch_open = time.time()
         while True:
             live_page.wait_for_timeout(5000)
             publish_live(force=time.time() - box["last_post"] >= 10)
             publish_prematch(force=time.time() - prematch["last_post"] >= 60)
-            if time.time() - prematch["last_reload"] >= PREMATCH_RELOAD_SECONDS:
-                prematch["last_reload"] = time.time()
-                try:
-                    prematch_page.reload(wait_until="domcontentloaded", timeout=60000)
-                except Exception as exc:
-                    _log(f"prematch reload did not finish ({type(exc).__name__})")
+            title = ""
+            page_url = ""
+            try:
+                title = prematch_page.title()
+                page_url = prematch_page.url or ""
+            except Exception:
+                title = ""
+                page_url = ""
+            if (
+                should_reload_prematch(title, page_url)
+                and time.time() - last_prematch_open >= PREMATCH_REOPEN_SECONDS
+            ):
+                last_prematch_open = time.time()
+                _log("Prematch tab left prelive. Opening it again.")
+                _goto(prematch_page, _prematch_page_url(), "prematch")
     except KeyboardInterrupt:
         _log("Stopped. The Kolay91 Chrome stays open.")
         return 0

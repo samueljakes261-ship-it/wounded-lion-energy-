@@ -25,6 +25,9 @@ from parsers.onwin.local_collector import (
     _open_tabs,
     _owner_page,
     feed_kind,
+    PREMATCH_REOPEN_SECONDS,
+    should_reload_live,
+    should_reload_prematch,
     snapshot_lane,
     unwrap_sports,
 )
@@ -163,18 +166,6 @@ def needs_chrome_restart(error_name: str, listening: bool) -> bool:
     return not listening
 
 
-def should_reload_live(title: str, page_url: str) -> bool:
-    """Leave a sportsbook tab alone, including while Cloudflare is checking it.
-
-    Reloading that tab every 30 seconds timed out and stopped get_main_line
-    from being sent. Reload only when the tab has left the sportsbook.
-    """
-    title_l = (title or "").lower()
-    if "just a moment" in title_l or "cloudflare" in title_l:
-        return False
-    return "sportsbook/live" not in (page_url or "").lower()
-
-
 def chrome_log_excerpt(lines: list[str]) -> str:
     """Keep the launch error and drop crashpad noise from a dead Chrome."""
     kept = []
@@ -244,17 +235,18 @@ def _on_sportsbook(owner, live_page, prematch_page) -> bool:
 
 
 def _refresh(page, url: str, label: str) -> None:
-    """Load the tab after the listener is attached so the snapshot is not missed."""
+    """Open a tab that has left the sportsbook. Leave one that is already there.
+
+    Reloading a prelive tab that was still loading aborted get_main_line.
+    The listener is already attached, so the next response is captured
+    without starting the navigation again.
+    """
     current = (page.url or "").lower()
     marker = "sportsbook/prelive" if label == "prematch" else "sportsbook/live"
-    try:
-        if marker in current:
-            _log(f"Reloading {label}")
-            page.reload(wait_until="commit", timeout=15000)
-        else:
-            _goto(page, url, label)
-    except Exception as exc:
-        _log(f"{label} reload did not finish ({type(exc).__name__}). The tab stays open.")
+    if marker in current:
+        _log(f"{label} tab is already on the sportsbook. Leaving it open.")
+        return
+    _goto(page, url, label)
 
 
 def _pages_loaded(live_url: str, prematch_url: str) -> bool:
@@ -270,7 +262,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
     lock = _acquire_lock()
     state = OnwinState()
     saw_live = {"ok": False}
-    prematch = {"matches": [], "last_post": 0.0, "last_reload": 0.0}
+    prematch = {"matches": [], "last_post": 0.0}
     live_post = {"last": 0.0}
 
     def publish_live(force: bool = False, from_network: bool = True) -> None:
@@ -419,7 +411,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.attached = True
                 book.chrome_listening = True
                 book.last_error = None
-                book.phase = "reloading"
+                book.phase = "attaching"
                 book.live_page = live_page.url or ""
                 book.prematch_page = prematch_page.url or ""
                 _write_status(book)
@@ -440,8 +432,9 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
                 _log(f"live tab {book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
-                prematch["last_reload"] = time.time()
+                _log("Prematch stays on the open prelive tab. It is not reloaded on a timer.")
                 last_heartbeat = time.time()
+                last_prematch_open = time.time()
                 while True:
                     live_page.wait_for_timeout(5000)
                     try:
@@ -474,13 +467,20 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         elif should_reload_live(title, book.live_page):
                             _log("Live tab left the sportsbook. Opening it again.")
                             _goto(live_page, live_page_url(), "live")
-                    if time.time() - prematch["last_reload"] >= 90:
-                        prematch["last_reload"] = time.time()
+                        prematch_title = ""
                         try:
-                            prematch_page.reload(wait_until="domcontentloaded", timeout=60000)
-                        except Exception as exc:
-                            book.last_error = type(exc).__name__
-                            _log(f"prematch reload did not finish ({type(exc).__name__})")
+                            prematch_title = prematch_page.title()
+                        except Exception:
+                            prematch_title = ""
+                        if "just a moment" in prematch_title.lower() or "cloudflare" in prematch_title.lower():
+                            _log("Cloudflare check is on the prematch tab. Waiting for it to finish.")
+                        elif (
+                            should_reload_prematch(prematch_title, book.prematch_page)
+                            and now - last_prematch_open >= PREMATCH_REOPEN_SECONDS
+                        ):
+                            last_prematch_open = now
+                            _log("Prematch tab left prelive. Opening it again.")
+                            _goto(prematch_page, prematch_page_url(), "prematch")
                     _write_status(book)
             except KeyboardInterrupt:
                 _log("Stopped. The dedicated Chrome stays open.")
