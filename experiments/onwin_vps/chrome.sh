@@ -236,7 +236,13 @@ launch_chrome() {
   if [ "$#" -gt 0 ]; then
     args+=("$@")
   fi
-  args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
+  # A profile that already passed Cloudflare must come back as it was.
+  # Opening the default host again reloads both sportsbook tabs.
+  if [ -d "$PROFILE/Default" ]; then
+    args+=("--restore-last-session")
+  else
+    args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
+  fi
   if [ "$ACTION" = "foreground" ]; then
     exec 9>&-
     exec "${args[@]}"

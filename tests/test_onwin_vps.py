@@ -10,9 +10,52 @@ import pytest
 
 from experiments.onwin_vps.book import CollectionBook
 from experiments.onwin_vps.safety import OnwinVpsGuardError, validate_target
+from parsers.onwin.parser import FOOTBALL_SPORT_ID
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+
+
+def _live_tree(home: str = "LiveHome") -> dict:
+    return {
+        "sports": {
+            FOOTBALL_SPORT_ID: {
+                "categories": {
+                    "c": {
+                        "tournaments": {
+                            "t": {
+                                "events": {
+                                    "e": {
+                                        "diff": {
+                                            "status": "in_progress",
+                                            "startTime": 1787400000000,
+                                            "participants": {
+                                                "team1": {"name": home, "teamId": "h"},
+                                                "team2": {"name": "Away", "teamId": "a"},
+                                            },
+                                        },
+                                        "scopes": {
+                                            "normal_time--0": {
+                                                "markets": {
+                                                    "score_1x2--nil": {
+                                                        "outcomes": {
+                                                            "outcome::p1": {"coefficient": 2.1, "updatedAt": 1},
+                                                            "outcome::draw": {"coefficient": 3.2, "updatedAt": 1},
+                                                            "outcome::p2": {"coefficient": 3.4, "updatedAt": 1},
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 
 def test_onwin_chrome_refuses_the_kolay_port_and_profile(tmp_path):
@@ -124,7 +167,27 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
         on_sportsbook=True,
         seconds_since_response=1000,
         seconds_since_refresh=1000,
-    ) is True
+    ) is False
+    from experiments.onwin_vps.collector import (
+        LIVE_HOLD_SECONDS,
+        PREMATCH_HOLD_SECONDS,
+        adopt_live_book,
+        should_republish,
+    )
+    from parsers.onwin.state import OnwinState
+
+    assert should_republish(seconds_since_network=10, hold_seconds=LIVE_HOLD_SECONDS) is True
+    assert should_republish(seconds_since_network=LIVE_HOLD_SECONDS, hold_seconds=LIVE_HOLD_SECONDS) is True
+    assert should_republish(seconds_since_network=LIVE_HOLD_SECONDS + 1, hold_seconds=LIVE_HOLD_SECONDS) is False
+    assert should_republish(seconds_since_network=800, hold_seconds=PREMATCH_HOLD_SECONDS) is True
+    assert should_republish(seconds_since_network=-1, hold_seconds=LIVE_HOLD_SECONDS) is False
+    state = OnwinState()
+    state.load_initial(_live_tree())
+    assert len(state.get_match_odds()) == 1
+    assert adopt_live_book(state, {"sports": {}}) is False
+    assert state.get_match_odds()[0].home_team == "LiveHome"
+    assert adopt_live_book(state, _live_tree("OtherHome")) is True
+    assert state.get_match_odds()[0].home_team == "OtherHome"
     assert health_url("https://api.example/onwin/live") == "https://api.example/health"
     excerpt = chrome_log_excerpt(
         [
@@ -210,6 +273,8 @@ def test_local_snapshot_needs_no_ingest_token(tmp_path, monkeypatch):
         collected_at=NOW,
         feed_type="live",
     )
+    from parsers.onwin.remote_snapshot import peek_stored
+
     assert store_local_snapshot([], NOW)["accepted"] is False
     assert not (tmp_path / "live.json").exists()
     stored = store_local_snapshot([match], NOW)
@@ -217,6 +282,9 @@ def test_local_snapshot_needs_no_ingest_token(tmp_path, monkeypatch):
     assert stored["count"] == 1
     feed = live_feed(NOW)
     assert feed["event_count"] == 1
+    peeked = peek_stored(NOW + timedelta(seconds=31))
+    assert peeked["age"] == 31
+    assert peeked["matches"][0].home_team == "Home"
     empty = store_local_snapshot([], NOW + timedelta(seconds=5))
     assert empty["accepted"] is False
     assert live_feed(NOW)["event_count"] == 1

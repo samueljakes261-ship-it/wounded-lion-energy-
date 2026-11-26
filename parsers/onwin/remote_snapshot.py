@@ -213,6 +213,32 @@ def store_local_snapshot(matches, now: datetime | None = None) -> dict:
     )
 
 
+def peek_stored(now: datetime | None = None) -> dict | None:
+    """Last live rows and their age, including rows the engine would call stale."""
+    payload = _read()
+    if not payload:
+        return None
+    current_time = now or datetime.now(timezone.utc)
+    collected = _parse_time(payload.get("collected_at"))
+    if collected is None:
+        return None
+    rows = payload.get("matches")
+    if not isinstance(rows, list) or not rows:
+        return None
+    matches = []
+    for row in rows:
+        try:
+            matches.append(match_from_payload(row, current_time))
+        except IngestRejected:
+            continue
+    if not matches:
+        return None
+    return {
+        "matches": matches,
+        "age": (current_time - collected).total_seconds(),
+    }
+
+
 def load_fresh_matches(now: datetime | None = None) -> list[MatchOdds] | None:
     payload = _read()
     if not payload:

@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -32,7 +33,9 @@ from parsers.onwin.local_collector import (
     snapshot_lane,
     unwrap_sports,
 )
+from parsers.onwin.prematch_snapshot import peek_stored as peek_prematch
 from parsers.onwin.prematch_snapshot import store_local_snapshot as store_prematch
+from parsers.onwin.remote_snapshot import peek_stored as peek_live
 from parsers.onwin.remote_snapshot import store_local_snapshot as store_live
 from parsers.onwin.state import OnwinState
 from parsers.onwin_prematch.parser import parse_prematch
@@ -105,7 +108,14 @@ def _guard() -> None:
         raise OnwinVpsGuardError("refusing to attach to port 9222")
 
 
-def _write_status(book: CollectionBook) -> None:
+_status_written = {"at": 0.0}
+
+
+def _write_status(book: CollectionBook, force: bool = False) -> None:
+    now = time.time()
+    if not force and now - _status_written["at"] < 2:
+        return
+    _status_written["at"] = now
     OUTPUT.mkdir(parents=True, exist_ok=True)
     payload = book.status(
         publish=publish_enabled(),
@@ -156,11 +166,15 @@ def _chrome_listening() -> bool:
         return False
 
 
-# A sportsbook tab that has loaded and then goes silent has usually lost
-# its websocket. Reloading during Cloudflare, or every couple of minutes,
-# aborted get_main_line. Eight quiet minutes is long enough to be a dead
-# tab rather than a slow check.
-QUIET_RELOAD_SECONDS = 480.0
+# Live odds older than this are not rewritten, so the engine stops using
+# them. Three minutes covers a debugger reconnect without serving a book
+# that has gone quiet. Prematch odds stay valid for the engine's own
+# fifteen-minute window. Rewrites stay inside those windows so one stalled
+# Playwright call cannot expire both snapshot files.
+LIVE_HOLD_SECONDS = 180.0
+PREMATCH_HOLD_SECONDS = 900.0
+LIVE_REWRITE_SECONDS = 8.0
+PREMATCH_REWRITE_SECONDS = 45.0
 
 
 def should_refresh_quiet_tab(
@@ -170,12 +184,37 @@ def should_refresh_quiet_tab(
     seconds_since_response: float,
     seconds_since_refresh: float,
 ) -> bool:
-    """Reload one settled sportsbook tab after a long silence."""
-    if challenge or not on_sportsbook:
+    """A quiet sportsbook tab stays open.
+
+    Reloading after a silence sent both tabs through Cloudflare. The last
+    good odds keep the engine fed until the page sends again.
+    """
+    del challenge, on_sportsbook, seconds_since_response, seconds_since_refresh
+    return False
+
+
+def should_republish(*, seconds_since_network: float, hold_seconds: float) -> bool:
+    """True while the last good book is still inside its hold window."""
+    return 0 <= seconds_since_network <= hold_seconds
+
+
+def adopt_live_book(state: OnwinState, payload) -> bool:
+    """Install a snapshot. Keep the current live 1X2 if the new body has none."""
+    trial = OnwinState()
+    try:
+        trial.load_initial(payload)
+    except Exception:
         return False
-    if seconds_since_refresh < QUIET_RELOAD_SECONDS:
+    current = state.get_match_odds()
+    incoming = trial.get_match_odds()
+    if current and not incoming:
+        if trial.event_count:
+            state.apply_update(payload)
         return False
-    return seconds_since_response >= QUIET_RELOAD_SECONDS
+    state._events = trial._events
+    state.last_version = trial.last_version
+    state.initialized = trial.initialized
+    return bool(incoming) or state.event_count > 0
 
 
 def needs_chrome_restart(error_name: str, listening: bool) -> bool:
@@ -304,60 +343,113 @@ def run_forever(book: CollectionBook | None = None) -> int:
     saw_live = {"ok": False}
     prematch = {"matches": [], "last_post": 0.0}
     live_post = {"last": 0.0}
+    publish_lock = threading.Lock()
+    held = {"live": [], "prematch": [], "live_at": 0.0, "prematch_at": 0.0}
+    stop_publisher = {"flag": False}
 
-    def publish_live(force: bool = False, from_network: bool = True) -> None:
-        if not state.initialized:
+    def _seed_lane(lane: str, peeked, hold_seconds: float) -> None:
+        if not peeked:
             return
-        matches = state.get_match_odds()
+        age = float(peeked.get("age") or 0)
+        matches = peeked.get("matches") or []
+        if age < -30 or age > hold_seconds or not matches:
+            return
+        held[lane] = list(matches)
+        held[lane + "_at"] = time.time() - max(age, 0.0)
+        _log(f"kept {len(matches)} stored {lane} odds from {age:.0f}s ago")
+
+    try:
+        _seed_lane("live", peek_live(), LIVE_HOLD_SECONDS)
+        _seed_lane("prematch", peek_prematch(), PREMATCH_HOLD_SECONDS)
+    except Exception as exc:
+        _log(f"stored odds were not reloaded ({type(exc).__name__})")
+    if held["prematch"]:
+        prematch["matches"] = list(held["prematch"])
+
+    def remember(lane: str, matches) -> None:
         if not matches:
             return
-        now = time.time()
-        if force:
-            if now - live_post["last"] < 10:
-                return
-        elif now - live_post["last"] < 2:
-            return
-        started = time.perf_counter()
-        published = _deliver(matches, "live")
-        events, markets = _shape(matches)
-        book.note_odds(
-            "live",
-            len(matches),
-            events=events,
-            markets=markets,
-            publish_ok=published,
-            poll_ms=(time.perf_counter() - started) * 1000,
-            from_network=from_network,
-        )
-        if published is not False:
-            live_post["last"] = now
-        _write_status(book)
+        with publish_lock:
+            held[lane] = list(matches)
+            held[lane + "_at"] = time.time()
 
-    def publish_prematch(force: bool = False, from_network: bool = True) -> None:
-        matches = prematch["matches"]
-        if not matches:
-            return
-        now = time.time()
-        if force:
-            if now - prematch["last_post"] < 60:
+    def publish_live(from_network: bool = True, heartbeat: bool = False) -> None:
+        with publish_lock:
+            matches = list(held["live"])
+            seen = held["live_at"]
+            now = time.time()
+            if not matches:
                 return
-        elif now - prematch["last_post"] < 2:
-            return
-        started = time.perf_counter()
-        published = _deliver(matches, "prematch")
-        events, markets = _shape(matches)
-        book.note_odds(
-            "prematch",
-            len(matches),
-            events=events,
-            markets=markets,
-            publish_ok=published,
-            poll_ms=(time.perf_counter() - started) * 1000,
-            from_network=from_network,
-        )
-        if published is not False:
-            prematch["last_post"] = now
-        _write_status(book)
+            if heartbeat or not from_network:
+                if not should_republish(
+                    seconds_since_network=now - seen,
+                    hold_seconds=LIVE_HOLD_SECONDS,
+                ):
+                    return
+                if now - live_post["last"] < LIVE_REWRITE_SECONDS:
+                    return
+            elif now - live_post["last"] < 2:
+                return
+            started = time.perf_counter()
+            published = _deliver(matches, "live")
+            events, markets = _shape(matches)
+            book.note_odds(
+                "live",
+                len(matches),
+                events=events,
+                markets=markets,
+                publish_ok=published,
+                poll_ms=(time.perf_counter() - started) * 1000,
+                from_network=from_network,
+            )
+            if published is not False:
+                live_post["last"] = now
+            _write_status(book, force=True)
+
+    def publish_prematch(from_network: bool = True, heartbeat: bool = False) -> None:
+        with publish_lock:
+            matches = list(held["prematch"])
+            seen = held["prematch_at"]
+            now = time.time()
+            if not matches:
+                return
+            if heartbeat or not from_network:
+                if not should_republish(
+                    seconds_since_network=now - seen,
+                    hold_seconds=PREMATCH_HOLD_SECONDS,
+                ):
+                    return
+                if now - prematch["last_post"] < PREMATCH_REWRITE_SECONDS:
+                    return
+            elif now - prematch["last_post"] < 2:
+                return
+            started = time.perf_counter()
+            published = _deliver(matches, "prematch")
+            events, markets = _shape(matches)
+            book.note_odds(
+                "prematch",
+                len(matches),
+                events=events,
+                markets=markets,
+                publish_ok=published,
+                poll_ms=(time.perf_counter() - started) * 1000,
+                from_network=from_network,
+            )
+            if published is not False:
+                prematch["last_post"] = now
+            _write_status(book, force=True)
+
+    def _publisher() -> None:
+        while not stop_publisher["flag"]:
+            time.sleep(4)
+            try:
+                publish_live(from_network=False, heartbeat=True)
+                publish_prematch(from_network=False, heartbeat=True)
+            except Exception as exc:
+                _log(f"snapshot rewrite skipped ({type(exc).__name__})")
+
+    publisher = threading.Thread(target=_publisher, name="onwin-snapshot", daemon=True)
+    publisher.start()
 
     def on_finished(request, live_page, prematch_page) -> None:
         try:
@@ -408,6 +500,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     _write_status(book)
                     return
                 prematch["matches"] = matches
+                remember("prematch", matches)
                 publish_prematch(from_network=True)
                 return
             if lane != "live":
@@ -415,24 +508,30 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 return
             if kind == "snapshot" or not saw_live["ok"]:
                 if kind == "snapshot":
-                    state.load_initial(payload)
+                    adopted = adopt_live_book(state, payload)
                 else:
                     state.apply_update(payload)
                     if state.event_count:
                         state.initialized = True
-                saw_live["ok"] = state.initialized and state.event_count > 0
+                    adopted = state.event_count > 0
+                saw_live["ok"] = state.initialized and (
+                    state.event_count > 0 or bool(held["live"])
+                )
                 odds = state.get_match_odds()
                 _log(
                     f"snapshot events={state.event_count} odds={len(odds)} "
-                    f"path={_safe_path(url)}"
+                    f"replaced={adopted} path={_safe_path(url)}"
                 )
-                if odds:
+                if odds and (kind == "snapshot" or len(odds) >= len(held["live"])):
+                    remember("live", odds)
                     publish_live(from_network=True)
                 else:
                     _write_status(book)
                 return
             changed = state.apply_update(payload)
             odds = state.get_match_odds()
+            if odds and len(odds) >= len(held["live"]):
+                remember("live", odds)
             if changed and odds:
                 _log(f"update changed_1x2={len(changed)} events={state.event_count}")
                 publish_live(from_network=True)
@@ -474,6 +573,11 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     on_finished(request, live, pre)
 
                 context.on("requestfinished", _handler)
+                try:
+                    live_page.set_default_timeout(20000)
+                    prematch_page.set_default_timeout(20000)
+                except Exception:
+                    pass
                 _refresh(live_page, live_page_url(), "live")
                 book.live_page = live_page.url or ""
                 _write_status(book)
@@ -489,28 +593,38 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log("Prematch stays on the open prelive tab. It is not reloaded on a timer.")
                 last_heartbeat = time.time()
                 last_prematch_open = time.time()
-                quiet = {
-                    "live_count": book.live_requests,
-                    "live_at": time.time(),
-                    "pre_count": book.prematch_requests,
-                    "pre_at": time.time(),
-                    "live_reload": time.time(),
-                    "pre_reload": time.time(),
-                    "focus": "live",
-                }
+                blips = {"n": 0}
+                quiet = {"focus": "live"}
                 while True:
-                    live_page.wait_for_timeout(5000)
+                    try:
+                        live_page.wait_for_timeout(5000)
+                    except Exception as exc:
+                        blips["n"] += 1
+                        book.last_error = type(exc).__name__
+                        if blips["n"] >= 3 or not _chrome_listening():
+                            raise
+                        _log(
+                            f"debugger blip ({type(exc).__name__}). "
+                            "Odds stay published. Chrome stays open."
+                        )
+                        continue
                     try:
                         book.live_page = live_page.url or ""
                         book.prematch_page = prematch_page.url or ""
                         book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
                         book.chrome_listening = True
                         book.attached = True
+                        blips["n"] = 0
                     except Exception as exc:
+                        blips["n"] += 1
                         book.last_error = type(exc).__name__
-                        raise
-                    publish_live(force=True, from_network=False)
-                    publish_prematch(force=True, from_network=False)
+                        if blips["n"] >= 3 or not _chrome_listening():
+                            raise
+                        _log(
+                            f"tab read failed ({type(exc).__name__}). "
+                            "Odds stay published. Chrome stays open."
+                        )
+                        continue
                     now = time.time()
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
@@ -522,12 +636,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             f"last_api={book.last_api_path} title={title!r} "
                             f"live={book.live_page}"
                         )
-                        if book.live_requests != quiet["live_count"]:
-                            quiet["live_count"] = book.live_requests
-                            quiet["live_at"] = now
-                        if book.prematch_requests != quiet["pre_count"]:
-                            quiet["pre_count"] = book.prematch_requests
-                            quiet["pre_at"] = now
                         try:
                             if quiet["focus"] == "live":
                                 live_page.bring_to_front()
@@ -544,16 +652,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         elif should_reload_live(title, book.live_page):
                             _log("Live tab left the sportsbook. Opening it again.")
                             _goto(live_page, live_page_url(), "live")
-                            quiet["live_reload"] = now
-                        elif should_refresh_quiet_tab(
-                            challenge=False,
-                            on_sportsbook="sportsbook/live" in (book.live_page or "").lower(),
-                            seconds_since_response=now - quiet["live_at"],
-                            seconds_since_refresh=now - quiet["live_reload"],
-                        ):
-                            quiet["live_reload"] = now
-                            quiet["live_at"] = now
-                            _reload_once(live_page, "live")
                         prematch_read = read_tab_quickly(prematch_page)
                         if prematch_read is None:
                             _log("Prematch tab title was not read. Leaving it open.")
@@ -564,19 +662,8 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             and now - last_prematch_open >= PREMATCH_REOPEN_SECONDS
                         ):
                             last_prematch_open = now
-                            quiet["pre_reload"] = now
                             _log("Prematch tab left prelive. Opening it again.")
                             _goto(prematch_page, prematch_page_url(), "prematch")
-                        elif should_refresh_quiet_tab(
-                            challenge=False,
-                            on_sportsbook="sportsbook/prelive" in (book.prematch_page or "").lower(),
-                            seconds_since_response=now - quiet["pre_at"],
-                            seconds_since_refresh=now - quiet["pre_reload"],
-                        ):
-                            quiet["pre_reload"] = now
-                            quiet["pre_at"] = now
-                            last_prematch_open = now
-                            _reload_once(prematch_page, "prematch")
                     _write_status(book)
             except KeyboardInterrupt:
                 _log("Stopped. The dedicated Chrome stays open.")
@@ -592,8 +679,8 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log(f"Chrome attach failed ({type(exc).__name__}).")
                 live_post["last"] = 0.0
                 prematch["last_post"] = 0.0
-                publish_live(force=True, from_network=False)
-                publish_prematch(force=True, from_network=False)
+                publish_live(from_network=False, heartbeat=True)
+                publish_prematch(from_network=False, heartbeat=True)
             finally:
                 if failed:
                     _disconnect(playwright)
@@ -640,6 +727,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 delay = 180
             time.sleep(delay)
     finally:
+        stop_publisher["flag"] = True
         try:
             lock.close()
         except Exception:
