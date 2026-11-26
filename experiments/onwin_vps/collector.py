@@ -217,15 +217,28 @@ def adopt_live_book(state: OnwinState, payload) -> bool:
     return bool(incoming) or state.event_count > 0
 
 
-def needs_chrome_restart(error_name: str, listening: bool) -> bool:
-    """Restart Chrome only when its debugging port is down.
+# A listening port that still refuses a client is a wedged debugger.
+# One blip reattaches. Several failures in a row mean Chrome has to be
+# started again or the collector sits in "starting" with no responses.
+ATTACH_FAILURES_BEFORE_RESTART = 4
 
-    TimeoutError and a closed tab, while port 9223 is still open, are a
-    dropped Playwright session. Attach again. Killing Chrome ended the
-    session that was already storing live odds.
+
+def needs_chrome_restart(
+    error_name: str,
+    listening: bool,
+    failed_while_listening: int = 0,
+) -> bool:
+    """Restart Chrome when its port is down, or when attach keeps failing.
+
+    A single TimeoutError while port 9223 is open is a dropped Playwright
+    session. Attach again. Killing Chrome on that blip ended the session
+    that was already storing live odds. A port that answers /json/version
+    but never accepts the collector is not that blip.
     """
     del error_name
-    return not listening
+    if not listening:
+        return True
+    return failed_while_listening >= ATTACH_FAILURES_BEFORE_RESTART
 
 
 def chrome_log_excerpt(lines: list[str]) -> str:
@@ -345,7 +358,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
     live_post = {"last": 0.0}
     publish_lock = threading.Lock()
     held = {"live": [], "prematch": [], "live_at": 0.0, "prematch_at": 0.0}
-    stop_publisher = {"flag": False}
 
     def _seed_lane(lane: str, peeked, hold_seconds: float) -> None:
         if not peeked:
@@ -439,17 +451,17 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 prematch["last_post"] = now
             _write_status(book, force=True)
 
-    def _publisher() -> None:
-        while not stop_publisher["flag"]:
-            time.sleep(4)
-            try:
-                publish_live(from_network=False, heartbeat=True)
-                publish_prematch(from_network=False, heartbeat=True)
-            except Exception as exc:
-                _log(f"snapshot rewrite skipped ({type(exc).__name__})")
+    def republish() -> None:
+        """Rewrite the last good book on this thread.
 
-    publisher = threading.Thread(target=_publisher, name="onwin-snapshot", daemon=True)
-    publisher.start()
+        Playwright's sync client breaks if another thread is running, which
+        left the collector at phase starting with responses_received at 0.
+        """
+        try:
+            publish_live(from_network=False, heartbeat=True)
+            publish_prematch(from_network=False, heartbeat=True)
+        except Exception as exc:
+            _log(f"snapshot rewrite skipped ({type(exc).__name__})")
 
     def on_finished(request, live_page, prematch_page) -> None:
         try:
@@ -545,19 +557,23 @@ def run_forever(book: CollectionBook | None = None) -> int:
     from playwright.sync_api import sync_playwright
 
     last_chrome_restart = 0.0
+    attach_failures = 0
     try:
         while True:
             playwright = None
             created: list = []
             failed = False
             try:
+                republish()
                 book.chrome_listening = _chrome_listening()
-                _write_status(book)
+                book.phase = "attaching"
+                book.attached = False
+                _write_status(book, force=True)
                 if not book.chrome_listening:
                     raise RuntimeError("cdp down")
                 _log(f"Attaching to dedicated Chrome at {cdp_url()}")
                 playwright = sync_playwright().start()
-                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=45000)
+                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=10000)
                 if not browser.contexts:
                     raise RuntimeError("Chrome has no window")
                 context, live_page, prematch_page, created = _open_tabs(browser)
@@ -586,7 +602,9 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.prematch_page = prematch_page.url or ""
                 book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
                 book.phase = "watching"
-                _write_status(book)
+                book.last_error = None
+                attach_failures = 0
+                _write_status(book, force=True)
                 _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
                 _log(f"live tab {book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
@@ -596,6 +614,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 blips = {"n": 0}
                 quiet = {"focus": "live"}
                 while True:
+                    republish()
                     try:
                         live_page.wait_for_timeout(5000)
                     except Exception as exc:
@@ -674,25 +693,40 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.attached = False
                 book.chrome_listening = _chrome_listening()
                 book.recovery_attempts += 1
-                book.last_error = type(exc).__name__
-                _write_status(book)
-                _log(f"Chrome attach failed ({type(exc).__name__}).")
+                if book.chrome_listening:
+                    attach_failures += 1
+                else:
+                    attach_failures = 0
+                detail = f"{type(exc).__name__}: {exc}".replace("\n", " ")[:200]
+                book.last_error = detail
+                _write_status(book, force=True)
+                _log(f"Chrome attach failed ({detail}).")
                 live_post["last"] = 0.0
                 prematch["last_post"] = 0.0
-                publish_live(from_network=False, heartbeat=True)
-                publish_prematch(from_network=False, heartbeat=True)
+                republish()
             finally:
                 if failed:
                     _disconnect(playwright)
             if not failed:
                 continue
             delay = 3
-            restart = needs_chrome_restart(book.last_error or "", book.chrome_listening)
+            restart = needs_chrome_restart(
+                book.last_error or "",
+                book.chrome_listening,
+                attach_failures,
+            )
             if not restart:
                 _log("Chrome is still listening on port 9223. Attaching again.")
             elif time.time() - last_chrome_restart > 180:
+                attach_failures = 0
                 last_chrome_restart = time.time()
-                _log("Chrome's debugging port is down. Restarting the Onwin Chrome only.")
+                if book.chrome_listening:
+                    _log(
+                        "Chrome answers on port 9223 but the collector cannot attach. "
+                        "Restarting the Onwin Chrome only."
+                    )
+                else:
+                    _log("Chrome's debugging port is down. Restarting the Onwin Chrome only.")
                 try:
                     completed = subprocess.run(
                         [str(CHROME_SCRIPT), "restart"],
@@ -727,7 +761,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 delay = 180
             time.sleep(delay)
     finally:
-        stop_publisher["flag"] = True
         try:
             lock.close()
         except Exception:

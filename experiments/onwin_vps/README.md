@@ -8,7 +8,7 @@ Xvfb screen (`:98`). That screen is not VNC and it is not Kolay90's
 display. The collector attaches over the debugging port and writes live
 and prematch odds into the snapshot files the engine already reads. No
 ingest token. A dropped debugger reconnects without closing the tabs.
-Chrome is restarted only when port 9223 is actually down. Background-tab
+Chrome is restarted when port 9223 is down, or when that port answers but the collector still cannot attach. Background-tab
 throttling is disabled so the sportsbook keeps sending odds. A quiet
 tab is left open. Reloading it sent both feeds through Cloudflare and
 both collectors dropped. The last good odds stay in the snapshot files

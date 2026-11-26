@@ -100,8 +100,9 @@ class CollectionBook:
             self.prematch_events = events
             self.prematch_markets = markets
             self.last_prematch_success = stamp
-        self.session_valid = True
-        self.last_error = None
+        if from_network:
+            self.session_valid = True
+            self.last_error = None
         return True
 
     def status(self, *, publish: bool, cdp_url: str, profile: str) -> dict:

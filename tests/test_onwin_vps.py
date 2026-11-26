@@ -87,6 +87,12 @@ def test_success_requires_odds_and_a_successful_post():
         "live", 12, publish_ok=None, from_network=False, now=later
     ) is False
     assert book.last_live_success == NOW.isoformat()
+    book.last_error = "TimeoutError: attach"
+    assert book.note_odds(
+        "prematch", 4, events=4, markets=1, publish_ok=True, from_network=False, now=later
+    ) is True
+    assert book.last_error == "TimeoutError: attach"
+    assert book.prematch_odds == 4
     assert book.note_odds("prematch", 4, events=4, markets=2, publish_ok=True, now=NOW) is True
     assert book.prematch_odds == 4
     assert book.prematch_markets == 2
@@ -122,6 +128,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "chromium.launch" not in collector
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
+    assert "threading.Thread" not in collector
     local = (ROOT / "parsers" / "onwin" / "local_collector.py").read_text(encoding="utf-8")
     assert "ONWIN_VPS" not in local
 
@@ -133,6 +140,8 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert needs_chrome_restart("TimeoutError", True) is False
     assert needs_chrome_restart("TargetClosedError", True) is False
     assert needs_chrome_restart("Error", True) is False
+    assert needs_chrome_restart("Error", True, 3) is False
+    assert needs_chrome_restart("Error", True, 4) is True
     assert needs_chrome_restart("Error", False) is True
     assert needs_chrome_restart("TimeoutError", False) is True
     sportsbook = "https://onwin4920.com/sportsbook/live/main-line/soccer"
