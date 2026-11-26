@@ -62,6 +62,10 @@ def test_feed_kind_matches_the_live_sportsbook_paths():
     assert feed_kind(snapshot) == "snapshot"
     assert feed_kind(update) == "update"
     assert feed_kind(snapshot.replace("get_main_line.erisgaming", "get_main_line_schema")) is None
+    compact = snapshot.replace("get_main_line.erisgaming", "get_main_line_compact.erisgaming")
+    gap = snapshot.replace("get_main_line.erisgaming", "get_main_line_gap.erisgaming")
+    assert feed_kind(compact) == "snapshot"
+    assert feed_kind(gap) == "update"
     wrapped = unwrap_sports({"result": {"sports": {"football": {}}}})
     assert wrapped["sports"]["football"] == {}
 

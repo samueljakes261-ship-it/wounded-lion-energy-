@@ -384,8 +384,14 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.note_traffic(kind, lane)
                 _write_status(book)
                 return
-            payload = unwrap_sports(json.loads(response.body()))
+            raw = json.loads(response.body())
+            payload = unwrap_sports(raw)
             if payload is None:
+                if kind == "snapshot" and isinstance(raw, dict):
+                    _log(
+                        "snapshot body had no sports tree "
+                        f"keys={sorted(raw)[:8]} path={_safe_path(url)}"
+                    )
                 book.note_traffic(kind, lane)
                 _write_status(book)
                 return
@@ -398,6 +404,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
             if lane == "prematch" and kind == "snapshot":
                 matches = parse_prematch(payload)
                 if not matches:
+                    _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
                     _write_status(book)
                     return
                 prematch["matches"] = matches
@@ -406,24 +413,31 @@ def run_forever(book: CollectionBook | None = None) -> int:
             if lane != "live":
                 _write_status(book)
                 return
-            if kind == "snapshot":
-                state.load_initial(payload)
-                saw_live["ok"] = True
+            if kind == "snapshot" or not saw_live["ok"]:
+                if kind == "snapshot":
+                    state.load_initial(payload)
+                else:
+                    state.apply_update(payload)
+                    if state.event_count:
+                        state.initialized = True
+                saw_live["ok"] = state.initialized and state.event_count > 0
                 odds = state.get_match_odds()
-                _log(f"get_main_line events={state.event_count} odds={len(odds)}")
+                _log(
+                    f"snapshot events={state.event_count} odds={len(odds)} "
+                    f"path={_safe_path(url)}"
+                )
                 if odds:
                     publish_live(from_network=True)
                 else:
                     _write_status(book)
                 return
-            if saw_live["ok"]:
-                changed = state.apply_update(payload)
-                odds = state.get_match_odds()
-                if changed and odds:
-                    _log(f"update changed_1x2={len(changed)} events={state.event_count}")
-                    publish_live(from_network=True)
-                else:
-                    _write_status(book)
+            changed = state.apply_update(payload)
+            odds = state.get_match_odds()
+            if changed and odds:
+                _log(f"update changed_1x2={len(changed)} events={state.event_count}")
+                publish_live(from_network=True)
+            else:
+                _write_status(book)
         except Exception as exc:
             book.last_error = type(exc).__name__
             _log(f"response skipped ({type(exc).__name__})")

@@ -73,11 +73,22 @@ def health_url(ingest_url: str) -> str:
 
 
 def feed_kind(url: str) -> str | None:
+    """Tell a full book apart from a later patch.
+
+    The live site now opens the book with get_main_line_compact. That
+    name does not contain get_main_line.erisgaming, so the old check
+    counted the response and then dropped it. Gap and find_event_snapshots
+    stay updates. They are checked first so get_main_line_gap is not
+    treated as the opening book.
+    """
     lowered = (url or "").lower()
-    if "get_main_line.erisgaming" in lowered:
-        return "snapshot"
     if any(fragment in lowered for fragment in UPDATE_FRAGMENTS):
         return "update"
+    if (
+        "get_main_line_compact.erisgaming" in lowered
+        or "get_main_line.erisgaming" in lowered
+    ):
+        return "snapshot"
     return None
 
 
@@ -399,10 +410,19 @@ def main() -> int:
                 state.load_initial(payload)
                 box["saw_snapshot"] = True
                 _log(
-                    f"get_main_line events={state.event_count} "
+                    f"snapshot events={state.event_count} "
                     f"odds={len(state.get_match_odds())}"
                 )
-            elif box["saw_snapshot"]:
+            elif not box["saw_snapshot"]:
+                state.apply_update(payload)
+                if state.event_count:
+                    state.initialized = True
+                    box["saw_snapshot"] = True
+                    _log(
+                        f"seeded from update events={state.event_count} "
+                        f"odds={len(state.get_match_odds())}"
+                    )
+            else:
                 changed = state.apply_update(payload)
                 if changed:
                     _log(f"update changed_1x2={len(changed)} events={state.event_count}")
