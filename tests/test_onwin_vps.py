@@ -100,6 +100,10 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_reload_prematch("Onwin Bahis ve Casino Sitesi", prelive) is False
     assert should_reload_prematch("Onwin", "https://onwin4920.com/") is True
     assert should_reload_prematch("", "about:blank") is False
+    assert should_reload_prematch(
+        "",
+        "https://onwin4920.com/cdn-cgi/challenge-platform/h/b/orchestrate",
+    ) is False
     assert health_url("https://api.example/onwin/live") == "https://api.example/health"
     excerpt = chrome_log_excerpt(
         [

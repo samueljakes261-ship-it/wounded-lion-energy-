@@ -44,39 +44,11 @@ FETCH_JS = """async ({url, timeoutMs}) => {
         }"""
 
 
-def _fetch_via_context(page, url: str) -> dict | None:
-    """Retry with the Playwright context cookie jar."""
-    request = getattr(page, "request", None)
-    if request is None:
-        return None
-    try:
-        response = request.get(url)
-        text = response.text()
-        return {
-            "status": response.status,
-            "content_type": response.headers.get("content-type"),
-            "bytes": len(text.encode("utf-8", errors="replace")),
-            "text": text,
-            "error": None,
-            "latency_ms": None,
-        }
-    except Exception as exc:
-        return {
-            "status": None,
-            "content_type": None,
-            "bytes": 0,
-            "text": "",
-            "error": type(exc).__name__,
-            "latency_ms": None,
-        }
-
-
 def fetch_url(page, url: str, timeout_ms: int = 4000) -> dict:
+    # Stay inside the page's own fetch. A second request from Playwright's
+    # HTTP client is a different browser fingerprint and keeps Cloudflare
+    # on the visible tab.
     result = page.evaluate(FETCH_JS, {"url": url, "timeoutMs": timeout_ms})
-    if result.get("status") in (401, 403):
-        fallback = _fetch_via_context(page, url)
-        if fallback is not None and fallback.get("status") == 200:
-            result = fallback
     text = result.get("text") or ""
     payload = None
     json_ok = False

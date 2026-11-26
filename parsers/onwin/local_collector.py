@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from parsers.kolay90_prematch.login import is_challenge_text, read_tab_quickly
 from parsers.onwin.parser import FOOTBALL_SPORT_ID
 from parsers.onwin.prematch_snapshot import match_to_payload as prematch_to_payload
 from parsers.onwin.remote_snapshot import match_to_payload
@@ -43,12 +44,12 @@ def _log(message: str) -> None:
 def _left_sportsbook(title: str, page_url: str, marker: str) -> bool:
     """True only when the tab has left the sportsbook.
 
-    A Cloudflare check, a blank tab that is still loading, and a tab
-    already on that sportsbook stay open. Reloading any of them was
-    aborting get_main_line before it was sent.
+    A Cloudflare check, including one whose address no longer contains
+    the sportsbook path, a blank tab that is still loading, and a tab
+    already on that sportsbook stay open. Opening the sportsbook again
+    during the check was restarting it.
     """
-    title_l = (title or "").lower()
-    if "just a moment" in title_l or "cloudflare" in title_l:
+    if is_challenge_text(title, page_url):
         return False
     url = (page_url or "").lower()
     if not url or url.startswith("about:"):
@@ -434,32 +435,43 @@ def main() -> int:
         return 2
     try:
         context.on("requestfinished", on_finished)
-        if "sportsbook/live" not in (live_page.url or "").lower():
-            _goto(live_page, _page_url(), "live")
-        else:
-            _log("Using the Onwin live tab already open in that Chrome")
-        if "sportsbook/prelive" not in (prematch_page.url or "").lower():
-            _goto(prematch_page, _prematch_page_url(), "prematch")
-        else:
-            _log("Using the Onwin prematch tab already open in that Chrome")
+
+        def _open_if_needed(page, url: str, label: str, marker: str) -> None:
+            read = read_tab_quickly(page)
+            if read is None:
+                _log(f"{label} tab is still loading. Leaving it open.")
+                return
+            title, page_url = read
+            if is_challenge_text(title, page_url):
+                _log(f"{label} tab is on a Cloudflare check. Leaving it open.")
+                return
+            if marker in page_url.lower():
+                _log(f"Using the Onwin {label} tab already open in that Chrome")
+                return
+            _goto(page, url, label)
+
+        _open_if_needed(live_page, _page_url(), "live", "sportsbook/live")
+        _open_if_needed(prematch_page, _prematch_page_url(), "prematch", "sportsbook/prelive")
         _log("Watching live and prematch get_main_line.erisgaming. Ctrl+C stops this collector only.")
         _log("Prematch stays on the open prelive tab. It is not reloaded on a timer.")
         last_prematch_open = time.time()
+        last_tab_check = time.time()
         while True:
             live_page.wait_for_timeout(5000)
             publish_live(force=time.time() - box["last_post"] >= 10)
             publish_prematch(force=time.time() - prematch["last_post"] >= 60)
-            title = ""
-            page_url = ""
-            try:
-                title = prematch_page.title()
-                page_url = prematch_page.url or ""
-            except Exception:
-                title = ""
-                page_url = ""
+            now = time.time()
+            if now - last_tab_check < 30:
+                continue
+            last_tab_check = now
+            read = read_tab_quickly(prematch_page)
+            if read is None:
+                _log("Prematch tab is still loading. Leaving it alone.")
+                continue
+            title, page_url = read
             if (
                 should_reload_prematch(title, page_url)
-                and time.time() - last_prematch_open >= PREMATCH_REOPEN_SECONDS
+                and now - last_prematch_open >= PREMATCH_REOPEN_SECONDS
             ):
                 last_prematch_open = time.time()
                 _log("Prematch tab left prelive. Opening it again.")

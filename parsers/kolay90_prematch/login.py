@@ -30,44 +30,66 @@ def credentials_configured() -> bool:
     return bool(user and password)
 
 
+CHALLENGE_TITLE_TOKENS = (
+    "just a moment",
+    "un momento",
+    "un moment",
+    "einen moment",
+    "bitte warten",
+    "attention required",
+    "checking your browser",
+    "verify you are human",
+)
+CHALLENGE_URL_TOKENS = (
+    "__cf_chl",
+    "challenge-platform",
+    "cdn-cgi/challenge",
+    "/cdn-cgi/",
+    "challenges.cloudflare.com",
+)
+
+
+def is_challenge_text(title: str, url: str) -> bool:
+    title_l = (title or "").lower()
+    url_l = (url or "").lower()
+    if any(token in title_l for token in CHALLENGE_TITLE_TOKENS):
+        return True
+    return any(token in url_l for token in CHALLENGE_URL_TOKENS)
+
+
+def read_tab_quickly(page, timeout_ms: int = 1500) -> tuple[str, str] | None:
+    """Read the tab without waiting out a Cloudflare navigation.
+
+    page.title() uses the Playwright timeout. During a challenge that
+    wait holds the debugging connection and the check never finishes.
+    None means the read did not complete, so the caller leaves the tab alone.
+    """
+    try:
+        url = page.url or ""
+    except Exception:
+        return None
+    setter = getattr(page, "set_default_timeout", None)
+    title = ""
+    try:
+        if setter is not None:
+            setter(timeout_ms)
+        title = page.title() or ""
+    except Exception:
+        return None
+    finally:
+        if setter is not None:
+            try:
+                setter(30000)
+            except Exception:
+                pass
+    return title, url
+
+
 def _looks_like_challenge(page) -> bool:
-    try:
-        title = (page.title() or "").lower()
-        url = (page.url or "").lower()
-    except Exception:
+    read = read_tab_quickly(page)
+    if read is None:
         return True
-    if any(
-        token in title
-        for token in (
-            "just a moment",
-            "un momento",
-            "un moment",
-            "einen moment",
-            "bitte warten",
-            "attention required",
-            "checking your browser",
-            "verify you are human",
-        )
-    ):
-        return True
-    if "__cf_chl" in url or "challenge-platform" in url:
-        return True
-    try:
-        html = (page.content() or "")[:4000].lower()
-    except Exception:
-        html = ""
-    if any(
-        token in html
-        for token in (
-            "cloudflare",
-            "cf-browser-verification",
-            "just a moment",
-            "un momento",
-            "checking your browser",
-        )
-    ):
-        return True
-    return False
+    return is_challenge_text(read[0], read[1])
 
 
 def inspect_page(page) -> dict:

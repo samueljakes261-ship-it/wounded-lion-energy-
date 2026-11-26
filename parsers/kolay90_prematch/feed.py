@@ -17,6 +17,7 @@ from parsers.kolay90_prematch.parser import (
     to_match_odds,
     unwrap_events,
 )
+from parsers.kolay90_prematch.login import _looks_like_challenge
 from parsers.kolay90_prematch.session_state import (
     AUTH_REQUIRED,
     classify_page,
@@ -85,6 +86,17 @@ class Kolay90PrematchFeed:
                 "auth_state": AUTH_REQUIRED,
             }
         self._page_identity = id(self._page)
+        if _looks_like_challenge(self._page):
+            self._degraded = "cloudflare_challenge"
+            self._auth_state = AUTH_REQUIRED
+            return {
+                "ok": False,
+                "failure": self._degraded,
+                "auth_state": AUTH_REQUIRED,
+                "session_state": "CLOUDFLARE",
+                "url": attached.get("url"),
+                "title": attached.get("title"),
+            }
         state = classify_page(self._page)
         self._auth_state = state
         if is_auth_required_state(state):
@@ -117,6 +129,12 @@ class Kolay90PrematchFeed:
             return self._keep_last_good(attached.get("failure") or "cdp_attach_failed")
         if self._page is None or self._page_closed():
             return self._keep_last_good("browser_page_closed")
+        if _looks_like_challenge(self._page):
+            print("[KOLAY90 PREMATCH] Cloudflare check is still on the tab. Leaving it alone.")
+            return self._keep_last_good("cloudflare_challenge", session_state="CLOUDFLARE")
+        if self._session_ready:
+            raw = fetch_getmaclar(self._page)
+            return self._apply_fetch(raw, session_state=self._auth_state or "AUTHENTICATED_APP")
         state = classify_page(self._page)
         self._auth_state = state
         print(f"[KOLAY90 PREMATCH] tab_session={state}")

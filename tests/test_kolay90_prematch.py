@@ -308,6 +308,31 @@ def test_run_logs_mask_password(monkeypatch, capsys):
     assert "ZENROWS_BROWSER_WS" in out
 
 
+def test_poll_leaves_a_cloudflare_tab_alone():
+    feed = Kolay90PrematchFeed()
+
+    class ChallengePage:
+        url = "https://kolay91.com/cdn-cgi/challenge-platform/h/b/orchestrate"
+
+        def title(self):
+            return "Just a moment..."
+
+        def is_closed(self):
+            return False
+
+        def evaluate(self, *_args, **_kwargs):
+            raise AssertionError("DOM inspection must not run during the Cloudflare check")
+
+        def content(self):
+            raise AssertionError("page.content() must not run during the Cloudflare check")
+
+    feed._page = ChallengePage()
+    feed._session_ready = True
+    result = feed.poll()
+    assert result["failure"] == "cloudflare_challenge"
+    assert result["auth_required"] is True
+
+
 def test_cloudflare_title_includes_localized_moment():
     class FakePage:
         def title(self):
@@ -521,37 +546,28 @@ def test_authentication_loss_sets_required_flag():
     assert classify_session_state(has_password=True) == "LOGIN"
 
 
-def test_getmaclar_context_fallback_on_403():
+def test_getmaclar_403_stays_in_the_page_fetch():
     from parsers.kolay90_prematch.fetch import fetch_getmaclar
 
-    class FakeResponse:
-        status = 200
-        headers = {"content-type": "application/json"}
-
-        def text(self):
-            return '{"maclar": {"evt-bocholt": {"_id": "evt-bocholt"}}}'
-
-    class FakeRequest:
-        def get(self, url, headers=None):
-            assert "getMaclar" in url
-            return FakeResponse()
-
     class FakePage:
-        request = FakeRequest()
-
         def evaluate(self, script, url):
             return {
                 "status": 403,
                 "content_type": "text/html",
                 "bytes": 12,
-                "text": "<html></html>",
+                "text": "<html>Just a moment</html>",
                 "error": None,
                 "latency_ms": 1,
             }
 
+        @property
+        def request(self):
+            raise AssertionError("Playwright HTTP client must not retry a Cloudflare response")
+
     raw = fetch_getmaclar(FakePage())
-    assert raw["status"] == 200
-    assert raw["json"] is True
+    assert raw["status"] == 403
+    assert raw["json"] is False
+    assert raw["cloudflare"] is True
 
 
 def test_in_page_getmaclar_is_bare_fetch():

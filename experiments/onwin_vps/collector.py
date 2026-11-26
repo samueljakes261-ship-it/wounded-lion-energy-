@@ -21,6 +21,7 @@ from pathlib import Path
 
 from experiments.onwin_vps.book import CollectionBook
 from experiments.onwin_vps.safety import OnwinVpsGuardError, validate_target
+from parsers.kolay90_prematch.login import is_challenge_text, read_tab_quickly
 from parsers.onwin.local_collector import (
     _open_tabs,
     _owner_page,
@@ -237,13 +238,20 @@ def _on_sportsbook(owner, live_page, prematch_page) -> bool:
 def _refresh(page, url: str, label: str) -> None:
     """Open a tab that has left the sportsbook. Leave one that is already there.
 
-    Reloading a prelive tab that was still loading aborted get_main_line.
-    The listener is already attached, so the next response is captured
-    without starting the navigation again.
+    A Cloudflare address often no longer contains the sportsbook path.
+    Opening that tab again restarts the check. A tab already on the
+    sportsbook is also left open so get_main_line can finish.
     """
-    current = (page.url or "").lower()
     marker = "sportsbook/prelive" if label == "prematch" else "sportsbook/live"
-    if marker in current:
+    read = read_tab_quickly(page)
+    if read is None:
+        _log(f"{label} tab is still loading. Leaving it open.")
+        return
+    title, page_url = read
+    if is_challenge_text(title, page_url):
+        _log(f"{label} tab is on a Cloudflare check. Leaving it open.")
+        return
+    if marker in page_url.lower():
         _log(f"{label} tab is already on the sportsbook. Leaving it open.")
         return
     _goto(page, url, label)
@@ -451,31 +459,24 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     now = time.time()
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
-                        title = ""
-                        try:
-                            title = live_page.title()
-                        except Exception:
-                            title = ""
+                        live_read = read_tab_quickly(live_page)
+                        title = live_read[0] if live_read else ""
                         _log(
                             f"still watching api_seen={book.api_seen} "
                             f"get_main_line={book.snapshots_seen} "
                             f"last_api={book.last_api_path} title={title!r} "
                             f"live={book.live_page}"
                         )
-                        if "just a moment" in title.lower() or "cloudflare" in title.lower():
+                        if live_read is None or is_challenge_text(title, live_read[1]):
                             _log("Cloudflare check is on the live tab. Waiting for it to finish.")
                         elif should_reload_live(title, book.live_page):
                             _log("Live tab left the sportsbook. Opening it again.")
                             _goto(live_page, live_page_url(), "live")
-                        prematch_title = ""
-                        try:
-                            prematch_title = prematch_page.title()
-                        except Exception:
-                            prematch_title = ""
-                        if "just a moment" in prematch_title.lower() or "cloudflare" in prematch_title.lower():
+                        prematch_read = read_tab_quickly(prematch_page)
+                        if prematch_read is None or is_challenge_text(prematch_read[0], prematch_read[1]):
                             _log("Cloudflare check is on the prematch tab. Waiting for it to finish.")
                         elif (
-                            should_reload_prematch(prematch_title, book.prematch_page)
+                            should_reload_prematch(prematch_read[0], book.prematch_page)
                             and now - last_prematch_open >= PREMATCH_REOPEN_SECONDS
                         ):
                             last_prematch_open = now
