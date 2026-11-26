@@ -194,6 +194,44 @@ def should_refresh_quiet_tab(
     return False
 
 
+def live_page_is_challenge(title: str, url: str, text: str = "") -> bool:
+    """True when the visible page is a Cloudflare check, not the sportsbook.
+
+    The address bar can still show the sportsbook URL while the document
+    says "Just a moment". Reloading then starts the check again.
+    """
+    if is_challenge_text(title, url):
+        return True
+    return is_challenge_text(text, "")
+
+
+def should_open_live_page(
+    *,
+    live_requests: int,
+    seconds_open: float,
+    challenge: bool,
+    opened: bool,
+    readable: bool,
+    saw_challenge: bool,
+    seconds_since_clear: float,
+) -> bool:
+    """Visit the live sportsbook once, and never during a Cloudflare check.
+
+    A restored tab can show the right URL while its document is frozen, so
+    the check never runs and no odds render. One navigation is the same
+    step as opening that tab by hand. After a check has just cleared, the
+    page is given time to render before that visit, so a finished check is
+    not started over.
+    """
+    if live_requests > 0 or opened or challenge:
+        return False
+    if saw_challenge:
+        return readable and seconds_since_clear >= 25
+    if not readable:
+        return seconds_open >= 20
+    return seconds_open >= 3
+
+
 def should_wake_silent_live(
     *,
     live_requests: int,
@@ -319,46 +357,44 @@ def _disconnect(playwright) -> None:
         pass
 
 
-def _reload_once(page, label: str) -> None:
-    """One navigation after a long silence. A timeout leaves the tab open."""
-    _log(f"No {label} responses for several minutes. Reloading that tab once.")
+def _short(page, timeout_ms: int, action):
+    setter = getattr(page, "set_default_timeout", None)
     try:
-        page.reload(wait_until="commit", timeout=15000)
-    except Exception as exc:
-        _log(f"{label} reload did not finish ({type(exc).__name__}). The tab stays open.")
+        if setter is not None:
+            setter(timeout_ms)
+        return action()
+    except Exception:
+        return None
+    finally:
+        if setter is not None:
+            try:
+                setter(30000)
+            except Exception:
+                pass
 
 
-def _force_open(page, url: str, label: str, attempt: int) -> None:
-    """Load the sportsbook again, bypassing the cached document.
+def _keep_page_active(page, step: int) -> None:
+    """Leave the tab focused so a Cloudflare check can finish and render.
 
-    A restored tab can show the right URL and never call get_main_line.
-    Reloading from cache leaves it that way. The document is fetched again
-    so the page script subscribes while this collector is listening.
+    No click and no reload. A background tab stays dormant, which is the
+    same state as never opening the live page by hand.
     """
-    _log(f"Opening {label} again so it sends a feed (attempt {attempt}).")
     try:
         page.bring_to_front()
     except Exception:
         pass
-    reloaded = False
-    try:
-        session = page.context.new_cdp_session(page)
-        session.send("Page.reload", {"ignoreCache": True})
-        reloaded = True
-        detach = getattr(session, "detach", None)
-        if detach is not None:
-            try:
-                detach()
-            except Exception:
-                pass
-    except Exception as exc:
-        _log(f"{label} cache-bypass reload was not available ({type(exc).__name__}).")
-    if reloaded:
-        return
-    try:
-        page.goto(url, wait_until="commit", timeout=15000)
-    except Exception as exc:
-        _log(f"{label} open did not finish ({type(exc).__name__}). The tab stays open.")
+    _short(page, 1000, lambda: page.mouse.move(24 + (step % 10) * 14, 36 + (step % 6) * 11))
+
+
+def _page_text(page) -> str:
+    text = _short(
+        page,
+        1500,
+        lambda: page.evaluate(
+            "() => (document.body && document.body.innerText || '').slice(0, 500)"
+        ),
+    )
+    return text or ""
 
 
 def _request_key(request) -> str:
@@ -694,12 +730,22 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
                 _log(f"tabs={len(context.pages)} live={book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
-                _log("The live tab stays in front until it sends a feed. Prematch is not reloaded on a timer.")
+                _log(
+                    "The live tab stays in front so Cloudflare can finish and the "
+                    "sportsbook can render. It is not reloaded during that check."
+                )
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
                 last_prematch_open = time.time()
                 blips = {"n": 0}
-                quiet = {"focus": "live", "live_wakes": 0, "woke_prematch": False}
+                quiet = {
+                    "focus": "live",
+                    "opened_live": False,
+                    "woke_prematch": False,
+                    "saw_challenge": False,
+                    "challenge_until": 0.0,
+                    "step": 0,
+                }
                 while True:
                     republish()
                     try:
@@ -733,46 +779,70 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         continue
                     now = time.time()
                     open_for = now - watching_since
+                    live_read = read_tab_quickly(live_page) if book.live_requests == 0 else None
+                    live_title = live_read[0] if live_read else ""
+                    live_url = live_read[1] if live_read else book.live_page
+                    live_text = _page_text(live_page) if live_read else ""
+                    challenge = bool(live_read) and live_page_is_challenge(live_title, live_url, live_text)
+                    if book.live_requests > 0:
+                        book.live_challenge = False
+                    elif live_read is None:
+                        book.live_challenge = True if quiet["saw_challenge"] else None
+                    else:
+                        book.live_title = live_title
+                        book.live_challenge = challenge
                     if book.live_requests == 0:
-                        try:
-                            live_page.bring_to_front()
-                        except Exception:
-                            pass
-                    if should_wake_silent_live(
+                        quiet["step"] += 1
+                        _keep_page_active(live_page, quiet["step"])
+                        if challenge:
+                            first_challenge = not quiet["saw_challenge"]
+                            quiet["saw_challenge"] = True
+                            quiet["challenge_until"] = now
+                            if first_challenge:
+                                _log(
+                                    "Cloudflare check is on the live tab. "
+                                    "Leaving that page in front until it renders."
+                                )
+                    if should_open_live_page(
                         live_requests=book.live_requests,
                         seconds_open=open_for,
-                        on_sportsbook="sportsbook/live" in (book.live_page or "").lower(),
-                        challenge=is_challenge_text("", book.live_page),
-                        already_woke=False,
-                        wakes=quiet["live_wakes"],
-                        max_wakes=4,
-                        gap_seconds=25,
+                        challenge=challenge,
+                        opened=quiet["opened_live"],
+                        readable=live_read is not None,
+                        saw_challenge=quiet["saw_challenge"],
+                        seconds_since_clear=now - quiet["challenge_until"],
                     ):
-                        quiet["live_wakes"] += 1
+                        quiet["opened_live"] = True
                         _log(
-                            "No live feed since attach. The live tab stays in front "
-                            "until it sends get_main_line."
+                            "Opening the live sportsbook once so the page can clear "
+                            "Cloudflare and render odds."
                         )
-                        _force_open(live_page, live_page_url(), "live", quiet["live_wakes"])
-                    if should_wake_silent_live(
-                        live_requests=book.prematch_requests,
-                        seconds_open=open_for,
-                        on_sportsbook="sportsbook/prelive" in (book.prematch_page or "").lower(),
-                        challenge=is_challenge_text("", book.prematch_page),
-                        already_woke=quiet["woke_prematch"],
-                        minimum_seconds=15,
+                        _keep_page_active(live_page, quiet["step"])
+                        _goto(live_page, live_page_url(), "live")
+                    if (
+                        book.live_requests > 0
+                        and should_wake_silent_live(
+                            live_requests=book.prematch_requests,
+                            seconds_open=open_for,
+                            on_sportsbook="sportsbook/prelive" in (book.prematch_page or "").lower(),
+                            challenge=False,
+                            already_woke=quiet["woke_prematch"],
+                            minimum_seconds=15,
+                        )
                     ):
-                        quiet["woke_prematch"] = True
-                        _log(
-                            "No prematch feed since attach. Reloading that tab in the "
-                            "background. The live tab stays in front."
+                        prematch_read = read_tab_quickly(prematch_page)
+                        prematch_challenge = prematch_read is None or is_challenge_text(
+                            prematch_read[0] if prematch_read else "",
+                            prematch_read[1] if prematch_read else book.prematch_page,
                         )
-                        _reload_once(prematch_page, "prematch")
-                        if book.live_requests == 0:
-                            try:
-                                live_page.bring_to_front()
-                            except Exception:
-                                pass
+                        if not prematch_challenge:
+                            quiet["woke_prematch"] = True
+                            _log(
+                                "Live is rendering. Opening prematch once. "
+                                "The live tab comes back to the front."
+                            )
+                            _goto(prematch_page, prematch_page_url(), "prematch")
+                            _keep_page_active(live_page, quiet["step"])
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
                         live_read = read_tab_quickly(live_page)

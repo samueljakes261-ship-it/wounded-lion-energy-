@@ -192,7 +192,11 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     )
     from parsers.onwin.state import OnwinState
 
-    from experiments.onwin_vps.collector import should_wake_silent_live
+    from experiments.onwin_vps.collector import (
+        live_page_is_challenge,
+        should_open_live_page,
+        should_wake_silent_live,
+    )
     from parsers.onwin.local_collector import page_lane
 
     assert page_lane(type("P", (), {"url": "https://onwin4921.com/sportsbook/live/main-line/soccer"})(), None, None) == "live"
@@ -252,6 +256,29 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     ) is False
     from parsers.onwin.local_collector import resolve_lane
 
+    assert live_page_is_challenge("Just a moment...", "https://onwin4921.com/sportsbook/live/main-line/soccer", "") is True
+    assert live_page_is_challenge("Onwin", "https://onwin4921.com/sportsbook/live/main-line/soccer", "Checking your browser") is True
+    assert live_page_is_challenge("Onwin", "https://onwin4921.com/sportsbook/live/main-line/soccer", "Main line") is False
+    assert should_open_live_page(
+        live_requests=0, seconds_open=5, challenge=False, opened=False, readable=True,
+        saw_challenge=False, seconds_since_clear=5,
+    ) is True
+    assert should_open_live_page(
+        live_requests=0, seconds_open=30, challenge=True, opened=False, readable=True,
+        saw_challenge=True, seconds_since_clear=0,
+    ) is False
+    assert should_open_live_page(
+        live_requests=0, seconds_open=40, challenge=False, opened=False, readable=True,
+        saw_challenge=True, seconds_since_clear=10,
+    ) is False
+    assert should_open_live_page(
+        live_requests=0, seconds_open=60, challenge=False, opened=False, readable=True,
+        saw_challenge=True, seconds_since_clear=25,
+    ) is True
+    assert should_open_live_page(
+        live_requests=0, seconds_open=60, challenge=False, opened=True, readable=True,
+        saw_challenge=False, seconds_since_clear=60,
+    ) is False
     assert resolve_lane("", "snapshot", _live_tree()) == "live"
     assert resolve_lane("prematch", "snapshot", _live_tree()) == "prematch"
     assert resolve_lane("", "update", None) == "live"

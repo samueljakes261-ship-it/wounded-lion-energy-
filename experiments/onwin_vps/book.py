@@ -39,6 +39,8 @@ class CollectionBook:
         self.recovery_attempts = 0
         self.live_page = ""
         self.prematch_page = ""
+        self.live_title = ""
+        self.live_challenge = None
         self.phase = "starting"
         self.api_seen = 0
         self.last_api_path = ""
@@ -119,6 +121,8 @@ class CollectionBook:
             "session_valid": self.session_valid,
             "live_page": self.live_page,
             "prematch_page": self.prematch_page,
+            "live_title": self.live_title,
+            "live_challenge": self.live_challenge,
             "api_seen": self.api_seen,
             "last_api_path": self.last_api_path,
             "get_main_line_seen": self.snapshots_seen,
