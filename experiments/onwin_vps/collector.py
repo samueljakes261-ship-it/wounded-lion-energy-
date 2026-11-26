@@ -228,16 +228,20 @@ def needs_chrome_restart(
     listening: bool,
     failed_while_listening: int = 0,
 ) -> bool:
-    """Restart Chrome when its port is down, or when attach keeps failing.
+    """Restart Chrome when its port is down, or when the websocket will not connect.
 
-    A single TimeoutError while port 9223 is open is a dropped Playwright
-    session. Attach again. Killing Chrome on that blip ended the session
-    that was already storing live odds. A port that answers /json/version
-    but never accepts the collector is not that blip.
+    One ordinary error while port 9223 is open is a dropped Playwright
+    session. Attach again. A TimeoutError from connect_over_cdp means
+    /json/version answered and the DevTools websocket did not. That Chrome
+    has to be replaced.
     """
-    del error_name
     if not listening:
         return True
+    # /json/version can answer while the DevTools websocket never accepts
+    # a client. That is the stuck Chrome this collector keeps hitting.
+    text = error_name or ""
+    if "TimeoutError" in text or "connect_over_cdp" in text:
+        return failed_while_listening >= 1
     return failed_while_listening >= ATTACH_FAILURES_BEFORE_RESTART
 
 
@@ -573,7 +577,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     raise RuntimeError("cdp down")
                 _log(f"Attaching to dedicated Chrome at {cdp_url()}")
                 playwright = sync_playwright().start()
-                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=10000)
+                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=20000)
                 if not browser.contexts:
                     raise RuntimeError("Chrome has no window")
                 context, live_page, prematch_page, created = _open_tabs(browser)
@@ -734,7 +738,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         check=False,
                         capture_output=True,
                         text=True,
-                        timeout=75,
+                        timeout=90,
                     )
                 except subprocess.TimeoutExpired as exc:
                     chrome_output = f"{exc.stdout or ''}{exc.stderr or ''}".strip()
@@ -758,7 +762,9 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             _log("chrome.log: " + excerpt)
                     book.last_error = "chrome did not start"
                     _write_status(book)
-                delay = 180
+                    delay = 30
+                else:
+                    delay = 5
             time.sleep(delay)
     finally:
         try:

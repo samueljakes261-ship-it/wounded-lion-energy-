@@ -128,16 +128,91 @@ release_our_chrome() {
   rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonCookie" "$PROFILE/SingletonSocket"
 }
 
+pids_listening_on_port() {
+  local hex inode pid fd target
+  hex="$(printf '%04X' "$PORT")"
+  while read -r inode; do
+    [ -n "$inode" ] && [ "$inode" != "0" ] || continue
+    for pid in /proc/[0-9]*; do
+      pid="${pid#/proc/}"
+      for fd in "/proc/${pid}/fd/"*; do
+        [ -L "$fd" ] || continue
+        target="$(readlink "$fd" 2>/dev/null || true)"
+        case "$target" in
+          "socket:[${inode}]")
+            printf '%s\n' "$pid"
+            break
+            ;;
+        esac
+      done
+    done
+  done < <(awk -v hex="$hex" 'NR > 1 && toupper($4) == "0A" && toupper($2) ~ ":" hex "$" {print $10}' /proc/net/tcp /proc/net/tcp6 2>/dev/null)
+}
+
+kill_port_holders() {
+  local signal="${1:-TERM}" pid cmd
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *chrome*|*chromium*|*Chrome*)
+        echo "[onwin-vps-chrome] stopping pid ${pid} on port ${PORT}" >&2
+        kill -s "$signal" "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done < <(pids_listening_on_port | sort -u)
+}
+
+debugger_ready() {
+  ONWIN_CDP_PORT="$PORT" python3 -c '
+import json, os, socket, urllib.request
+port = int(os.environ["ONWIN_CDP_PORT"])
+try:
+    with urllib.request.urlopen("http://127.0.0.1:%s/json/version" % port, timeout=2) as response:
+        info = json.loads(response.read().decode("utf-8", "replace"))
+    ws = str(info.get("webSocketDebuggerUrl") or "")
+    prefix = "ws://127.0.0.1:%s" % port
+    if not ws.startswith(prefix):
+        raise SystemExit(1)
+    path = ws[len(prefix):] or "/"
+    request = (
+        "GET %s HTTP/1.1\r\nHost: 127.0.0.1:%s\r\nUpgrade: websocket\r\n"
+        "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        "Sec-WebSocket-Version: 13\r\n\r\n"
+    ) % (path, port)
+    sock = socket.create_connection(("127.0.0.1", port), 3)
+    try:
+        sock.settimeout(3)
+        sock.sendall(request.encode("ascii"))
+        data = sock.recv(128)
+    finally:
+        sock.close()
+    ok = b" 101 " in data[:40]
+    raise SystemExit(0 if ok else 1)
+except SystemExit:
+    raise
+except Exception:
+    raise SystemExit(1)
+'
+}
+
 stop_chrome() {
-  local before
-  before="$(our_pids | sort -u || true)"
-  if [ -z "$before" ]; then
-    echo "[onwin-vps-chrome] Onwin Chrome was not running"
-    rm -f "$PID_FILE"
-    return 0
-  fi
   release_our_chrome
-  echo "[onwin-vps-chrome] stopped the Onwin Chrome"
+  kill_port_holders TERM
+  sleep 0.4
+  kill_port_holders KILL
+  rm -f "$PID_FILE"
+  rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonCookie" "$PROFILE/SingletonSocket"
+  local _i
+  for _i in $(seq 1 20); do
+    if ! listening; then
+      echo "[onwin-vps-chrome] stopped the Onwin Chrome"
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "[onwin-vps-chrome] port ${PORT} is still open" >&2
+  return 1
 }
 
 show_log() {
@@ -294,7 +369,21 @@ case "$ACTION" in
     stop_xvfb
     ;;
   restart)
-    stop_chrome
+    stop_chrome || true
+    if listening; then
+      echo "[onwin-vps-chrome] could not free port ${PORT}" >&2
+      exit 1
+    fi
+    # systemd restarts the Chrome service a few seconds after the process dies.
+    sleep 6
+    if listening && debugger_ready; then
+      echo "[onwin-vps-chrome] Chrome came back and the debugger accepts a client"
+      exit 0
+    fi
+    if listening; then
+      echo "[onwin-vps-chrome] port ${PORT} is open but the debugger does not accept a client" >&2
+      stop_chrome || true
+    fi
     echo "[onwin-vps-chrome] starting a new Onwin Chrome"
     exec "$0" start
     ;;

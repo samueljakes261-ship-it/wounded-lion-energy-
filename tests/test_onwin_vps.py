@@ -121,6 +121,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "lock_holders" in chrome
     assert "ps -eo pid=,args=" not in chrome
     assert "already on the sportsbook" in collector
+    assert "/proc/net/tcp" in chrome
+    assert "debugger_ready" in chrome
     assert "disable-background-timer-throttling" in chrome
     assert "page.close" not in collector
     assert "--disable-gpu" not in chrome
@@ -138,6 +140,11 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     from parsers.onwin.local_collector import health_url, should_reload_prematch
 
     assert needs_chrome_restart("TimeoutError", True) is False
+    assert needs_chrome_restart(
+        "TimeoutError: BrowserType.connect_over_cdp: Timeout 20000ms exceeded.",
+        True,
+        1,
+    ) is True
     assert needs_chrome_restart("TargetClosedError", True) is False
     assert needs_chrome_restart("Error", True) is False
     assert needs_chrome_restart("Error", True, 3) is False
