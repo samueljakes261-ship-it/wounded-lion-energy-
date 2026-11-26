@@ -1,13 +1,17 @@
 # Onwin VPS Chrome
 
-Google Chrome on port 9223, with its own profile, on a private Xvfb
-screen (`:98`). That screen is not VNC and it is not Kolay90's display.
-The collector attaches over the debugging port and writes live and
-prematch odds into the snapshot files the engine already reads. No ingest
-token.
+Onwin live and prematch run only on this VPS. The Windows PC runs the
+Kolay91 collector and does not open Onwin.
 
-Stop the Windows Onwin collector before starting this one. Both write the
-same snapshot files.
+Google Chrome stays up on port 9223, with its own profile, on a private
+Xvfb screen (`:98`). That screen is not VNC and it is not Kolay90's
+display. The collector attaches over the debugging port and writes live
+and prematch odds into the snapshot files the engine already reads. No
+ingest token. A dropped debugger reconnects without closing the tabs.
+Chrome is restarted only when port 9223 is actually down. Background-tab
+throttling is disabled so the sportsbook keeps sending odds. A tab that
+has been on the sportsbook with no responses for eight minutes is
+reloaded once. A Cloudflare check is left alone.
 
 ```bash
 cd ~/apps/ArbScanner
@@ -39,5 +43,7 @@ experiments/onwin_vps/chrome.sh stop
 ```
 
 `collector.sh restart` does not restart Chrome. `chrome.sh restart` does
-not restart Kolay90. Status is `experiments/onwin_vps/output/status.json`.
-Logs are `experiments/onwin_vps/output/chrome.log` and `collector.log`.
+not restart Kolay90. Restart Chrome once after pulling these flags so
+the sportsbook tabs are not throttled. After that, leave both services
+running. Status is `experiments/onwin_vps/output/status.json`. Logs are
+`experiments/onwin_vps/output/chrome.log` and `collector.log`.

@@ -227,6 +227,10 @@ launch_chrome() {
     "--no-first-run"
     "--no-default-browser-check"
     "--disable-dev-shm-usage"
+    "--disable-background-timer-throttling"
+    "--disable-backgrounding-occluded-windows"
+    "--disable-renderer-backgrounding"
+    "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling"
     "--window-size=1280,900"
   )
   if [ "$#" -gt 0 ]; then

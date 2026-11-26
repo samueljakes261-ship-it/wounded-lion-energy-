@@ -143,9 +143,10 @@ def test_start_workers_continues_when_orbit_constructor_raises(monkeypatch):
     assert started["betkanyon"] is True
 
 
-def test_start_prematch_workers_starts_onwin_prematch_not_live(monkeypatch):
+def test_start_prematch_workers_leaves_onwin_to_the_vps_chrome(monkeypatch):
     started = {}
     monkeypatch.delenv("ONWIN_LIVE", raising=False)
+    monkeypatch.delenv("ONWIN_PREMATCH_BROWSER", raising=False)
 
     monkeypatch.setattr(
         collector,
@@ -176,9 +177,11 @@ def test_start_prematch_workers_starts_onwin_prematch_not_live(monkeypatch):
     assert started == {
         "bk_pm": True,
         "orbit_pm": True,
-        "onwin_pm": True,
         "kolay90_pm": True,
     }
+    monkeypatch.setenv("ONWIN_PREMATCH_BROWSER", "1")
+    collector.start_prematch_workers()
+    assert started["onwin_pm"] is True
 
 
 @pytest.mark.anyio

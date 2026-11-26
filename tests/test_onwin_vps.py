@@ -72,7 +72,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "lock_holders" in chrome
     assert "ps -eo pid=,args=" not in chrome
     assert "already on the sportsbook" in collector
-    assert "page.reload" not in collector
+    assert "disable-background-timer-throttling" in chrome
+    assert "page.close" not in collector
     assert "--disable-gpu" not in chrome
     assert "kolay90_direct/chrome_profile" not in chrome
     assert "chromium.launch" not in collector
@@ -104,6 +105,26 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
         "",
         "https://onwin4920.com/cdn-cgi/challenge-platform/h/b/orchestrate",
     ) is False
+    from experiments.onwin_vps.collector import should_refresh_quiet_tab
+
+    assert should_refresh_quiet_tab(
+        challenge=True,
+        on_sportsbook=True,
+        seconds_since_response=1000,
+        seconds_since_refresh=1000,
+    ) is False
+    assert should_refresh_quiet_tab(
+        challenge=False,
+        on_sportsbook=True,
+        seconds_since_response=30,
+        seconds_since_refresh=1000,
+    ) is False
+    assert should_refresh_quiet_tab(
+        challenge=False,
+        on_sportsbook=True,
+        seconds_since_response=1000,
+        seconds_since_refresh=1000,
+    ) is True
     assert health_url("https://api.example/onwin/live") == "https://api.example/health"
     excerpt = chrome_log_excerpt(
         [

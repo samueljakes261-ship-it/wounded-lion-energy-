@@ -823,22 +823,33 @@ def stop_betfair_worker():
 
 
 def onwin_live_enabled() -> bool:
-    """OnWin LIVE is frozen unless explicitly re-enabled.
-
-    OnWin PREMATCH is independent and still starts via start_prematch_workers().
-    """
+    """ZenRows OnWin live stays off. The VPS Chrome collector writes live odds."""
     value = os.getenv("ONWIN_LIVE", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def onwin_prematch_browser_enabled() -> bool:
+    """ZenRows OnWin prematch stays off. The VPS Chrome collector writes prematch odds."""
+    value = os.getenv("ONWIN_PREMATCH_BROWSER", "").strip().lower()
     return value in {"1", "true", "yes", "on"}
 
 
 def start_prematch_workers():
     """Start prematch workers independently of live start_workers()."""
-    for name, starter in (
+    starters = [
         ("BetKanyon prematch", _get_betkanyon_prematch_worker),
         ("Orbit prematch", _get_orbit_prematch_worker),
-        ("OnWin prematch", _get_onwin_prematch_worker),
         ("Kolay90 prematch", _get_kolay90_prematch_worker),
-    ):
+    ]
+    if onwin_prematch_browser_enabled():
+        starters.insert(2, ("OnWin prematch", _get_onwin_prematch_worker))
+    else:
+        print(
+            "[ONWIN] PREMATCH browser frozen "
+            "(set ONWIN_PREMATCH_BROWSER=1 to re-enable ZenRows). "
+            "The VPS Chrome collector supplies OnWin prematch odds."
+        )
+    for name, starter in starters:
         try:
             starter()
         except Exception as exc:
@@ -872,8 +883,8 @@ def start_workers():
         starters.insert(0, ("OnWin", _get_onwin_handle))
     else:
         print(
-            "[ONWIN] LIVE worker frozen (set ONWIN_LIVE=1 to re-enable). "
-            "OnWin PREMATCH still starts."
+            "[ONWIN] LIVE browser frozen (set ONWIN_LIVE=1 to re-enable ZenRows). "
+            "The VPS Chrome collector supplies OnWin live odds."
         )
 
     for name, starter in starters:

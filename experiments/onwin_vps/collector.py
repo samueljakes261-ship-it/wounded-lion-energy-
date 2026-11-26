@@ -156,6 +156,28 @@ def _chrome_listening() -> bool:
         return False
 
 
+# A sportsbook tab that has loaded and then goes silent has usually lost
+# its websocket. Reloading during Cloudflare, or every couple of minutes,
+# aborted get_main_line. Eight quiet minutes is long enough to be a dead
+# tab rather than a slow check.
+QUIET_RELOAD_SECONDS = 480.0
+
+
+def should_refresh_quiet_tab(
+    *,
+    challenge: bool,
+    on_sportsbook: bool,
+    seconds_since_response: float,
+    seconds_since_refresh: float,
+) -> bool:
+    """Reload one settled sportsbook tab after a long silence."""
+    if challenge or not on_sportsbook:
+        return False
+    if seconds_since_refresh < QUIET_RELOAD_SECONDS:
+        return False
+    return seconds_since_response >= QUIET_RELOAD_SECONDS
+
+
 def needs_chrome_restart(error_name: str, listening: bool) -> bool:
     """Restart Chrome only when its debugging port is down.
 
@@ -200,17 +222,27 @@ def _acquire_lock():
     return handle
 
 
-def _close_created(playwright, created) -> None:
-    for page in created or []:
-        try:
-            page.close()
-        except Exception:
-            pass
-    if playwright is not None:
-        try:
-            playwright.stop()
-        except Exception:
-            pass
+def _disconnect(playwright) -> None:
+    """Drop the debugger client. Chrome and its tabs stay open.
+
+    Closing the sportsbook tabs on a dropped debugger threw away the
+    session that had already cleared Cloudflare and was sending odds.
+    """
+    if playwright is None:
+        return
+    try:
+        playwright.stop()
+    except Exception:
+        pass
+
+
+def _reload_once(page, label: str) -> None:
+    """One navigation after a long silence. A timeout leaves the tab open."""
+    _log(f"No {label} responses for several minutes. Reloading that tab once.")
+    try:
+        page.reload(wait_until="commit", timeout=15000)
+    except Exception as exc:
+        _log(f"{label} reload did not finish ({type(exc).__name__}). The tab stays open.")
 
 
 def _goto(page, url: str, label: str) -> None:
@@ -443,6 +475,15 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log("Prematch stays on the open prelive tab. It is not reloaded on a timer.")
                 last_heartbeat = time.time()
                 last_prematch_open = time.time()
+                quiet = {
+                    "live_count": book.live_requests,
+                    "live_at": time.time(),
+                    "pre_count": book.prematch_requests,
+                    "pre_at": time.time(),
+                    "live_reload": time.time(),
+                    "pre_reload": time.time(),
+                    "focus": "live",
+                }
                 while True:
                     live_page.wait_for_timeout(5000)
                     try:
@@ -467,25 +508,65 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             f"last_api={book.last_api_path} title={title!r} "
                             f"live={book.live_page}"
                         )
-                        if live_read is None or is_challenge_text(title, live_read[1]):
+                        if book.live_requests != quiet["live_count"]:
+                            quiet["live_count"] = book.live_requests
+                            quiet["live_at"] = now
+                        if book.prematch_requests != quiet["pre_count"]:
+                            quiet["pre_count"] = book.prematch_requests
+                            quiet["pre_at"] = now
+                        try:
+                            if quiet["focus"] == "live":
+                                live_page.bring_to_front()
+                                quiet["focus"] = "prematch"
+                            else:
+                                prematch_page.bring_to_front()
+                                quiet["focus"] = "live"
+                        except Exception:
+                            pass
+                        if live_read is None:
+                            _log("Live tab title was not read. Leaving it open.")
+                        elif is_challenge_text(title, live_read[1]):
                             _log("Cloudflare check is on the live tab. Waiting for it to finish.")
                         elif should_reload_live(title, book.live_page):
                             _log("Live tab left the sportsbook. Opening it again.")
                             _goto(live_page, live_page_url(), "live")
+                            quiet["live_reload"] = now
+                        elif should_refresh_quiet_tab(
+                            challenge=False,
+                            on_sportsbook="sportsbook/live" in (book.live_page or "").lower(),
+                            seconds_since_response=now - quiet["live_at"],
+                            seconds_since_refresh=now - quiet["live_reload"],
+                        ):
+                            quiet["live_reload"] = now
+                            quiet["live_at"] = now
+                            _reload_once(live_page, "live")
                         prematch_read = read_tab_quickly(prematch_page)
-                        if prematch_read is None or is_challenge_text(prematch_read[0], prematch_read[1]):
+                        if prematch_read is None:
+                            _log("Prematch tab title was not read. Leaving it open.")
+                        elif is_challenge_text(prematch_read[0], prematch_read[1]):
                             _log("Cloudflare check is on the prematch tab. Waiting for it to finish.")
                         elif (
                             should_reload_prematch(prematch_read[0], book.prematch_page)
                             and now - last_prematch_open >= PREMATCH_REOPEN_SECONDS
                         ):
                             last_prematch_open = now
+                            quiet["pre_reload"] = now
                             _log("Prematch tab left prelive. Opening it again.")
                             _goto(prematch_page, prematch_page_url(), "prematch")
+                        elif should_refresh_quiet_tab(
+                            challenge=False,
+                            on_sportsbook="sportsbook/prelive" in (book.prematch_page or "").lower(),
+                            seconds_since_response=now - quiet["pre_at"],
+                            seconds_since_refresh=now - quiet["pre_reload"],
+                        ):
+                            quiet["pre_reload"] = now
+                            quiet["pre_at"] = now
+                            last_prematch_open = now
+                            _reload_once(prematch_page, "prematch")
                     _write_status(book)
             except KeyboardInterrupt:
                 _log("Stopped. The dedicated Chrome stays open.")
-                _close_created(playwright, created)
+                _disconnect(playwright)
                 return 0
             except Exception as exc:
                 failed = True
@@ -495,12 +576,16 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.last_error = type(exc).__name__
                 _write_status(book)
                 _log(f"Chrome attach failed ({type(exc).__name__}).")
+                live_post["last"] = 0.0
+                prematch["last_post"] = 0.0
+                publish_live(force=True, from_network=False)
+                publish_prematch(force=True, from_network=False)
             finally:
                 if failed:
-                    _close_created(playwright, created)
+                    _disconnect(playwright)
             if not failed:
                 continue
-            delay = 15
+            delay = 3
             restart = needs_chrome_restart(book.last_error or "", book.chrome_listening)
             if not restart:
                 _log("Chrome is still listening on port 9223. Attaching again.")
