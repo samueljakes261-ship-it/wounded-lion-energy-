@@ -201,6 +201,17 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
         live_requests=0, seconds_open=50, on_sportsbook=True, challenge=False, already_woke=False
     ) is True
     assert should_wake_silent_live(
+        live_requests=0, seconds_open=5, on_sportsbook=True, challenge=False, already_woke=False
+    ) is False
+    assert should_wake_silent_live(
+        live_requests=0,
+        seconds_open=20,
+        on_sportsbook=True,
+        challenge=False,
+        already_woke=False,
+        minimum_seconds=15,
+    ) is True
+    assert should_wake_silent_live(
         live_requests=1, seconds_open=50, on_sportsbook=True, challenge=False, already_woke=False
     ) is False
     assert should_wake_silent_live(

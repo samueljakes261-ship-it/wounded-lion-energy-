@@ -201,17 +201,18 @@ def should_wake_silent_live(
     on_sportsbook: bool,
     challenge: bool,
     already_woke: bool,
+    minimum_seconds: float = 8,
 ) -> bool:
-    """Reload the live tab once when it is open and has never sent a feed.
+    """Reload one sportsbook tab once if it has not sent a feed since we attached.
 
-    Chrome opens the prematch tab in front. The live tab can sit on the
-    right URL and never subscribe until it is visible. One reload, after
-    it has been given time to send, is the wake. A Cloudflare check is
-    left alone.
+    The tabs usually fetch get_main_line before the collector is listening.
+    Leaving an already-open tab alone then keeps the previous snapshot and
+    records no new responses. One reload, after a few seconds with no
+    request, is caught by the listener. A Cloudflare check is left alone.
     """
     if already_woke or challenge or not on_sportsbook or live_requests > 0:
         return False
-    return seconds_open >= 45
+    return seconds_open >= minimum_seconds
 
 
 def should_republish(*, seconds_since_network: float, hold_seconds: float) -> bool:
@@ -638,7 +639,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 watching_since = last_heartbeat
                 last_prematch_open = time.time()
                 blips = {"n": 0}
-                quiet = {"focus": "live", "woke_live": False}
+                quiet = {"focus": "live", "woke_live": False, "woke_prematch": False}
                 while True:
                     republish()
                     try:
@@ -671,6 +672,42 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         )
                         continue
                     now = time.time()
+                    open_for = now - watching_since
+                    if should_wake_silent_live(
+                        live_requests=book.live_requests,
+                        seconds_open=open_for,
+                        on_sportsbook="sportsbook/live" in (book.live_page or "").lower(),
+                        challenge=is_challenge_text("", book.live_page),
+                        already_woke=quiet["woke_live"],
+                    ):
+                        quiet["woke_live"] = True
+                        _log(
+                            "No live feed since attach. The tab had already loaded. "
+                            "Reloading it once so this collector sees the response."
+                        )
+                        try:
+                            live_page.bring_to_front()
+                        except Exception:
+                            pass
+                        _reload_once(live_page, "live")
+                    if should_wake_silent_live(
+                        live_requests=book.prematch_requests,
+                        seconds_open=open_for,
+                        on_sportsbook="sportsbook/prelive" in (book.prematch_page or "").lower(),
+                        challenge=is_challenge_text("", book.prematch_page),
+                        already_woke=quiet["woke_prematch"],
+                        minimum_seconds=15,
+                    ):
+                        quiet["woke_prematch"] = True
+                        _log(
+                            "No prematch feed since attach. The tab had already loaded. "
+                            "Reloading it once so this collector sees the response."
+                        )
+                        try:
+                            prematch_page.bring_to_front()
+                        except Exception:
+                            pass
+                        _reload_once(prematch_page, "prematch")
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
                         live_read = read_tab_quickly(live_page)
@@ -698,19 +735,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         elif should_reload_live(title, book.live_page):
                             _log("Live tab left the sportsbook. Opening it again.")
                             _goto(live_page, live_page_url(), "live")
-                        elif should_wake_silent_live(
-                            live_requests=book.live_requests,
-                            seconds_open=now - watching_since,
-                            on_sportsbook="sportsbook/live" in (book.live_page or "").lower(),
-                            challenge=False,
-                            already_woke=quiet["woke_live"],
-                        ):
-                            quiet["woke_live"] = True
-                            _log(
-                                "Both tabs are open. The live tab has not sent a feed. "
-                                "Reloading that tab once."
-                            )
-                            _reload_once(live_page, "live")
                         prematch_read = read_tab_quickly(prematch_page)
                         if prematch_read is None:
                             _log("Prematch tab title was not read. Leaving it open.")
