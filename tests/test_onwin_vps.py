@@ -131,6 +131,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
     assert "threading.Thread" not in collector
+    assert "FeedTargets" in collector
+    assert "public_page" in collector
     assert "REPLAY_SOURCE" not in collector
     assert collector.count("bring_to_front") == 1
     assert "read_captured_body" in collector
@@ -643,6 +645,53 @@ def test_quiet_live_page_is_asked_again_without_a_reload():
     left = _payload_key(snap, {"prefix": prefix, "tail": 1})
     right = _payload_key(snap, {"prefix": prefix, "tail": 2})
     assert left != right
+
+
+def test_sportsbook_frame_responses_are_kept_for_the_loop():
+    from experiments.onwin_vps.targets import FeedTargets, public_page, take_server_frames
+
+    assert public_page(
+        "https://onwin4921.com/sportsbook/prelive/main-line/soccer?__cf_chl_rt_tk=secret"
+    ) == "https://onwin4921.com/sportsbook/prelive/main-line/soccer"
+
+    listener = FeedTargets()
+    listener._take_opcode(None, False, 1, b'{"method":"Target.attachedToTarget","params":')
+    listener._take_opcode(
+        None,
+        True,
+        0,
+        b'{"sessionId":"frame-1","targetInfo":{"type":"iframe","url":"https://sports.example/sportsbook/prelive/main-line/soccer?token=1"}}}',
+    )
+    assert listener.attached == 1
+    assert listener.frame_labels() == ["iframe https://sports.example/sportsbook/prelive/main-line/soccer"]
+    url = "https://api.example/rpc/sumstats.frontserver.command.get_main_line_compact.erisgaming?x=1"
+    listener.accept(
+        {
+            "method": "Network.responseReceived",
+            "sessionId": "frame-1",
+            "params": {"requestId": "9", "response": {"url": url, "status": 200}},
+        }
+    )
+    assert listener.take_ready() == []
+    listener.accept(
+        {
+            "method": "Network.loadingFinished",
+            "sessionId": "frame-1",
+            "params": {"requestId": "9"},
+        }
+    )
+    ready = listener.take_ready()
+    assert ready[0]["request_id"] == "9"
+    assert ready[0]["lane"] == "prematch"
+    assert ready[0]["session_id"] == "frame-1"
+
+    body = b'{"id":1,"result":{}}'
+    frames, rest = take_server_frames(bytes([0x81, len(body)]) + body)
+    assert rest == b""
+    assert frames == [(True, 1, body)]
+    partial, rest = take_server_frames((bytes([0x81, len(body)]) + body)[:4])
+    assert partial == []
+    assert len(rest) == 4
 
 
 def test_reclaim_releases_a_lock_leaked_to_a_child():

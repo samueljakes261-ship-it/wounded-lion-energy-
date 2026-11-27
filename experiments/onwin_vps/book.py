@@ -48,6 +48,9 @@ class CollectionBook:
         self.body_read_failures = 0
         self.queue_dropped = 0
         self.listeners = 0
+        self.targets = 0
+        self.frames: list[str] = []
+        self.prematch_challenge = None
         self.last_disconnect = None
 
     def note_api(self, path: str) -> None:
@@ -157,6 +160,9 @@ class CollectionBook:
             "body_read_failures": self.body_read_failures,
             "queue_dropped": self.queue_dropped,
             "listeners": self.listeners,
+            "targets": self.targets,
+            "frames": list(self.frames),
+            "prematch_challenge": self.prematch_challenge,
             "last_disconnect": self.last_disconnect,
             "updated_at": time.time(),
         }
