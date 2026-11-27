@@ -817,6 +817,20 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     session.on("Network.responseReceived", response_received)
                     session.on("Network.loadingFinished", loading_finished)
                     session.on("Network.webSocketFrameReceived", socket_frame)
+                    # The casino shell is the top document. Odds are requested
+                    # from the sportsbook frame. This session only sees that
+                    # frame when child targets are attached here too.
+                    try:
+                        session.send(
+                            "Target.setAutoAttach",
+                            {
+                                "autoAttach": True,
+                                "waitForDebuggerOnStart": False,
+                                "flatten": True,
+                            },
+                        )
+                    except Exception:
+                        pass
                     if lane_name == "live":
                         _hold_focus(session)
                     return session
@@ -827,17 +841,43 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log(f"Capturing responses on {attached} open tabs. Those tabs are not reloaded.")
 
                 def _on_response(response):
-                    # Bodies are read on the loop. This only keeps a response
-                    # when the debugger listen on that tab did not attach.
-                    if sessions.get("live") is not None and sessions.get("prematch") is not None:
+                    # Bodies are read on the loop. The top-document debugger
+                    # does not see the sportsbook frame, so this stays on
+                    # even after that debugger attaches.
+                    try:
+                        url = response.url or ""
+                    except Exception:
+                        return
+                    if feed_kind(url) is None:
                         return
                     if len(fallback) >= 30:
                         del fallback[:-29]
                     fallback.append(response)
 
-                for watched in (live_page, prematch_page):
+                def _on_socket(websocket, lane_name: str):
+                    tap = taps[lane_name]
+
+                    def received(payload):
+                        if isinstance(payload, bytes):
+                            payload = payload.decode("utf-8", "replace")
+                        if isinstance(payload, str):
+                            tap.note_socket(payload)
+
+                    try:
+                        websocket.on("framereceived", received)
+                    except Exception:
+                        pass
+
+                for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
                     try:
                         watched.on("response", _on_response)
+                    except Exception:
+                        pass
+                    try:
+                        watched.on(
+                            "websocket",
+                            lambda websocket, lane_name=lane_name: _on_socket(websocket, lane_name),
+                        )
                     except Exception:
                         pass
 
