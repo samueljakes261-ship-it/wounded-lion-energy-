@@ -2376,6 +2376,9 @@ def _write_status(
         },
     }
 
+    from experiments.onwin_vps.health import apply_vps_collector_status
+
+    apply_vps_collector_status(payload, now_dt)
     _atomic_write_text(
         STATUS_FILE,
         json.dumps(payload, indent=4, ensure_ascii=False),

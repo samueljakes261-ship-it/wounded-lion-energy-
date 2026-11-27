@@ -10,8 +10,10 @@ engine already reads. No ingest token and no VNC desktop.
 
 Response bodies are read on the collector loop, never inside a debugger
 event. Reading them there stopped the connection after a short burst and
-the dashboard returned to error. When the open live page goes quiet, the
-same request is sent again from that page. The tab is not reloaded.
+the dashboard returned to error. The open page is left to send its own
+traffic. This process does not reload it and does not call the feed
+itself. A quiet feed stays unpublished, so old odds are not written out
+as new.
 """
 
 from __future__ import annotations
@@ -31,11 +33,9 @@ from experiments.onwin_vps.book import CollectionBook
 from experiments.onwin_vps.listen import (
     KEEP_AWAKE_SECONDS,
     KEEP_AWAKE_SOURCE,
-    REPLAY_SOURCE,
-    SNAPSHOT_REPLAY_GAP_SECONDS,
     LaneTap,
     should_keep_awake,
-    should_replay_feed,
+    should_queue_response,
 )
 from experiments.onwin_vps.safety import OnwinVpsGuardError, validate_target
 from parsers.kolay90_prematch.login import is_challenge_text, read_tab_quickly
@@ -332,20 +332,14 @@ def needs_chrome_restart(
     listening: bool,
     failed_while_listening: int = 0,
 ) -> bool:
-    """Restart Chrome when its port is down, or when the websocket will not connect.
+    """Restart Chrome when its port is down, or when attach keeps failing.
 
-    One ordinary error while port 9223 is open is a dropped Playwright
-    session. Attach again. A TimeoutError from connect_over_cdp means
-    /json/version answered and the DevTools websocket did not. That Chrome
-    has to be replaced.
+    One timeout while port 9223 is open is a dropped debugger client.
+    Attach again. Replacing Chrome on that first timeout closed the
+    sportsbook session and took the port down.
     """
     if not listening:
         return True
-    # /json/version can answer while the DevTools websocket never accepts
-    # a client. That is the stuck Chrome this collector keeps hitting.
-    text = error_name or ""
-    if "TimeoutError" in text or "connect_over_cdp" in text:
-        return failed_while_listening >= 1
     return failed_while_listening >= ATTACH_FAILURES_BEFORE_RESTART
 
 
@@ -618,16 +612,13 @@ def run_forever(book: CollectionBook | None = None) -> int:
             _write_status(book, force=True)
 
     def republish() -> None:
-        """Rewrite the last good book on this thread.
+        """Leave the snapshot files alone between captured responses.
 
-        Playwright's sync client breaks if another thread is running, which
-        left the collector at phase starting with responses_received at 0.
+        Rewriting them on a timer moved collected_at forward with no new
+        odds, so the engine treated a quiet book as fresh. Playwright
+        also cannot share this thread with another writer.
         """
-        try:
-            publish_live(from_network=False, heartbeat=True)
-            publish_prematch(from_network=False, heartbeat=True)
-        except Exception as exc:
-            _log(f"snapshot rewrite skipped ({type(exc).__name__})")
+        return
 
     seen_payloads: set[str] = set()
 
@@ -824,22 +815,32 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
                     sessions[lane_name] = _arm_cdp(watched, lane_name)
                 attached = sum(1 for session in sessions.values() if session is not None)
+                book.listeners = attached
                 _log(f"Capturing responses on {attached} open tabs. Those tabs are not reloaded.")
 
                 def _on_response(response):
-                    # Bodies are read on the loop. This only keeps a response
-                    # when the debugger listen on that tab did not attach.
-                    if sessions.get("live") is not None and sessions.get("prematch") is not None:
+                    # Queue only. Reading the body here stalls the debugger.
+                    # Context events include the sportsbook frame. The top
+                    # document's network session does not.
+                    try:
+                        url = response.url or ""
+                    except Exception:
                         return
-                    if len(fallback) >= 30:
-                        del fallback[:-29]
+                    if not should_queue_response(url):
+                        return
+                    if len(fallback) >= 40:
+                        book.note_queue_dropped(1)
+                        del fallback[0]
                     fallback.append(response)
 
-                for watched in (live_page, prematch_page):
-                    try:
-                        watched.on("response", _on_response)
-                    except Exception:
-                        pass
+                try:
+                    context.on("response", _on_response)
+                except Exception:
+                    for watched in (live_page, prematch_page):
+                        try:
+                            watched.on("response", _on_response)
+                        except Exception:
+                            pass
 
                 def drain_tap(lane_name: str) -> None:
                     session = sessions.get(lane_name)
@@ -882,6 +883,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             apply_captured(url, raw, lane_name)
                         except Exception as exc:
                             book.last_error = type(exc).__name__
+                            book.note_body_failure()
                             _log(f"response skipped ({type(exc).__name__})")
 
                 def drain_fallback() -> None:
@@ -905,6 +907,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             apply_captured(url, json.loads(response.body()), lane_name)
                         except Exception as exc:
                             book.last_error = type(exc).__name__
+                            book.note_body_failure()
                             _log(f"response skipped ({type(exc).__name__})")
 
                 def read_live_tab():
@@ -933,6 +936,14 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         try:
                             live_page.set_default_timeout(1500)
                             live_page.evaluate(KEEP_AWAKE_SOURCE)
+                            for frame in list(live_page.frames):
+                                frame_url = (getattr(frame, "url", "") or "").lower()
+                                if "sportsbook" not in frame_url and "erisgaming" not in frame_url:
+                                    continue
+                                try:
+                                    frame.evaluate(KEEP_AWAKE_SOURCE)
+                                except Exception:
+                                    pass
                         except Exception as exc:
                             _log(f"live tab was not marked visible ({type(exc).__name__})")
                         finally:
@@ -940,59 +951,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                                 live_page.set_default_timeout(20000)
                             except Exception:
                                 pass
-                    call = taps["live"].replay_choice(quiet["prefer_snapshot"])
-                    gap = SNAPSHOT_REPLAY_GAP_SECONDS if call and call["kind"] == "snapshot" else 4.0
-                    if not should_replay_feed(
-                        seconds_since_traffic=now - quiet["last_traffic"],
-                        seconds_since_replay=now - quiet["last_replay"],
-                        challenge=blocked,
-                        have_request=call is not None,
-                        minimum_gap=gap,
-                    ):
-                        return
-                    readable, challenge, _title = read_live_tab()
-                    if challenge or not readable:
-                        quiet["saw_challenge"] = quiet["saw_challenge"] or challenge
-                        quiet["last_replay"] = now + 12
-                        return
-                    quiet["last_replay"] = now
-                    before = book.responses_received
-                    _log(
-                        "live feed was quiet. Asking the open page again. "
-                        f"path={_safe_path(call['url'])}"
-                    )
-                    status = None
-                    try:
-                        live_page.set_default_timeout(8000)
-                        status = live_page.evaluate(
-                            REPLAY_SOURCE,
-                            {
-                                "url": call["url"],
-                                "method": call["method"],
-                                "headers": call["headers"],
-                                "body": call["body"],
-                            },
-                        )
-                    except Exception as exc:
-                        _log(f"live feed was not asked again ({type(exc).__name__})")
-                        quiet["prefer_snapshot"] = True
-                        quiet["last_replay"] = now + 12
-                        return
-                    finally:
-                        try:
-                            live_page.set_default_timeout(20000)
-                        except Exception:
-                            pass
-                    drain_tap("live")
-                    if book.responses_received != before:
-                        quiet["seen_responses"] = book.responses_received
-                        quiet["last_traffic"] = time.time()
-                        quiet["prefer_snapshot"] = False
-                        return
-                    quiet["prefer_snapshot"] = True
-                    quiet["last_replay"] = now + 12
-                    if isinstance(status, int):
-                        _log(f"live feed answered HTTP {status}. The tab stays open.")
 
                 try:
                     live_page.set_default_timeout(20000)
@@ -1020,7 +978,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log(f"prematch tab {book.prematch_page}")
                 _log(
                     "The live tab is not reloaded. Responses are read as the open "
-                    "page sends them. A quiet live page is asked again from that same page."
+                    "page sends them. This collector does not call the feed."
                 )
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
@@ -1069,6 +1027,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     drain_tap("live")
                     drain_tap("prematch")
                     drain_fallback()
+                    book.queue_dropped = taps["live"].dropped + taps["prematch"].dropped
                     now = time.time()
                     if book.responses_received != quiet["seen_responses"]:
                         quiet["seen_responses"] = book.responses_received
@@ -1121,6 +1080,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.attached = False
                 book.chrome_listening = _chrome_listening()
                 book.recovery_attempts += 1
+                book.last_disconnect = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 if book.chrome_listening:
                     attach_failures += 1
                 else:

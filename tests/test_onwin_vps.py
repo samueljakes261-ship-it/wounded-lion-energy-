@@ -131,6 +131,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
     assert "threading.Thread" not in collector
+    assert "REPLAY_SOURCE" not in collector
     assert collector.count("bring_to_front") == 1
     assert "read_captured_body" in collector
     assert "Network.getResponseBody" in collector
@@ -151,6 +152,11 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
         "TimeoutError: BrowserType.connect_over_cdp: Timeout 20000ms exceeded.",
         True,
         1,
+    ) is False
+    assert needs_chrome_restart(
+        "TimeoutError: BrowserType.connect_over_cdp: Timeout 20000ms exceeded.",
+        True,
+        4,
     ) is True
     assert needs_chrome_restart("TargetClosedError", True) is False
     assert needs_chrome_restart("Error", True) is False
@@ -448,14 +454,119 @@ def test_status_file_round_trip(tmp_path, monkeypatch):
     assert payload["cdp_url"].endswith(":9223")
 
 
+def test_a_quiet_attached_collector_is_waiting_not_stopped(tmp_path, monkeypatch):
+    from experiments.onwin_vps.health import apply_vps_collector_status, dashboard_status
+
+    assert dashboard_status(
+        phase="watching",
+        attached=True,
+        chrome_listening=True,
+        challenge=False,
+        snapshot_age=5,
+        max_age=30,
+    ) == "RUNNING"
+    assert dashboard_status(
+        phase="watching",
+        attached=True,
+        chrome_listening=True,
+        challenge=False,
+        snapshot_age=90,
+        max_age=30,
+    ) == "WAITING_FOR_DATA"
+    assert dashboard_status(
+        phase="watching",
+        attached=True,
+        chrome_listening=True,
+        challenge=True,
+        snapshot_age=5,
+        max_age=30,
+    ) == "ERROR"
+    assert dashboard_status(
+        phase="watching",
+        attached=False,
+        chrome_listening=False,
+        challenge=False,
+        snapshot_age=None,
+        max_age=30,
+    ) == "RECOVERING"
+    assert dashboard_status(
+        phase="attaching",
+        attached=False,
+        chrome_listening=True,
+        challenge=False,
+        snapshot_age=None,
+        max_age=30,
+    ) == "STARTING"
+
+    status_path = tmp_path / "status.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "updated_at": time.time(),
+                "phase": "watching",
+                "attached": True,
+                "chrome_listening": True,
+                "live_challenge": False,
+                "last_error": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONWIN_REMOTE_SNAPSHOT", str(tmp_path / "missing-live.json"))
+    monkeypatch.setenv("ONWIN_PREMATCH_REMOTE_SNAPSHOT", str(tmp_path / "missing-pre.json"))
+    now = datetime.now(timezone.utc)
+    payload = {
+        "collectors": {
+            "onwin": {
+                "collectorStatus": "ERROR",
+                "rawStatus": "error",
+                "workerAlive": False,
+                "error": "Worker is not running.",
+            },
+            "onwin_prematch": {
+                "collectorStatus": "STOPPED",
+                "rawStatus": "stopped",
+                "workerAlive": False,
+                "error": None,
+            },
+        }
+    }
+    apply_vps_collector_status(payload, now, status_path=status_path)
+    assert payload["collectors"]["onwin"]["collectorStatus"] == "WAITING_FOR_DATA"
+    assert payload["collectors"]["onwin"]["workerAlive"] is True
+    assert payload["collectors"]["onwin_prematch"]["collectorStatus"] == "WAITING_FOR_DATA"
+    assert payload["collectors"]["onwin_prematch"]["workerAlive"] is True
+
+    stale = dict(json.loads(status_path.read_text(encoding="utf-8")))
+    stale["updated_at"] = time.time() - 120
+    stale["live_challenge"] = True
+    status_path.write_text(json.dumps(stale), encoding="utf-8")
+    untouched = {
+        "collectors": {
+            "onwin": {"collectorStatus": "STOPPED", "rawStatus": "stopped", "workerAlive": False},
+            "onwin_prematch": {"collectorStatus": "STOPPED", "rawStatus": "stopped", "workerAlive": False},
+        }
+    }
+    apply_vps_collector_status(untouched, now, status_path=status_path)
+    assert untouched["collectors"]["onwin"]["collectorStatus"] == "STOPPED"
+    assert untouched["collectors"]["onwin_prematch"]["collectorStatus"] == "STOPPED"
+
+
 def test_quiet_live_page_is_asked_again_without_a_reload():
     from experiments.onwin_vps.collector import _payload_key
     from experiments.onwin_vps.listen import (
         LaneTap,
         replay_headers,
         should_keep_awake,
+        should_queue_response,
         should_replay_feed,
     )
+
+    assert should_queue_response(
+        "https://api-onwin-tr--prd--sb.538.lol/frontserver-erisgaming__api/rpc/"
+        "sumstats.frontserver.command.get_main_line_gap.erisgaming"
+    )
+    assert should_queue_response("https://kolay91.com/getMaclar") is False
 
     assert should_replay_feed(
         seconds_since_traffic=2,

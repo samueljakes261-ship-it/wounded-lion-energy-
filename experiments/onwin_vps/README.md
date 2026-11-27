@@ -13,10 +13,10 @@ throttling is disabled so the sportsbook keeps sending odds. A quiet
 tab is left open. Reloading it sent both feeds through Cloudflare and
 both collectors dropped. Response bodies are read on the collector
 loop, not inside a debugger event, so a burst of odds cannot stall the
-connection. If the live page then goes quiet, the collector asks that
-same open page for the last feed again. It does not navigate. The last
-good odds stay in the snapshot files through a debugger reconnect: live
-for three minutes, prematch for fifteen. A Cloudflare check is left
+connection. The collector does not call the feed itself and does not
+rewrite an old snapshot to look new. A quiet attached collector is
+reported as waiting for data. A stopped row means the collector process
+itself is not heartbeating. A Cloudflare check is left
 alone. Chrome comes back on the last session instead of opening the
 sportsbook again.
 

@@ -112,6 +112,20 @@ def should_replay_feed(
     return seconds_since_replay >= minimum_gap
 
 
+def should_queue_response(url: str) -> bool:
+    """True for a sportsbook response, including one from an inner frame.
+
+    The casino shell is the top document. The odds calls come from the
+    sportsbook frame. A listener on the top document alone never sees them.
+    """
+    lowered = (url or "").lower()
+    if "kolay" in lowered:
+        return False
+    if feed_kind(url):
+        return True
+    return "erisgaming" in lowered or "4297.lol" in lowered
+
+
 def should_keep_awake(*, challenge: bool, seconds_since_awake: float, minimum: float = KEEP_AWAKE_SECONDS) -> bool:
     """Refresh the visible-document signal on a slow cadence."""
     if challenge:
@@ -133,6 +147,7 @@ class LaneTap:
         self._need_body: list[str] = []
         self.last_snapshot: dict | None = None
         self.last_update: dict | None = None
+        self.dropped = 0
 
     def note_request(self, request_id: str, url: str, method: str, headers: dict, post_data) -> None:
         kind = feed_kind(url)
@@ -193,7 +208,8 @@ class LaneTap:
             self._order.append(request_id)
             while len(self._order) > self.limit:
                 old = self._order.pop(0)
-                self._pending.pop(old, None)
+                if self._pending.pop(old, None) is not None:
+                    self.dropped += 1
 
     def note_finished(self, request_id: str) -> None:
         if not request_id:
@@ -207,8 +223,10 @@ class LaneTap:
             except ValueError:
                 pass
             self._ready.append(item)
-            if len(self._ready) > self.limit:
-                del self._ready[: len(self._ready) - self.limit]
+            overflow = len(self._ready) - self.limit
+            if overflow > 0:
+                del self._ready[:overflow]
+                self.dropped += overflow
 
     def note_socket(self, payload: str) -> None:
         text = (payload or "").lstrip()
@@ -219,8 +237,10 @@ class LaneTap:
             return
         with self._lock:
             self._sockets.append(text[:2_000_000])
-            if len(self._sockets) > 20:
-                del self._sockets[: len(self._sockets) - 20]
+            overflow = len(self._sockets) - 20
+            if overflow > 0:
+                del self._sockets[:overflow]
+                self.dropped += overflow
 
     def take_ready(self) -> list[dict]:
         with self._lock:

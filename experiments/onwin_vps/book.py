@@ -6,6 +6,7 @@ post, an empty body, or a browser that is merely open does not count.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 
 
@@ -44,6 +45,10 @@ class CollectionBook:
         self.phase = "starting"
         self.api_seen = 0
         self.last_api_path = ""
+        self.body_read_failures = 0
+        self.queue_dropped = 0
+        self.listeners = 0
+        self.last_disconnect = None
 
     def note_api(self, path: str) -> None:
         self.api_seen += 1
@@ -61,6 +66,13 @@ class CollectionBook:
 
     def note_response(self) -> None:
         self.responses_received += 1
+
+    def note_body_failure(self) -> None:
+        self.body_read_failures += 1
+
+    def note_queue_dropped(self, count: int) -> None:
+        if count > 0:
+            self.queue_dropped += count
 
     def note_odds(
         self,
@@ -142,4 +154,9 @@ class CollectionBook:
             "last_prematch_poll_ms": self.last_prematch_poll_ms,
             "recovery_attempts": self.recovery_attempts,
             "last_error": self.last_error,
+            "body_read_failures": self.body_read_failures,
+            "queue_dropped": self.queue_dropped,
+            "listeners": self.listeners,
+            "last_disconnect": self.last_disconnect,
+            "updated_at": time.time(),
         }
