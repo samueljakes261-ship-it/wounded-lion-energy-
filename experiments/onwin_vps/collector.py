@@ -726,6 +726,20 @@ def run_forever(book: CollectionBook | None = None) -> int:
         else:
             _write_status(book)
 
+    def _remember_pages(rows) -> None:
+        for row in rows or []:
+            url = public_page(row.get("url") or "")
+            lowered = url.lower()
+            title = row.get("title") or ""
+            if "sportsbook/prelive" in lowered:
+                book.prematch_page = url
+                book.prematch_challenge = is_challenge_text(title, url)
+            elif "sportsbook/live" in lowered:
+                book.live_page = url
+                book.live_title = title
+                book.live_challenge = is_challenge_text(title, url)
+        book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
+
     def _watch_open_tabs() -> None:
         """Read the open tabs when the browser socket does not answer.
 
@@ -734,8 +748,20 @@ def run_forever(book: CollectionBook | None = None) -> int:
         its own socket, and that one accepts. Silence is not a disconnect.
         """
         nonlocal attach_failures
+        pages = list_pages(cdp_url())
+        if not pages:
+            raise RuntimeError("Chrome has no tab")
+        _remember_pages(pages)
+        book.chrome_listening = True
+        book.phase = "attaching"
+        book.listeners = len(pages)
+        _write_status(book, force=True)
         frames = FeedTargets()
-        pages = frames.open_pages(cdp_url())
+        try:
+            frames.open_pages(cdp_url())
+        except Exception:
+            frames.close()
+            raise
         book.attached = True
         book.chrome_listening = True
         book.last_error = None
@@ -744,7 +770,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
         book.targets = frames.attached
         book.frames = frames.frame_labels()
         attach_failures = 0
-        _log(f"Browser socket timed out. Reading {len(pages)} open tabs directly. Chrome stays up.")
+        _log(f"Reading {len(pages)} open tabs. Chrome stays up.")
 
         def sync() -> None:
             try:
@@ -753,28 +779,43 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 current = []
             if current:
                 frames.note_urls(current)
-            for row in current:
-                url = public_page(row.get("url") or "")
-                lowered = url.lower()
-                title = row.get("title") or ""
-                if "sportsbook/prelive" in lowered:
-                    book.prematch_page = url
-                    book.prematch_challenge = is_challenge_text(title, url)
-                elif "sportsbook/live" in lowered:
-                    book.live_page = url
-                    book.live_title = title
-                    book.live_challenge = is_challenge_text(title, url)
-            book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
+                _remember_pages(current)
             book.targets = frames.attached
             book.frames = frames.frame_labels()
             book.listeners = len(frames.page_urls())
 
         sync()
-        for label, page in (("live", book.live_page), ("prematch", book.prematch_page)):
-            if page and not page.lower().startswith("about:"):
-                _log(f"{label} tab is already on the sportsbook. Leaving it open.")
-            else:
-                _log(f"{label} tab is still loading. Leaving it open.")
+        def _open_blank(marker: str, target: str) -> None:
+            current = book.live_page if marker == "live" else book.prematch_page
+            lowered = (current or "").lower()
+            if marker == "live" and "sportsbook/live" in lowered:
+                _log(f"{marker} tab is already on the sportsbook. Leaving it open.")
+                return
+            if marker == "prematch" and "sportsbook/prelive" in lowered:
+                _log(f"{marker} tab is already on the sportsbook. Leaving it open.")
+                return
+            for key, url in frames.page_urls():
+                page = (url or "").lower()
+                if page and not page.startswith("about:"):
+                    continue
+                try:
+                    frames.open_blank(key, target)
+                    _log(f"{marker} tab had no document. Opening it once.")
+                except Exception as exc:
+                    _log(f"{marker} tab was not opened ({type(exc).__name__})")
+                return
+            _log(f"{marker} tab is still loading. Leaving it open.")
+
+        _open_blank("live", live_page_url())
+        _open_blank("prematch", prematch_page_url())
+        for key, page_url in frames.page_urls():
+            lowered = (page_url or "").lower()
+            if "sportsbook/live" in lowered and "prelive" not in lowered:
+                try:
+                    frames.focus_page(key)
+                except Exception:
+                    pass
+                break
         _write_status(book, force=True)
         awake = 0.0
         try:
@@ -821,7 +862,13 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 if now - awake >= KEEP_AWAKE_SECONDS:
                     awake = now
                     source = f"({KEEP_AWAKE_SOURCE})()"
-                    for key, _url in frames.page_urls():
+                    for key, page_url in frames.page_urls():
+                        lowered = (page_url or "").lower()
+                        if "sportsbook/live" in lowered and "prelive" not in lowered:
+                            try:
+                                frames.focus_page(key)
+                            except Exception:
+                                pass
                         try:
                             frames.evaluate(key, source)
                         except Exception:
@@ -847,17 +894,16 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _write_status(book, force=True)
                 if not book.chrome_listening:
                     raise RuntimeError("cdp down")
+                _log("Reading the open tabs. The browser socket is not required.")
+                try:
+                    _watch_open_tabs()
+                    continue
+                except Exception as exc:
+                    _log(f"open tabs were not read ({type(exc).__name__})")
+                    book.last_error = f"{type(exc).__name__}: {exc}"
                 _log(f"Attaching to dedicated Chrome at {cdp_url()}")
                 playwright = sync_playwright().start()
-                try:
-                    browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=20000)
-                except Exception as exc:
-                    if _chrome_listening() and "Timeout" in type(exc).__name__:
-                        _disconnect(playwright)
-                        playwright = None
-                        _watch_open_tabs()
-                        continue
-                    raise
+                browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=20000)
                 if not browser.contexts:
                     raise RuntimeError("Chrome has no window")
                 context, live_page, prematch_page, created = _open_tabs(browser)

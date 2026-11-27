@@ -130,6 +130,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "chromium.launch" not in collector
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
+    assert collector.index("Reading the open tabs") < collector.index("connect_over_cdp")
     assert "threading.Thread" not in collector
     assert "REPLAY_SOURCE" in collector
     assert "settimeout(None)" in (ROOT / "experiments" / "onwin_vps" / "targets.py").read_text(encoding="utf-8")

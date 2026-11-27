@@ -145,11 +145,27 @@ class FeedTargets:
             raise RuntimeError("Chrome has no tab")
         self._closed = False
         for page in pages:
-            self._add_page(page)
+            try:
+                self._add_page(page)
+            except Exception:
+                continue
         if not self._conns:
             raise RuntimeError("page socket was not accepted")
         self.attached = len(self._socket_of)
         return pages
+
+    def _lane(self, session_id: str, url: str) -> str:
+        """Use the tab address when the frame address does not say which book it is."""
+        owner = self._socket_of.get(session_id)
+        page_url = owner.url if owner is not None else ""
+        target = self._sessions.get(session_id, "")
+        for candidate in (page_url, target, url):
+            lowered = (candidate or "").lower()
+            if "prelive" in lowered or "prematch" in lowered:
+                return "prematch"
+            if "sportsbook/live" in lowered:
+                return "live"
+        return lane_for(page_url or target or url)
 
     def page_urls(self) -> list[tuple[str, str]]:
         return [(conn.key, conn.url) for conn in self._conns if not conn.dead]
@@ -182,6 +198,16 @@ class FeedTargets:
         if conn is None:
             return
         self._call("Page.bringToFront", {}, conn=conn, timeout=2)
+
+    def focus_page(self, key: str) -> None:
+        self.bring_to_front(key)
+
+    def open_blank(self, key: str, url: str) -> None:
+        """Open a sportsbook address only on a tab that has no document."""
+        conn = self._socket_of.get(key)
+        if conn is None or not url:
+            return
+        self._call("Page.navigate", {"url": url}, conn=conn, timeout=3)
 
     def _add_page(self, page: dict) -> None:
         sock = _connect_websocket(str(page.get("webSocketDebuggerUrl") or ""), timeout=3)
@@ -318,14 +344,13 @@ class FeedTargets:
             self._note_url(url)
             if not request_id or feed_kind(url) is None:
                 return
-            target = self._sessions.get(session_id, "")
             item = {
                 "kind": "http",
                 "session_id": session_id,
                 "request_id": request_id,
                 "url": url,
                 "status": int(response.get("status") or 0),
-                "lane": lane_for(target or url),
+                "lane": self._lane(session_id, url),
             }
             with self._lock:
                 self._pending[(session_id, request_id)] = item
@@ -352,14 +377,13 @@ class FeedTargets:
             lowered = text.lower()
             if "sports" not in lowered and "erisgaming" not in lowered:
                 return
-            target = self._sessions.get(session_id, "")
             with self._lock:
                 self._ready.append(
                     {
                         "kind": "socket",
                         "session_id": session_id,
                         "url": "wss://frame",
-                        "lane": lane_for(target),
+                        "lane": self._lane(session_id, ""),
                         "payload": text[:2_000_000],
                     }
                 )
