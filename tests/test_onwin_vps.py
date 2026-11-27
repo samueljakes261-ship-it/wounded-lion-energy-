@@ -131,6 +131,13 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
     assert "threading.Thread" not in collector
+    assert collector.count("bring_to_front") == 1
+    assert "read_captured_body" in collector
+    assert "Network.getResponseBody" in collector
+    listen = (ROOT / "experiments" / "onwin_vps" / "listen.py").read_text(encoding="utf-8")
+    assert "getResponseBody" not in listen
+    assert "page.goto" not in listen
+    assert "reload" not in listen
     local = (ROOT / "parsers" / "onwin" / "local_collector.py").read_text(encoding="utf-8")
     assert "ONWIN_VPS" not in local
 
@@ -439,6 +446,92 @@ def test_status_file_round_trip(tmp_path, monkeypatch):
     assert payload["prematch_odds"] == 3
     assert payload["last_live_success"] is None
     assert payload["cdp_url"].endswith(":9223")
+
+
+def test_quiet_live_page_is_asked_again_without_a_reload():
+    from experiments.onwin_vps.collector import _payload_key
+    from experiments.onwin_vps.listen import (
+        LaneTap,
+        replay_headers,
+        should_keep_awake,
+        should_replay_feed,
+    )
+
+    assert should_replay_feed(
+        seconds_since_traffic=2,
+        seconds_since_replay=30,
+        challenge=False,
+        have_request=True,
+    ) is False
+    assert should_replay_feed(
+        seconds_since_traffic=10,
+        seconds_since_replay=30,
+        challenge=True,
+        have_request=True,
+    ) is False
+    assert should_replay_feed(
+        seconds_since_traffic=10,
+        seconds_since_replay=30,
+        challenge=False,
+        have_request=False,
+    ) is False
+    assert should_replay_feed(
+        seconds_since_traffic=10,
+        seconds_since_replay=1,
+        challenge=False,
+        have_request=True,
+    ) is False
+    assert should_replay_feed(
+        seconds_since_traffic=10,
+        seconds_since_replay=5,
+        challenge=False,
+        have_request=True,
+    ) is True
+    assert should_keep_awake(challenge=True, seconds_since_awake=100) is False
+    assert should_keep_awake(challenge=False, seconds_since_awake=1) is False
+    assert should_keep_awake(challenge=False, seconds_since_awake=15) is True
+    headers = replay_headers(
+        {
+            "Cookie": "session=secret",
+            "X-Token": "abc",
+            "Content-Type": "application/json",
+            "Host": "api.example",
+        }
+    )
+    assert "cookie" not in headers
+    assert headers["x-token"] == "abc"
+    assert "host" not in headers
+    gap = "https://api.example/sumstats.frontserver.command.get_main_line_gap.erisgaming"
+    snap = "https://api.example/sumstats.frontserver.command.get_main_line.erisgaming"
+    tap = LaneTap()
+    tap.note_request("1", gap, "POST", {"X-Token": "abc", "Cookie": "nope"}, '{"n":1}')
+    tap.note_request("2", snap, "GET", {"Cookie": "nope"}, None)
+    choice = tap.replay_choice(False)
+    assert choice is not None
+    assert "get_main_line_gap" in choice["url"]
+    assert choice["body"] == '{"n":1}'
+    assert "cookie" not in choice["headers"]
+    full = tap.replay_choice(True)
+    assert full is not None and full["kind"] == "snapshot"
+    tap.note_response("2", snap, 200)
+    tap.note_finished("2")
+    ready = tap.take_ready()
+    assert ready[0]["id"] == "2"
+    assert ready[0]["status"] == 200
+    assert tap.take_ready() == []
+    tap.note_socket('{"sports":{}}')
+    assert tap.take_ready()[0]["kind"] == "socket"
+    bare = LaneTap()
+    bare.note_request("9", gap, "POST", {}, None)
+    assert bare.replay_choice(False) is None
+    assert bare.bodies_needed() == ["9"]
+    bare.set_post_data("9", "{}")
+    filled = bare.replay_choice(False)
+    assert filled is not None and filled["body"] == "{}"
+    prefix = "p" * 500
+    left = _payload_key(snap, {"prefix": prefix, "tail": 1})
+    right = _payload_key(snap, {"prefix": prefix, "tail": 2})
+    assert left != right
 
 
 def test_reclaim_releases_a_lock_leaked_to_a_child():

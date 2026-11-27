@@ -11,10 +11,14 @@ ingest token. A dropped debugger reconnects without closing the tabs.
 Chrome is restarted when port 9223 is down, or when that port answers but the collector still cannot attach. Background-tab
 throttling is disabled so the sportsbook keeps sending odds. A quiet
 tab is left open. Reloading it sent both feeds through Cloudflare and
-both collectors dropped. The last good odds stay in the snapshot files
-through a debugger reconnect: live for three minutes, prematch for
-fifteen. A Cloudflare check is left alone. Chrome comes back on the
-last session instead of opening the sportsbook again.
+both collectors dropped. Response bodies are read on the collector
+loop, not inside a debugger event, so a burst of odds cannot stall the
+connection. If the live page then goes quiet, the collector asks that
+same open page for the last feed again. It does not navigate. The last
+good odds stay in the snapshot files through a debugger reconnect: live
+for three minutes, prematch for fifteen. A Cloudflare check is left
+alone. Chrome comes back on the last session instead of opening the
+sportsbook again.
 
 ```bash
 cd ~/apps/ArbScanner

@@ -7,11 +7,17 @@ not launch a browser.
 
 Odds are written straight into the live and prematch snapshot files the
 engine already reads. No ingest token and no VNC desktop.
+
+Response bodies are read on the collector loop, never inside a debugger
+event. Reading them there stopped the connection after a short burst and
+the dashboard returned to error. When the open live page goes quiet, the
+same request is sent again from that page. The tab is not reloaded.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -22,6 +28,15 @@ import urllib.request
 from pathlib import Path
 
 from experiments.onwin_vps.book import CollectionBook
+from experiments.onwin_vps.listen import (
+    KEEP_AWAKE_SECONDS,
+    KEEP_AWAKE_SOURCE,
+    REPLAY_SOURCE,
+    SNAPSHOT_REPLAY_GAP_SECONDS,
+    LaneTap,
+    should_keep_awake,
+    should_replay_feed,
+)
 from experiments.onwin_vps.safety import OnwinVpsGuardError, validate_target
 from parsers.kolay90_prematch.login import is_challenge_text, read_tab_quickly
 from parsers.onwin.local_collector import (
@@ -397,17 +412,42 @@ def _short(page, timeout_ms: int, action):
                 pass
 
 
-def _keep_page_active(page, step: int) -> None:
-    """Leave the tab focused so a Cloudflare check can finish and render.
+def read_captured_body(session, request_id: str):
+    """Read one finished response on the collector loop.
 
-    No click and no reload. A background tab stays dormant, which is the
-    same state as never opening the live page by hand.
+    Called only from the loop. A debugger event must not call this.
+    The event would wait on the same connection it is running on, and
+    the live feed would stop.
     """
-    del step
-    try:
-        page.bring_to_front()
-    except Exception:
-        pass
+    result = session.send("Network.getResponseBody", {"requestId": request_id})
+    body = result.get("body") or ""
+    if result.get("base64Encoded"):
+        body = base64.b64decode(body)
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", "replace")
+    if not body:
+        return None
+    return json.loads(body)
+
+
+def _hold_focus(session) -> None:
+    """Keep Chrome from treating the live tab as hidden.
+
+    Raising the tab on a timer counted as a focus change. The sportsbook
+    then stopped its live poll. Focus is held on the debugger session
+    that is already attached to the open page.
+    """
+    if session is None:
+        return
+    for method, params in (
+        ("Emulation.setFocusEmulationOverride", {"focus": True}),
+        ("Emulation.setIdleOverride", {"isUserActive": True, "isScreenUnlocked": True}),
+        ("Page.setWebLifecycleState", {"state": "active"}),
+    ):
+        try:
+            session.send(method, params)
+        except Exception:
+            pass
 
 
 def _page_text(page) -> str:
@@ -421,12 +461,6 @@ def _page_text(page) -> str:
     return text or ""
 
 
-def _request_key(request) -> str:
-    impl = getattr(request, "_impl_obj", None)
-    guid = getattr(impl, "_guid", None) if impl is not None else None
-    return str(guid or "")
-
-
 def _goto(page, url: str, label: str, wait_until: str = "domcontentloaded", timeout: int = 60000) -> None:
     _log(f"Opening {label} {url}")
     try:
@@ -436,25 +470,22 @@ def _goto(page, url: str, label: str, wait_until: str = "domcontentloaded", time
 
 
 def _payload_key(url: str, raw) -> str:
+    """Identity of one feed body.
+
+    A short prefix treated two different live updates as the same body
+    and dropped the second. The full body is hashed so only a real
+    repeat is recognized, and that repeat still refreshes the book.
+    """
     try:
-        sample = json.dumps(raw, sort_keys=True, default=str)[:240]
+        blob = json.dumps(raw, default=str, separators=(",", ":"))
     except Exception:
-        sample = ""
-    return _safe_path(url) + "|" + sample
+        blob = ""
+    digest = hashlib.sha256(blob.encode("utf-8", "replace")).hexdigest()
+    return _safe_path(url) + "|" + digest
 
 
 def _safe_path(url: str) -> str:
     return (url or "").split("?", 1)[0][-160:]
-
-
-def _on_sportsbook(owner, live_page, prematch_page) -> bool:
-    if owner is None or owner is live_page or owner is prematch_page:
-        return True
-    try:
-        url = (owner.url or "").lower()
-    except Exception:
-        return False
-    return "onwin" in url or "sportsbook" in url
 
 
 def _refresh(page, url: str, label: str) -> None:
@@ -605,18 +636,33 @@ def run_forever(book: CollectionBook | None = None) -> int:
         if "erisgaming" in lowered or "4297.lol" in lowered:
             book.note_api(_safe_path(url))
 
-    def apply_captured(url: str, raw, lane: str) -> None:
+    def apply_captured(url: str, raw, lane: str, kind: str | None = None) -> None:
+        kind = kind or feed_kind(url)
+        if kind is None:
+            _note_feed_url(url)
+            _write_status(book)
+            return
         key = _payload_key(url, raw)
         if key in seen_payloads:
+            # The same body still proves the feed is alive. Refresh the
+            # snapshot the engine reads, or thirty quiet seconds become
+            # an error even though the page answered.
+            book.note_response()
+            book.note_traffic(kind, lane or "live")
+            fresh = lane or "live"
+            if held.get(fresh):
+                remember(fresh, held[fresh])
+                if fresh == "live":
+                    publish_live(from_network=True)
+                else:
+                    publish_prematch(from_network=True)
+            else:
+                _write_status(book)
             return
         seen_payloads.add(key)
         if len(seen_payloads) > 4000:
             seen_payloads.clear()
         _note_feed_url(url)
-        kind = feed_kind(url)
-        if kind is None:
-            _write_status(book)
-            return
         payload = unwrap_sports(raw)
         if payload is None:
             if kind == "snapshot" and isinstance(raw, dict):
@@ -625,7 +671,16 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     f"keys={sorted(raw)[:8]} path={_safe_path(url)}"
                 )
             book.note_traffic(kind, lane)
-            _write_status(book)
+            fresh = lane or "live"
+            if held.get(fresh):
+                book.note_response()
+                remember(fresh, held[fresh])
+                if fresh == "live":
+                    publish_live(from_network=True)
+                else:
+                    publish_prematch(from_network=True)
+            else:
+                _write_status(book)
             return
         book.note_response()
         lane = resolve_lane(lane, kind, payload)
@@ -659,7 +714,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 f"snapshot events={state.event_count} odds={len(odds)} "
                 f"replaced={adopted} path={_safe_path(url)}"
             )
-            if odds and (kind == "snapshot" or len(odds) >= len(held["live"])):
+            if odds:
                 remember("live", odds)
                 publish_live(from_network=True)
             else:
@@ -667,38 +722,12 @@ def run_forever(book: CollectionBook | None = None) -> int:
             return
         changed = state.apply_update(payload)
         odds = state.get_match_odds()
-        if odds and len(odds) >= len(held["live"]):
+        if odds:
             remember("live", odds)
-        if changed and odds:
-            _log(f"update changed_1x2={len(changed)} events={state.event_count}")
+            if changed:
+                _log(f"update changed_1x2={len(changed)} events={state.event_count}")
             publish_live(from_network=True)
         else:
-            _write_status(book)
-
-    def on_finished(request, live_page, prematch_page) -> None:
-        try:
-            url = request.url or ""
-            lowered = url.lower()
-            if "kolay" in lowered:
-                return
-            owner = _owner_page(request)
-            if not _on_sportsbook(owner, live_page, prematch_page):
-                return
-            kind = feed_kind(url)
-            if kind is None:
-                _note_feed_url(url)
-                return
-            lane = page_lane(owner, live_page, prematch_page)
-            response = request.response()
-            if response is None or response.status >= 400:
-                _note_feed_url(url)
-                book.note_traffic(kind, lane)
-                _write_status(book)
-                return
-            apply_captured(url, json.loads(response.body()), lane)
-        except Exception as exc:
-            book.last_error = type(exc).__name__
-            _log(f"response skipped ({type(exc).__name__})")
             _write_status(book)
 
     from playwright.sync_api import sync_playwright
@@ -732,90 +761,239 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 book.prematch_page = prematch_page.url or ""
                 _write_status(book)
 
-                seen_requests: set[str] = set()
+                taps = {"live": LaneTap(), "prematch": LaneTap()}
+                sessions = {"live": None, "prematch": None}
+                fallback: list = []
 
-                def _handler(request, live=live_page, pre=prematch_page):
-                    key = _request_key(request)
-                    if key:
-                        if key in seen_requests:
-                            return
-                        seen_requests.add(key)
-                    on_finished(request, live, pre)
-
-                def _on_response(response, live=live_page, pre=prematch_page):
+                def _arm_cdp(page, lane_name: str):
+                    """Remember response ids. Do not read bodies here."""
+                    tap = taps[lane_name]
                     try:
-                        request = response.request
-                    except Exception:
-                        return
-                    _handler(request, live, pre)
+                        session = page.context.new_cdp_session(page)
+                        session.send(
+                            "Network.enable",
+                            {
+                                "maxTotalBufferSize": 100 * 1024 * 1024,
+                                "maxResourceBufferSize": 50 * 1024 * 1024,
+                            },
+                        )
+                        try:
+                            session.send("Page.enable")
+                        except Exception:
+                            pass
+                    except Exception as exc:
+                        _log(f"{lane_name} network listen was not attached ({type(exc).__name__}).")
+                        return None
 
-                context.on("requestfinished", _handler)
+                    def request_will_be_sent(params):
+                        request = params.get("request") or {}
+                        post = request.get("postData")
+                        tap.note_request(
+                            str(params.get("requestId") or ""),
+                            str(request.get("url") or ""),
+                            str(request.get("method") or "GET"),
+                            request.get("headers") or {},
+                            post if isinstance(post, str) else None,
+                        )
+
+                    def response_received(params):
+                        response = params.get("response") or {}
+                        tap.note_response(
+                            str(params.get("requestId") or ""),
+                            str(response.get("url") or ""),
+                            int(response.get("status") or 0),
+                        )
+
+                    def loading_finished(params):
+                        tap.note_finished(str(params.get("requestId") or ""))
+
+                    def socket_frame(params):
+                        response = params.get("response") or {}
+                        payload = response.get("payloadData")
+                        if isinstance(payload, str):
+                            tap.note_socket(payload)
+
+                    session.on("Network.requestWillBeSent", request_will_be_sent)
+                    session.on("Network.responseReceived", response_received)
+                    session.on("Network.loadingFinished", loading_finished)
+                    session.on("Network.webSocketFrameReceived", socket_frame)
+                    if lane_name == "live":
+                        _hold_focus(session)
+                    return session
+
+                for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
+                    sessions[lane_name] = _arm_cdp(watched, lane_name)
+                attached = sum(1 for session in sessions.values() if session is not None)
+                _log(f"Capturing responses on {attached} open tabs. Those tabs are not reloaded.")
+
+                def _on_response(response):
+                    # Bodies are read on the loop. This only keeps a response
+                    # when the debugger listen on that tab did not attach.
+                    if sessions.get("live") is not None and sessions.get("prematch") is not None:
+                        return
+                    if len(fallback) >= 30:
+                        del fallback[:-29]
+                    fallback.append(response)
+
                 for watched in (live_page, prematch_page):
                     try:
                         watched.on("response", _on_response)
                     except Exception:
                         pass
 
-                def _arm_cdp(page, lane_name: str):
-                    """Record responses the open page sends. Do not reload it."""
-                    try:
-                        session = page.context.new_cdp_session(page)
-                        session.send("Network.enable")
-                    except Exception as exc:
-                        _log(f"{lane_name} network listen was not attached ({type(exc).__name__}).")
-                        return None
-                    if lane_name == "live":
+                def drain_tap(lane_name: str) -> None:
+                    session = sessions.get(lane_name)
+                    tap = taps[lane_name]
+                    if session is not None:
+                        for request_id in tap.bodies_needed():
+                            try:
+                                result = session.send(
+                                    "Network.getRequestPostData",
+                                    {"requestId": request_id},
+                                )
+                            except Exception:
+                                tap.restore_body_request(request_id)
+                                continue
+                            tap.set_post_data(request_id, (result or {}).get("postData"))
+                    for item in tap.take_ready():
                         try:
-                            session.send("Emulation.setFocusEmulationOverride", {"focus": True})
-                        except Exception:
-                            pass
-                    pending: dict[str, tuple[str, int]] = {}
-
-                    def response_received(params):
-                        response = params.get("response") or {}
-                        url = str(response.get("url") or "")
-                        lowered = url.lower()
-                        if "erisgaming" not in lowered and "4297.lol" not in lowered:
-                            return
-                        request_id = params.get("requestId")
-                        if request_id:
-                            pending[str(request_id)] = (url, int(response.get("status") or 0))
-
-                    def loading_finished(params):
-                        request_id = str(params.get("requestId") or "")
-                        found = pending.pop(request_id, None)
-                        if not found:
-                            return
-                        url, status = found
-                        kind = feed_kind(url)
-                        if kind is None or status >= 400:
-                            _note_feed_url(url)
-                            if kind is not None:
-                                book.note_traffic(kind, lane_name)
-                                _write_status(book)
-                            return
-                        try:
-                            result = session.send("Network.getResponseBody", {"requestId": request_id})
-                            body = result.get("body") or ""
-                            if result.get("base64Encoded"):
-                                body = base64.b64decode(body)
-                            if isinstance(body, bytes):
-                                body = body.decode("utf-8", "replace")
-                            apply_captured(url, json.loads(body), lane_name)
+                            if item.get("kind") == "socket":
+                                apply_captured(
+                                    item["url"],
+                                    json.loads(item["payload"]),
+                                    lane_name,
+                                    kind="update",
+                                )
+                                continue
+                            url = item["url"]
+                            status = int(item.get("status") or 0)
+                            kind = feed_kind(url)
+                            if kind is None or status >= 400:
+                                _note_feed_url(url)
+                                if kind is not None:
+                                    book.note_traffic(kind, lane_name)
+                                    _write_status(book)
+                                continue
+                            if session is None:
+                                continue
+                            raw = read_captured_body(session, item["id"])
+                            if raw is None:
+                                continue
+                            apply_captured(url, raw, lane_name)
                         except Exception as exc:
                             book.last_error = type(exc).__name__
-                            _log(f"response body was not read ({type(exc).__name__})")
+                            _log(f"response skipped ({type(exc).__name__})")
 
-                    session.on("Network.responseReceived", response_received)
-                    session.on("Network.loadingFinished", loading_finished)
-                    return session
+                def drain_fallback() -> None:
+                    if not fallback:
+                        return
+                    batch = fallback[:]
+                    fallback.clear()
+                    for response in batch:
+                        try:
+                            url = response.url or ""
+                            kind = feed_kind(url)
+                            if kind is None:
+                                _note_feed_url(url)
+                                continue
+                            owner = _owner_page(response.request)
+                            lane_name = page_lane(owner, live_page, prematch_page) or "live"
+                            if response.status >= 400:
+                                book.note_traffic(kind, lane_name)
+                                _write_status(book)
+                                continue
+                            apply_captured(url, json.loads(response.body()), lane_name)
+                        except Exception as exc:
+                            book.last_error = type(exc).__name__
+                            _log(f"response skipped ({type(exc).__name__})")
 
-                network_sessions = []
-                for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
-                    armed = _arm_cdp(watched, lane_name)
-                    if armed is not None:
-                        network_sessions.append(armed)
-                _log(f"Capturing responses on {len(network_sessions)} open tabs. Those tabs are not reloaded.")
+                def read_live_tab():
+                    live_read = read_tab_quickly(live_page)
+                    live_title = live_read[0] if live_read else ""
+                    live_url = live_read[1] if live_read else book.live_page
+                    live_text = ""
+                    if live_read and not is_challenge_text(live_title, live_url) and book.live_requests == 0:
+                        live_text = _page_text(live_page)
+                    challenge = bool(live_read) and live_page_is_challenge(live_title, live_url, live_text)
+                    if live_read is None:
+                        book.live_challenge = True if quiet["saw_challenge"] else book.live_challenge
+                    else:
+                        book.live_title = live_title
+                        book.live_challenge = challenge
+                    return live_read is not None, challenge, live_title
+
+                def poke_live(now: float, readable: bool, challenge: bool) -> None:
+                    blocked = challenge or not readable
+                    if should_keep_awake(
+                        challenge=blocked,
+                        seconds_since_awake=now - quiet["last_awake"],
+                    ):
+                        quiet["last_awake"] = now
+                        _hold_focus(sessions.get("live"))
+                        try:
+                            live_page.set_default_timeout(1500)
+                            live_page.evaluate(KEEP_AWAKE_SOURCE)
+                        except Exception as exc:
+                            _log(f"live tab was not marked visible ({type(exc).__name__})")
+                        finally:
+                            try:
+                                live_page.set_default_timeout(20000)
+                            except Exception:
+                                pass
+                    call = taps["live"].replay_choice(quiet["prefer_snapshot"])
+                    gap = SNAPSHOT_REPLAY_GAP_SECONDS if call and call["kind"] == "snapshot" else 4.0
+                    if not should_replay_feed(
+                        seconds_since_traffic=now - quiet["last_traffic"],
+                        seconds_since_replay=now - quiet["last_replay"],
+                        challenge=blocked,
+                        have_request=call is not None,
+                        minimum_gap=gap,
+                    ):
+                        return
+                    readable, challenge, _title = read_live_tab()
+                    if challenge or not readable:
+                        quiet["saw_challenge"] = quiet["saw_challenge"] or challenge
+                        quiet["last_replay"] = now + 12
+                        return
+                    quiet["last_replay"] = now
+                    before = book.responses_received
+                    _log(
+                        "live feed was quiet. Asking the open page again. "
+                        f"path={_safe_path(call['url'])}"
+                    )
+                    status = None
+                    try:
+                        live_page.set_default_timeout(8000)
+                        status = live_page.evaluate(
+                            REPLAY_SOURCE,
+                            {
+                                "url": call["url"],
+                                "method": call["method"],
+                                "headers": call["headers"],
+                                "body": call["body"],
+                            },
+                        )
+                    except Exception as exc:
+                        _log(f"live feed was not asked again ({type(exc).__name__})")
+                        quiet["prefer_snapshot"] = True
+                        quiet["last_replay"] = now + 12
+                        return
+                    finally:
+                        try:
+                            live_page.set_default_timeout(20000)
+                        except Exception:
+                            pass
+                    drain_tap("live")
+                    if book.responses_received != before:
+                        quiet["seen_responses"] = book.responses_received
+                        quiet["last_traffic"] = time.time()
+                        quiet["prefer_snapshot"] = False
+                        return
+                    quiet["prefer_snapshot"] = True
+                    quiet["last_replay"] = now + 12
+                    if isinstance(status, int):
+                        _log(f"live feed answered HTTP {status}. The tab stays open.")
+
                 try:
                     live_page.set_default_timeout(20000)
                     prematch_page.set_default_timeout(20000)
@@ -835,32 +1013,32 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     live_page.bring_to_front()
                 except Exception:
                     pass
+                _hold_focus(sessions.get("live"))
                 _write_status(book, force=True)
                 _log("Watching get_main_line.erisgaming. Ctrl+C stops only this collector.")
                 _log(f"tabs={len(context.pages)} live={book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
                 _log(
-                    "The live tab stays in front and is not reloaded. "
-                    "Responses are captured when the open page sends them."
+                    "The live tab is not reloaded. Responses are read as the open "
+                    "page sends them. A quiet live page is asked again from that same page."
                 )
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
                 blips = {"n": 0}
                 quiet = {
-                    "focus": "live",
-                    "loads": 0,
-                    "quiet_reloads": 0,
-                    "seen_requests": 0,
+                    "seen_responses": book.responses_received,
                     "last_traffic": watching_since,
-                    "woke_prematch": False,
                     "saw_challenge": False,
-                    "challenge_until": 0.0,
-                    "step": 0,
+                    "last_awake": 0.0,
+                    "last_replay": 0.0,
+                    "last_title": 0.0,
+                    "prefer_snapshot": False,
+                    "readable": False,
                 }
                 while True:
                     republish()
                     try:
-                        live_page.wait_for_timeout(5000)
+                        live_page.wait_for_timeout(500)
                     except Exception as exc:
                         blips["n"] += 1
                         book.last_error = type(exc).__name__
@@ -888,47 +1066,41 @@ def run_forever(book: CollectionBook | None = None) -> int:
                             "Odds stay published. Chrome stays open."
                         )
                         continue
+                    drain_tap("live")
+                    drain_tap("prematch")
+                    drain_fallback()
                     now = time.time()
-                    if book.live_requests != quiet["seen_requests"]:
-                        quiet["seen_requests"] = book.live_requests
+                    if book.responses_received != quiet["seen_responses"]:
+                        quiet["seen_responses"] = book.responses_received
                         quiet["last_traffic"] = now
-                    live_read = read_tab_quickly(live_page)
-                    live_title = live_read[0] if live_read else ""
-                    live_url = live_read[1] if live_read else book.live_page
-                    live_text = ""
-                    if live_read and not is_challenge_text(live_title, live_url) and book.live_requests == 0:
-                        live_text = _page_text(live_page)
-                    challenge = bool(live_read) and live_page_is_challenge(live_title, live_url, live_text)
-                    if live_read is None:
-                        book.live_challenge = True if quiet["saw_challenge"] else book.live_challenge
-                    else:
-                        book.live_title = live_title
-                        book.live_challenge = challenge
-                    quiet["step"] += 1
-                    _keep_page_active(live_page, quiet["step"])
-                    if challenge:
-                        first_challenge = not quiet["saw_challenge"]
-                        quiet["saw_challenge"] = True
-                        quiet["challenge_until"] = now
-                        if first_challenge:
-                            _log(
-                                "Cloudflare check is on the live tab. "
-                                "Leaving that page in front until it renders."
-                            )
+                    if now - quiet["last_title"] >= KEEP_AWAKE_SECONDS:
+                        readable, challenge, _title = read_live_tab()
+                        quiet["readable"] = readable
+                        quiet["last_title"] = now
+                        if challenge:
+                            first_challenge = not quiet["saw_challenge"]
+                            quiet["saw_challenge"] = True
+                            if first_challenge:
+                                _log(
+                                    "Cloudflare check is on the live tab. "
+                                    "Leaving that page in front until it renders."
+                                )
+                    poke_live(now, quiet["readable"], book.live_challenge is True)
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
-                        live_read = read_tab_quickly(live_page)
-                        title = live_read[0] if live_read else ""
+                        readable, challenge, title = read_live_tab()
+                        quiet["readable"] = readable
+                        quiet["last_title"] = now
                         _log(
                             f"still watching api_seen={book.api_seen} "
                             f"get_main_line={book.snapshots_seen} "
+                            f"updates={book.updates_seen} "
                             f"last_api={book.last_api_path} title={title!r} "
                             f"live={book.live_page}"
                         )
-                        _keep_page_active(live_page, quiet["step"])
-                        if live_read is None:
+                        if not readable:
                             _log("Live tab title was not read. Leaving it open.")
-                        elif is_challenge_text(title, live_read[1]):
+                        elif challenge:
                             _log("Cloudflare check is on the live tab. Waiting for it to finish. Not reloading.")
                         elif should_reload_live(title, book.live_page):
                             _log("Live tab left the sportsbook. Leaving it. Not reloading.")
