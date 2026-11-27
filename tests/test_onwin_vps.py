@@ -132,6 +132,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "connect_over_cdp" in collector
     assert "threading.Thread" not in collector
     assert "REPLAY_SOURCE" in collector
+    assert "settimeout(None)" in (ROOT / "experiments" / "onwin_vps" / "targets.py").read_text(encoding="utf-8")
     assert collector.count("bring_to_front") == 1
     assert "read_captured_body" in collector
     assert "Network.getResponseBody" in collector
