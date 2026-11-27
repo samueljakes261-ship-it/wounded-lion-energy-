@@ -125,7 +125,7 @@ function isOverUnderOpportunity(
 // opportunities; that is normal, healthy behavior, not a fault.
 type CollectorHealth = {
   name: string
-        collectorStatus: "RUNNING" | "STARTING" | "RECOVERING" | "DEGRADED" | "WAITING_FOR_DATA" | "STOPPED" | "ERROR"
+        collectorStatus: "RUNNING" | "STARTING" | "RECOVERING" | "DEGRADED" | "STOPPED" | "ERROR"
   lastSuccessfulCollection: string | null
   lastCollectionAttempt: string | null
   ageSeconds: number | null
@@ -271,7 +271,6 @@ const COLLECTOR_STATUS_STYLES: Record<CollectorHealth["collectorStatus"], string
   STARTING: "bg-amber-500/20 text-amber-300 border-amber-500/40",
   RECOVERING: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
   DEGRADED: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-  WAITING_FOR_DATA: "bg-sky-500/20 text-sky-200 border-sky-500/40",
   STOPPED: "bg-slate-600/30 text-slate-300 border-slate-500/40",
   ERROR: "bg-rose-500/20 text-rose-300 border-rose-500/40",
 }

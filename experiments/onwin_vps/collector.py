@@ -38,7 +38,6 @@ from experiments.onwin_vps.listen import (
     should_replay_feed,
 )
 from experiments.onwin_vps.safety import OnwinVpsGuardError, validate_target
-from experiments.onwin_vps.targets import FeedTargets, list_pages, public_page
 from parsers.kolay90_prematch.login import is_challenge_text, read_tab_quickly
 from parsers.onwin.local_collector import (
     _open_tabs,
@@ -47,7 +46,6 @@ from parsers.onwin.local_collector import (
     page_lane,
     PREMATCH_REOPEN_SECONDS,
     resolve_lane,
-    snapshot_lane,
     should_reload_live,
     should_reload_prematch,
     unwrap_sports,
@@ -334,15 +332,20 @@ def needs_chrome_restart(
     listening: bool,
     failed_while_listening: int = 0,
 ) -> bool:
-    """Restart Chrome when its port is down, or when attach keeps failing.
+    """Restart Chrome when its port is down, or when the websocket will not connect.
 
-    One timeout while port 9223 is open is a dropped debugger client.
-    Attach again. Replacing Chrome on that first timeout closed the
-    sportsbook session and took the port down.
+    One ordinary error while port 9223 is open is a dropped Playwright
+    session. Attach again. A TimeoutError from connect_over_cdp means
+    /json/version answered and the DevTools websocket did not. That Chrome
+    has to be replaced.
     """
-    del error_name
     if not listening:
         return True
+    # /json/version can answer while the DevTools websocket never accepts
+    # a client. That is the stuck Chrome this collector keeps hitting.
+    text = error_name or ""
+    if "TimeoutError" in text or "connect_over_cdp" in text:
+        return failed_while_listening >= 1
     return failed_while_listening >= ATTACH_FAILURES_BEFORE_RESTART
 
 
@@ -502,18 +505,6 @@ def _refresh(page, url: str, label: str) -> None:
         _log(f"{label} tab is already on the sportsbook. Leaving it open.")
         return
     _goto(page, url, label)
-
-
-def chosen_lane(owner_lane: str, payload) -> str:
-    """Use the sports tree when the tab that delivered it is the other book.
-
-    The prematch tab was the one sending updates. A live tree was counted
-    on prematch and then dropped, so live odds stayed at 0.
-    """
-    content = snapshot_lane(payload)
-    if content:
-        return content
-    return owner_lane or ""
 
 
 def _pages_loaded(live_url: str, prematch_url: str) -> bool:
@@ -680,16 +671,24 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     f"keys={sorted(raw)[:8]} path={_safe_path(url)}"
                 )
             book.note_traffic(kind, lane)
-            _write_status(book)
+            fresh = lane or "live"
+            if held.get(fresh):
+                book.note_response()
+                remember(fresh, held[fresh])
+                if fresh == "live":
+                    publish_live(from_network=True)
+                else:
+                    publish_prematch(from_network=True)
+            else:
+                _write_status(book)
             return
         book.note_response()
-        lane = chosen_lane(lane, payload) or resolve_lane(lane, kind, payload)
+        lane = resolve_lane(lane, kind, payload)
         book.note_traffic(kind, lane)
-        if lane == "prematch":
+        if lane == "prematch" and kind == "snapshot":
             matches = parse_prematch(payload)
             if not matches:
-                if kind == "snapshot":
-                    _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
+                _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
                 _write_status(book)
                 return
             prematch["matches"] = matches
@@ -731,164 +730,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
         else:
             _write_status(book)
 
-    def _remember_pages(rows) -> None:
-        for row in rows or []:
-            url = public_page(row.get("url") or "")
-            lowered = url.lower()
-            title = row.get("title") or ""
-            if "sportsbook/prelive" in lowered:
-                book.prematch_page = url
-                book.prematch_challenge = is_challenge_text(title, url)
-            elif "sportsbook/live" in lowered:
-                book.live_page = url
-                book.live_title = title
-                book.live_challenge = is_challenge_text(title, url)
-        book.page_loaded = _pages_loaded(book.live_page, book.prematch_page)
-
-    def _watch_open_tabs() -> None:
-        """Read the open tabs when the browser socket does not answer.
-
-        Playwright waits on the browser websocket. That socket can answer
-        /json/version and still never finish the handshake. Each tab has
-        its own socket, and that one accepts. Silence is not a disconnect.
-        """
-        nonlocal attach_failures
-        pages = list_pages(cdp_url())
-        if not pages:
-            raise RuntimeError("Chrome has no tab")
-        _remember_pages(pages)
-        book.chrome_listening = True
-        book.phase = "attaching"
-        book.listeners = len(pages)
-        _write_status(book, force=True)
-        frames = FeedTargets()
-        try:
-            frames.open_pages(cdp_url())
-        except Exception:
-            frames.close()
-            raise
-        book.attached = True
-        book.chrome_listening = True
-        book.last_error = None
-        book.phase = "watching"
-        book.listeners = len(pages)
-        book.targets = frames.attached
-        book.frames = frames.frame_labels()
-        attach_failures = 0
-        _log(f"Reading {len(pages)} open tabs. Chrome stays up.")
-
-        def sync() -> None:
-            try:
-                current = list_pages(cdp_url())
-            except Exception:
-                current = []
-            if current:
-                frames.note_urls(current)
-                _remember_pages(current)
-            book.targets = frames.attached
-            book.frames = frames.frame_labels()
-            book.listeners = len(frames.page_urls())
-
-        sync()
-        def _open_blank(marker: str, target: str) -> None:
-            current = book.live_page if marker == "live" else book.prematch_page
-            lowered = (current or "").lower()
-            if marker == "live" and "sportsbook/live" in lowered:
-                _log(f"{marker} tab is already on the sportsbook. Leaving it open.")
-                return
-            if marker == "prematch" and "sportsbook/prelive" in lowered:
-                _log(f"{marker} tab is already on the sportsbook. Leaving it open.")
-                return
-            for key, url in frames.page_urls():
-                page = (url or "").lower()
-                if page and not page.startswith("about:"):
-                    continue
-                try:
-                    frames.open_blank(key, target)
-                    _log(f"{marker} tab had no document. Opening it once.")
-                except Exception as exc:
-                    _log(f"{marker} tab was not opened ({type(exc).__name__})")
-                return
-            _log(f"{marker} tab is still loading. Leaving it open.")
-
-        _open_blank("live", live_page_url())
-        _open_blank("prematch", prematch_page_url())
-        for key, page_url in frames.page_urls():
-            lowered = (page_url or "").lower()
-            if "sportsbook/live" in lowered and "prelive" not in lowered:
-                try:
-                    frames.focus_page(key)
-                except Exception:
-                    pass
-                break
-        try:
-            frames.collect_frames()
-        except Exception:
-            pass
-        book.frames = frames.frame_labels()
-        _write_status(book, force=True)
-        awake = 0.0
-        try:
-            while True:
-                republish()
-                time.sleep(0.5)
-                if not _chrome_listening():
-                    raise RuntimeError("cdp down")
-                if not frames.alive():
-                    raise RuntimeError("tab socket closed")
-                sync()
-                book.attached = True
-                book.chrome_listening = True
-                book.phase = "watching"
-                for seen in frames.take_seen():
-                    _note_feed_url(seen)
-                for item in frames.take_ready():
-                    try:
-                        if item.get("kind") == "socket":
-                            apply_captured(
-                                item["url"],
-                                json.loads(item["payload"]),
-                                item.get("lane") or "live",
-                                kind="update",
-                            )
-                            continue
-                        url = item["url"]
-                        status = int(item.get("status") or 0)
-                        kind = feed_kind(url)
-                        lane_name = item.get("lane") or "live"
-                        if kind is None or status >= 400:
-                            _note_feed_url(url)
-                            if kind is not None:
-                                book.note_traffic(kind, lane_name)
-                            continue
-                        raw = frames.read_body(item.get("session_id") or "", item.get("request_id") or "")
-                        if not raw:
-                            continue
-                        apply_captured(url, json.loads(raw), lane_name)
-                    except Exception as exc:
-                        book.last_error = type(exc).__name__
-                        _log(f"response skipped ({type(exc).__name__})")
-                now = time.time()
-                if now - awake >= KEEP_AWAKE_SECONDS:
-                    awake = now
-                    source = f"({KEEP_AWAKE_SOURCE})()"
-                    for key, page_url in frames.page_urls():
-                        lowered = (page_url or "").lower()
-                        if "sportsbook/live" in lowered and "prelive" not in lowered:
-                            try:
-                                frames.focus_page(key)
-                            except Exception:
-                                pass
-                    try:
-                        frames.collect_frames()
-                    except Exception:
-                        pass
-                    book.frames = frames.frame_labels()
-                    frames.wake_all(source)
-                _write_status(book)
-        finally:
-            frames.close()
-
     from playwright.sync_api import sync_playwright
 
     last_chrome_restart = 0.0
@@ -906,13 +747,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _write_status(book, force=True)
                 if not book.chrome_listening:
                     raise RuntimeError("cdp down")
-                _log("Reading the open tabs. The browser socket is not required.")
-                try:
-                    _watch_open_tabs()
-                    continue
-                except Exception as exc:
-                    _log(f"open tabs were not read ({type(exc).__name__})")
-                    book.last_error = f"{type(exc).__name__}: {exc}"
                 _log(f"Attaching to dedicated Chrome at {cdp_url()}")
                 playwright = sync_playwright().start()
                 browser = playwright.chromium.connect_over_cdp(cdp_url(), timeout=20000)
