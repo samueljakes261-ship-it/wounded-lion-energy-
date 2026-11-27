@@ -194,6 +194,7 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
 
     from experiments.onwin_vps.collector import (
         live_page_is_challenge,
+        should_load_live_page,
         should_open_live_page,
         should_wake_silent_live,
     )
@@ -256,6 +257,22 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     ) is False
     from parsers.onwin.local_collector import resolve_lane
 
+    assert should_load_live_page(
+        live_requests=0, seconds_since_traffic=8, challenge=False, loads=0, quiet_reloads=0,
+        saw_challenge=False, seconds_since_clear=8,
+    ) is True
+    assert should_load_live_page(
+        live_requests=0, seconds_since_traffic=60, challenge=True, loads=0, quiet_reloads=0,
+        saw_challenge=True, seconds_since_clear=0,
+    ) is False
+    assert should_load_live_page(
+        live_requests=4, seconds_since_traffic=75, challenge=False, loads=1, quiet_reloads=0,
+        saw_challenge=False, seconds_since_clear=75,
+    ) is True
+    assert should_load_live_page(
+        live_requests=4, seconds_since_traffic=30, challenge=False, loads=1, quiet_reloads=0,
+        saw_challenge=False, seconds_since_clear=30,
+    ) is False
     assert live_page_is_challenge("Just a moment...", "https://onwin4921.com/sportsbook/live/main-line/soccer", "") is True
     assert live_page_is_challenge("Onwin", "https://onwin4921.com/sportsbook/live/main-line/soccer", "Checking your browser") is True
     assert live_page_is_challenge("Onwin", "https://onwin4921.com/sportsbook/live/main-line/soccer", "Main line") is False
