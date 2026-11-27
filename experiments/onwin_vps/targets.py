@@ -228,28 +228,22 @@ class FeedTargets:
             )
         except Exception:
             pass
-        attached = {
-            "autoAttach": True,
-            "waitForDebuggerOnStart": False,
-            "flatten": True,
-            "filter": [{"type": "iframe"}, {"type": "worker"}],
-        }
+        # No type filter. The odds frame is not always reported as an iframe,
+        # and a filter that misses it leaves the live tab at 0.
         try:
-            self._call("Target.setAutoAttach", attached, conn=conn, timeout=3)
+            self._call(
+                "Target.setAutoAttach",
+                {
+                    "autoAttach": True,
+                    "waitForDebuggerOnStart": False,
+                    "flatten": True,
+                },
+                conn=conn,
+                timeout=3,
+            )
         except Exception:
-            try:
-                self._call(
-                    "Target.setAutoAttach",
-                    {
-                        "autoAttach": True,
-                        "waitForDebuggerOnStart": False,
-                        "flatten": True,
-                    },
-                    conn=conn,
-                    timeout=3,
-                )
-            except Exception:
-                pass
+            pass
+        self.collect_frames()
         try:
             self._call("Page.enable", {}, conn=conn, timeout=2)
         except Exception:
@@ -267,6 +261,48 @@ class FeedTargets:
                 conn.sock.close()
             except Exception:
                 pass
+
+    def collect_frames(self) -> None:
+        """Record every document URL, including the sportsbook frame."""
+        for conn in list(self._conns):
+            if conn.dead:
+                continue
+            try:
+                result = self._call("Page.getFrameTree", {}, conn=conn, timeout=2)
+            except Exception:
+                continue
+            self._walk_frame(result.get("frameTree") or {})
+
+    def _walk_frame(self, node: dict) -> None:
+        frame = node.get("frame") or {}
+        url = public_page(str(frame.get("url") or ""))
+        if url and not url.lower().startswith("about:"):
+            self._add_frame(f"frame {url}")
+        for child in node.get("childFrames") or []:
+            if isinstance(child, dict):
+                self._walk_frame(child)
+
+    def _add_frame(self, label: str) -> None:
+        label = (label or "")[:180]
+        if not label:
+            return
+        with self._lock:
+            if label not in self._frames:
+                self._frames.append(label)
+                del self._frames[:-12]
+
+    def wake_all(self, source: str) -> None:
+        """Tell every sportsbook document it is visible, including a child frame."""
+        for key, conn in list(self._socket_of.items()):
+            if conn.dead:
+                continue
+            target = (self._sessions.get(key) or conn.url or "").lower()
+            if "analytics." in target or "fstrg" in target:
+                continue
+            try:
+                self.evaluate(key, source)
+            except Exception:
+                continue
 
     def frame_labels(self) -> list[str]:
         with self._lock:
@@ -333,6 +369,18 @@ class FeedTargets:
                 self.attached = len(self._sessions)
             return
         session_id = str(message.get("sessionId") or "")
+        if method == "Target.targetInfoChanged":
+            info = params.get("targetInfo") or {}
+            url = public_page(str(info.get("url") or ""))
+            if url:
+                self._add_frame(f"{info.get('type') or 'target'} {url}")
+            return
+        if method == "Network.webSocketCreated":
+            url = str(params.get("url") or "")
+            self._note_url(url)
+            if url:
+                self._add_frame(f"socket {public_page(url)}")
+            return
         if method == "Network.requestWillBeSent":
             request = params.get("request") or {}
             self._note_url(str(request.get("url") or ""))
@@ -368,10 +416,21 @@ class FeedTargets:
                     self.dropped += overflow
             return
         if method == "Network.webSocketFrameReceived":
-            payload = (params.get("response") or {}).get("payloadData")
+            response = params.get("response") or {}
+            payload = response.get("payloadData")
             if not isinstance(payload, str):
                 return
-            text = payload.lstrip()
+            text = payload
+            if int(response.get("opcode") or 1) == 2 or (text[:1] not in "{["):
+                import base64
+
+                try:
+                    decoded = base64.b64decode(payload).decode("utf-8", "replace").lstrip()
+                except Exception:
+                    decoded = ""
+                if decoded[:1] in "{[":
+                    text = decoded
+            text = text.lstrip()
             if not text or text[0] not in "{[":
                 return
             lowered = text.lower()
@@ -415,7 +474,7 @@ class FeedTargets:
             self.attached = max(len(self._socket_of), len(self._sessions))
             if url and label not in self._frames:
                 self._frames.append(label[:180])
-                del self._frames[:-8]
+                del self._frames[:-12]
 
     def _enable(self, session_id: str) -> None:
         conn = self._socket_of.get(session_id)

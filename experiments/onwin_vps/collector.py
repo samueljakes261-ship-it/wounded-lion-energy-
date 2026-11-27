@@ -47,6 +47,7 @@ from parsers.onwin.local_collector import (
     page_lane,
     PREMATCH_REOPEN_SECONDS,
     resolve_lane,
+    snapshot_lane,
     should_reload_live,
     should_reload_prematch,
     unwrap_sports,
@@ -503,6 +504,18 @@ def _refresh(page, url: str, label: str) -> None:
     _goto(page, url, label)
 
 
+def chosen_lane(owner_lane: str, payload) -> str:
+    """Use the sports tree when the tab that delivered it is the other book.
+
+    The prematch tab was the one sending updates. A live tree was counted
+    on prematch and then dropped, so live odds stayed at 0.
+    """
+    content = snapshot_lane(payload)
+    if content:
+        return content
+    return owner_lane or ""
+
+
 def _pages_loaded(live_url: str, prematch_url: str) -> bool:
     live = (live_url or "").lower()
     prematch = (prematch_url or "").lower()
@@ -667,24 +680,16 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     f"keys={sorted(raw)[:8]} path={_safe_path(url)}"
                 )
             book.note_traffic(kind, lane)
-            fresh = lane or "live"
-            if held.get(fresh):
-                book.note_response()
-                remember(fresh, held[fresh])
-                if fresh == "live":
-                    publish_live(from_network=True)
-                else:
-                    publish_prematch(from_network=True)
-            else:
-                _write_status(book)
+            _write_status(book)
             return
         book.note_response()
-        lane = resolve_lane(lane, kind, payload)
+        lane = chosen_lane(lane, payload) or resolve_lane(lane, kind, payload)
         book.note_traffic(kind, lane)
-        if lane == "prematch" and kind == "snapshot":
+        if lane == "prematch":
             matches = parse_prematch(payload)
             if not matches:
-                _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
+                if kind == "snapshot":
+                    _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
                 _write_status(book)
                 return
             prematch["matches"] = matches
@@ -816,6 +821,11 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 except Exception:
                     pass
                 break
+        try:
+            frames.collect_frames()
+        except Exception:
+            pass
+        book.frames = frames.frame_labels()
         _write_status(book, force=True)
         awake = 0.0
         try:
@@ -869,10 +879,12 @@ def run_forever(book: CollectionBook | None = None) -> int:
                                 frames.focus_page(key)
                             except Exception:
                                 pass
-                        try:
-                            frames.evaluate(key, source)
-                        except Exception:
-                            continue
+                    try:
+                        frames.collect_frames()
+                    except Exception:
+                        pass
+                    book.frames = frames.frame_labels()
+                    frames.wake_all(source)
                 _write_status(book)
         finally:
             frames.close()

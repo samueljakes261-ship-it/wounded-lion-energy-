@@ -312,6 +312,13 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
         saw_challenge=False, seconds_since_clear=60,
     ) is False
     assert resolve_lane("", "snapshot", _live_tree()) == "live"
+    from experiments.onwin_vps.collector import chosen_lane
+
+    assert chosen_lane("prematch", _live_tree()) == "live"
+    upcoming = _live_tree()
+    event = upcoming["sports"][FOOTBALL_SPORT_ID]["categories"]["c"]["tournaments"]["t"]["events"]["e"]
+    event["diff"]["status"] = "not_started"
+    assert chosen_lane("live", upcoming) == "prematch"
     assert resolve_lane("prematch", "snapshot", _live_tree()) == "prematch"
     assert resolve_lane("", "update", None) == "live"
     assert should_republish(seconds_since_network=10, hold_seconds=LIVE_HOLD_SECONDS) is True
