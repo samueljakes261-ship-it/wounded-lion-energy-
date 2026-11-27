@@ -130,6 +130,8 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "chromium.launch" not in collector
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
+    assert "connect_over_cdp(" not in collector
+    assert "open_pages" in collector
     assert "threading.Thread" not in collector
     assert "FeedTargets" in collector
     assert "public_page" in collector
@@ -648,7 +650,32 @@ def test_quiet_live_page_is_asked_again_without_a_reload():
 
 
 def test_sportsbook_frame_responses_are_kept_for_the_loop():
-    from experiments.onwin_vps.targets import FeedTargets, public_page, take_server_frames
+    from experiments.onwin_vps.targets import FeedTargets, public_page, select_pages, take_server_frames
+
+    pages = select_pages(
+        [
+            {
+                "type": "page",
+                "id": "tab-1",
+                "url": "https://onwin4921.com/sportsbook/live/main-line/soccer",
+                "title": "Onwin",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9223/devtools/page/tab-1",
+            },
+            {
+                "type": "iframe",
+                "id": "frame-9",
+                "url": "https://sports.example/embed",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9223/devtools/page/frame-9",
+            },
+            {
+                "type": "page",
+                "id": "remote",
+                "url": "https://example.com",
+                "webSocketDebuggerUrl": "ws://10.1.1.1:9223/devtools/page/remote",
+            },
+        ]
+    )
+    assert [page["id"] for page in pages] == ["tab-1"]
 
     assert public_page(
         "https://onwin4921.com/sportsbook/prelive/main-line/soccer?__cf_chl_rt_tk=secret"

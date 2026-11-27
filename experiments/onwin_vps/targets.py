@@ -103,21 +103,35 @@ def take_server_frames(buf: bytes) -> tuple[list[tuple[bool, int, bytes]], bytes
     return frames, buf
 
 
+class _Conn:
+    def __init__(self, sock: socket.socket, key: str, url: str):
+        self.sock = sock
+        self.key = key
+        self.url = url
+        self.lock = threading.Lock()
+        self.buf = b""
+        self.partial = b""
+        self.dead = False
+
+
 class FeedTargets:
-    """One debugger connection that follows pages and their frames."""
+    """Debugger sockets for the open tabs and the frames inside them.
+
+    The browser-level socket is the one Playwright waits on. HTTP
+    /json/version keeps answering while that handshake never finishes.
+    Each open tab has its own socket, and that one accepts.
+    """
 
     def __init__(self):
         self.attached = 0
-        self._sock: socket.socket | None = None
-        self._reader: threading.Thread | None = None
         self._lock = threading.Lock()
         self._wait: dict[int, tuple[threading.Event, dict]] = {}
         self._next = 1
-        self._send_lock = threading.Lock()
-        self._buf = b""
         self._partial = b""
         self._partial_opcode = 0
         self._closed = False
+        self._conns: list[_Conn] = []
+        self._socket_of: dict[str, _Conn] = {}
         self._sessions: dict[str, str] = {}
         self._frames: list[str] = []
         self._pending: dict[tuple[str, str], dict] = {}
@@ -125,49 +139,106 @@ class FeedTargets:
         self._seen: list[str] = []
         self.dropped = 0
 
-    def open(self, cdp: str) -> None:
-        ws_url = _browser_websocket(cdp)
-        self._sock = _connect_websocket(ws_url)
+    def open_pages(self, cdp: str) -> list[dict]:
+        pages = list_pages(cdp)
+        if not pages:
+            raise RuntimeError("Chrome has no tab")
         self._closed = False
-        self._reader = threading.Thread(target=self._read_loop, name="onwin-frames", daemon=True)
-        self._reader.start()
-        self._call("Target.setDiscoverTargets", {"discover": True})
+        for page in pages:
+            self._add_page(page)
+        if not self._conns:
+            raise RuntimeError("page socket was not accepted")
+        self.attached = len(self._socket_of)
+        return pages
+
+    def page_urls(self) -> list[tuple[str, str]]:
+        return [(conn.key, conn.url) for conn in self._conns if not conn.dead]
+
+    def note_urls(self, pages: list[dict]) -> None:
+        by_id = {str(page.get("id") or ""): public_page(str(page.get("url") or "")) for page in pages}
+        for conn in self._conns:
+            if conn.key in by_id and by_id[conn.key]:
+                conn.url = by_id[conn.key]
+
+    def alive(self) -> bool:
+        return any(not conn.dead for conn in self._conns)
+
+    def evaluate(self, key: str, source: str):
+        conn = self._socket_of.get(key)
+        if conn is None or conn.dead:
+            raise RuntimeError("tab is gone")
+        chrome_session = None if conn.key == key else key
+        result = self._call(
+            "Runtime.evaluate",
+            {"expression": source, "returnByValue": True},
+            conn=conn,
+            chrome_session=chrome_session,
+            timeout=2,
+        )
+        return (result.get("result") or {}).get("value")
+
+    def bring_to_front(self, key: str) -> None:
+        conn = self._socket_of.get(key)
+        if conn is None:
+            return
+        self._call("Page.bringToFront", {}, conn=conn, timeout=2)
+
+    def _add_page(self, page: dict) -> None:
+        sock = _connect_websocket(str(page.get("webSocketDebuggerUrl") or ""), timeout=3)
+        conn = _Conn(sock, str(page.get("id") or ""), public_page(str(page.get("url") or "")))
+        self._conns.append(conn)
+        self._socket_of[conn.key] = conn
+        self._remember(conn.key, "page", conn.url)
+        threading.Thread(target=self._read_loop, args=(conn,), name="onwin-page", daemon=True).start()
         try:
             self._call(
-                "Target.setAutoAttach",
+                "Network.enable",
                 {
-                    "autoAttach": True,
-                    "waitForDebuggerOnStart": False,
-                    "flatten": True,
-                    "filter": [
-                        {"type": "page"},
-                        {"type": "iframe"},
-                        {"type": "worker"},
-                        {"type": "service_worker"},
-                    ],
+                    "maxTotalBufferSize": 100 * 1024 * 1024,
+                    "maxResourceBufferSize": 50 * 1024 * 1024,
                 },
+                conn=conn,
+                timeout=3,
             )
         except Exception:
-            self._call(
-                "Target.setAutoAttach",
-                {
-                    "autoAttach": True,
-                    "waitForDebuggerOnStart": False,
-                    "flatten": True,
-                },
-            )
+            pass
+        attached = {
+            "autoAttach": True,
+            "waitForDebuggerOnStart": False,
+            "flatten": True,
+            "filter": [{"type": "iframe"}, {"type": "worker"}],
+        }
+        try:
+            self._call("Target.setAutoAttach", attached, conn=conn, timeout=3)
+        except Exception:
+            try:
+                self._call(
+                    "Target.setAutoAttach",
+                    {
+                        "autoAttach": True,
+                        "waitForDebuggerOnStart": False,
+                        "flatten": True,
+                    },
+                    conn=conn,
+                    timeout=3,
+                )
+            except Exception:
+                pass
+        try:
+            self._call("Page.enable", {}, conn=conn, timeout=2)
+        except Exception:
+            pass
 
     def close(self) -> None:
         self._closed = True
-        sock = self._sock
-        self._sock = None
-        if sock is not None:
+        for conn in self._conns:
+            conn.dead = True
             try:
-                sock.shutdown(socket.SHUT_RDWR)
+                conn.sock.shutdown(socket.SHUT_RDWR)
             except Exception:
                 pass
             try:
-                sock.close()
+                conn.sock.close()
             except Exception:
                 pass
 
@@ -190,11 +261,16 @@ class FeedTargets:
     def read_body(self, session_id: str, request_id: str) -> str | None:
         if not session_id or not request_id:
             return None
+        conn = self._socket_of.get(session_id)
+        if conn is None or conn.dead:
+            return None
+        chrome_session = None if conn.key == session_id else session_id
         try:
             result = self._call(
                 "Network.getResponseBody",
                 {"requestId": request_id},
-                session_id=session_id,
+                conn=conn,
+                chrome_session=chrome_session,
                 timeout=8,
             )
         except Exception:
@@ -211,7 +287,7 @@ class FeedTargets:
                 return None
         return body
 
-    def accept(self, message: dict) -> None:
+    def accept(self, message: dict, origin: _Conn | None = None) -> None:
         """Handle one debugger message. Tests call this without a socket."""
         method = str(message.get("method") or "")
         params = message.get("params") or {}
@@ -219,6 +295,9 @@ class FeedTargets:
             self._fulfill(int(message["id"]), message.get("result") or {}, message.get("error"))
             return
         if method == "Target.attachedToTarget":
+            child = str(params.get("sessionId") or "")
+            if child and origin is not None:
+                self._socket_of[child] = origin
             self._attached(params)
             return
         if method == "Target.detachedFromTarget":
@@ -293,12 +372,7 @@ class FeedTargets:
         if not session_id:
             return
         label = f"{kind} {url}".strip()
-        with self._lock:
-            self._sessions[session_id] = url
-            self.attached = len(self._sessions)
-            if url and label not in self._frames:
-                self._frames.append(label[:180])
-                del self._frames[:-8]
+        self._remember(session_id, kind, url)
         self._enable(session_id)
 
     def _note_url(self, url: str) -> None:
@@ -309,9 +383,21 @@ class FeedTargets:
             self._seen.append(path)
             del self._seen[:-20]
 
+    def _remember(self, session_id: str, kind: str, url: str) -> None:
+        label = f"{kind} {url}".strip()
+        with self._lock:
+            if url:
+                self._sessions[session_id] = url
+            self.attached = max(len(self._socket_of), len(self._sessions))
+            if url and label not in self._frames:
+                self._frames.append(label[:180])
+                del self._frames[:-8]
+
     def _enable(self, session_id: str) -> None:
-        if self._sock is None:
+        conn = self._socket_of.get(session_id)
+        if conn is None:
             return
+        chrome_session = None if conn.key == session_id else session_id
         try:
             self._send(
                 "Network.enable",
@@ -319,20 +405,27 @@ class FeedTargets:
                     "maxTotalBufferSize": 100 * 1024 * 1024,
                     "maxResourceBufferSize": 50 * 1024 * 1024,
                 },
-                session_id=session_id,
-                wait=False,
+                conn=conn,
+                chrome_session=chrome_session,
             )
         except Exception:
             return
 
-    def _call(self, method: str, params: dict | None = None, session_id: str | None = None, timeout: float = 8):
+    def _call(
+        self,
+        method: str,
+        params: dict | None = None,
+        conn: _Conn | None = None,
+        chrome_session: str | None = None,
+        timeout: float = 8,
+    ):
         event = threading.Event()
         box: dict = {}
         with self._lock:
             message_id = self._next
             self._next += 1
             self._wait[message_id] = (event, box)
-        self._send(method, params or {}, session_id=session_id, message_id=message_id)
+        self._send(method, params or {}, conn=conn, chrome_session=chrome_session, message_id=message_id)
         if not event.wait(timeout):
             with self._lock:
                 self._wait.pop(message_id, None)
@@ -341,21 +434,26 @@ class FeedTargets:
             raise RuntimeError(str(box["error"])[:160])
         return box.get("result") or {}
 
-    def _send(self, method: str, params: dict, session_id: str | None = None, message_id: int | None = None, wait: bool = True):
-        del wait
+    def _send(
+        self,
+        method: str,
+        params: dict,
+        conn: _Conn | None = None,
+        chrome_session: str | None = None,
+        message_id: int | None = None,
+    ):
         if message_id is None:
             with self._lock:
                 message_id = self._next
                 self._next += 1
-        message = {"id": message_id, "method": method, "params": params}
-        if session_id:
-            message["sessionId"] = session_id
-        sock = self._sock
-        if sock is None:
+        if conn is None:
             return
+        message = {"id": message_id, "method": method, "params": params}
+        if chrome_session:
+            message["sessionId"] = chrome_session
         data = encode_client_text(json.dumps(message))
-        with self._send_lock:
-            sock.sendall(data)
+        with conn.lock:
+            conn.sock.sendall(data)
 
     def _fulfill(self, message_id: int, result: dict, error) -> None:
         with self._lock:
@@ -367,52 +465,91 @@ class FeedTargets:
         box["error"] = error
         event.set()
 
-    def _read_loop(self) -> None:
-        sock = self._sock
-        if sock is None:
-            return
+    def _read_loop(self, conn: _Conn) -> None:
         try:
-            while not self._closed:
-                chunk = sock.recv(65536)
+            while not self._closed and not conn.dead:
+                chunk = conn.sock.recv(65536)
                 if not chunk:
                     break
-                self._buf += chunk
-                frames, self._buf = take_server_frames(self._buf)
+                conn.buf += chunk
+                frames, conn.buf = take_server_frames(conn.buf)
                 for finished, opcode, data in frames:
-                    self._take_opcode(sock, finished, opcode, data)
+                    self._take_opcode(conn, finished, opcode, data)
         except Exception:
-            return
+            pass
+        conn.dead = True
 
-    def _take_opcode(self, sock: socket.socket, finished: bool, opcode: int, data: bytes) -> None:
+    def _take_opcode(self, conn: _Conn | None, finished: bool, opcode: int, data: bytes) -> None:
+        partial = conn.partial if conn is not None else self._partial
         if opcode in {0, 1}:
             if opcode == 1:
-                self._partial = data
-                self._partial_opcode = 1
+                partial = data
             else:
-                self._partial += data
+                partial += data
+            if conn is not None:
+                conn.partial = b"" if finished else partial
+            else:
+                self._partial = b"" if finished else partial
             if not finished:
                 return
-            payload = self._partial
-            self._partial = b""
-            self._dispatch_text(payload)
+            self._dispatch_text(partial, conn)
             return
-        if opcode == 9:
+        if opcode == 9 and conn is not None:
             try:
-                with self._send_lock:
-                    sock.sendall(encode_client_frame(0xA, data))
+                with conn.lock:
+                    conn.sock.sendall(encode_client_frame(0xA, data))
             except Exception:
                 return
             return
-        if opcode == 8:
-            self._closed = True
+        if opcode == 8 and conn is not None:
+            conn.dead = True
 
-    def _dispatch_text(self, data: bytes) -> None:
+    def _dispatch_text(self, data: bytes, origin: _Conn | None = None) -> None:
         try:
             message = json.loads(data.decode("utf-8"))
         except Exception:
             return
-        if isinstance(message, dict):
-            self.accept(message)
+        if not isinstance(message, dict):
+            return
+        if origin is not None and message.get("method") and not message.get("sessionId"):
+            if message.get("method") != "Target.attachedToTarget":
+                message["sessionId"] = origin.key
+        self.accept(message, origin)
+
+
+def list_pages(cdp: str) -> list[dict]:
+    """Open tabs from /json/list. The browser websocket is not used."""
+    parts = urlsplit(cdp if "://" in cdp else f"http://{cdp}")
+    host = parts.hostname or ""
+    if host not in {"127.0.0.1", "localhost"}:
+        raise ValueError("debugger host is not local")
+    port = parts.port or 9223
+    with urlopen(f"http://127.0.0.1:{port}/json/list", timeout=3) as response:
+        rows = json.loads(response.read().decode("utf-8"))
+    return select_pages(rows if isinstance(rows, list) else [])
+
+
+def select_pages(rows: list) -> list[dict]:
+    pages = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("type") != "page":
+            continue
+        ws_url = str(row.get("webSocketDebuggerUrl") or "")
+        ws_parts = urlsplit(ws_url)
+        if ws_parts.hostname not in {"127.0.0.1", "localhost"}:
+            continue
+        url = str(row.get("url") or "")
+        if url.startswith(("chrome:", "devtools:", "chrome-extension:")):
+            continue
+        pages.append(
+            {
+                "id": str(row.get("id") or ""),
+                "url": url,
+                "title": str(row.get("title") or ""),
+                "webSocketDebuggerUrl": ws_url,
+            }
+        )
+    return pages
 
 
 def _browser_websocket(cdp: str) -> str:
@@ -430,10 +567,12 @@ def _browser_websocket(cdp: str) -> str:
     return ws_url
 
 
-def _connect_websocket(ws_url: str) -> socket.socket:
+def _connect_websocket(ws_url: str, timeout: float = 3) -> socket.socket:
     parts = urlsplit(ws_url)
+    if parts.hostname not in {"127.0.0.1", "localhost"}:
+        raise ValueError("debugger socket is not local")
     port = parts.port or 80
-    sock = socket.create_connection((parts.hostname, port), timeout=5)
+    sock = socket.create_connection((parts.hostname, port), timeout=timeout)
     sock.settimeout(2)
     key = os.urandom(16)
     import base64
