@@ -458,22 +458,19 @@ def _on_sportsbook(owner, live_page, prematch_page) -> bool:
 
 
 def _refresh(page, url: str, label: str) -> None:
-    """Open a tab that has left the sportsbook. Leave one that is already there.
+    """Leave an open tab alone. Navigate only a blank tab created this run.
 
-    A Cloudflare address often no longer contains the sportsbook path.
-    Opening that tab again restarts the check. A tab already on the
-    sportsbook is also left open so get_main_line can finish.
+    A tab that already has a document, including one on Cloudflare or one
+    whose address left the sportsbook, is not opened again. Doing that
+    after the feed had started was putting the live page back on
+    "Just a moment..." and the dashboard returned to error.
     """
-    marker = "sportsbook/prelive" if label == "prematch" else "sportsbook/live"
     read = read_tab_quickly(page)
     if read is None:
         _log(f"{label} tab is still loading. Leaving it open.")
         return
-    title, page_url = read
-    if is_challenge_text(title, page_url):
-        _log(f"{label} tab is on a Cloudflare check. Leaving it open.")
-        return
-    if marker in page_url.lower():
+    _title, page_url = read
+    if page_url and not page_url.lower().startswith("about:"):
         _log(f"{label} tab is already on the sportsbook. Leaving it open.")
         return
     _goto(page, url, label)
@@ -848,7 +845,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 )
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
-                last_prematch_open = time.time()
                 blips = {"n": 0}
                 quiet = {
                     "focus": "live",
@@ -900,13 +896,11 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     live_title = live_read[0] if live_read else ""
                     live_url = live_read[1] if live_read else book.live_page
                     live_text = ""
-                    if live_read and not is_challenge_text(live_title, live_url):
+                    if live_read and not is_challenge_text(live_title, live_url) and book.live_requests == 0:
                         live_text = _page_text(live_page)
                     challenge = bool(live_read) and live_page_is_challenge(live_title, live_url, live_text)
-                    if book.live_requests > 0 and not challenge:
-                        book.live_challenge = False
-                    elif live_read is None:
-                        book.live_challenge = True if quiet["saw_challenge"] else None
+                    if live_read is None:
+                        book.live_challenge = True if quiet["saw_challenge"] else book.live_challenge
                     else:
                         book.live_title = live_title
                         book.live_challenge = challenge
@@ -935,22 +929,16 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         if live_read is None:
                             _log("Live tab title was not read. Leaving it open.")
                         elif is_challenge_text(title, live_read[1]):
-                            _log("Cloudflare check is on the live tab. Waiting for it to finish.")
+                            _log("Cloudflare check is on the live tab. Waiting for it to finish. Not reloading.")
                         elif should_reload_live(title, book.live_page):
-                            _log("Live tab left the sportsbook. Opening it again.")
-                            _goto(live_page, live_page_url(), "live")
+                            _log("Live tab left the sportsbook. Leaving it. Not reloading.")
                         prematch_read = read_tab_quickly(prematch_page)
                         if prematch_read is None:
                             _log("Prematch tab title was not read. Leaving it open.")
                         elif is_challenge_text(prematch_read[0], prematch_read[1]):
-                            _log("Cloudflare check is on the prematch tab. Waiting for it to finish.")
-                        elif (
-                            should_reload_prematch(prematch_read[0], book.prematch_page)
-                            and now - last_prematch_open >= PREMATCH_REOPEN_SECONDS
-                        ):
-                            last_prematch_open = now
-                            _log("Prematch tab left prelive. Opening it again.")
-                            _goto(prematch_page, prematch_page_url(), "prematch")
+                            _log("Cloudflare check is on the prematch tab. Leaving it. Not reloading.")
+                        elif should_reload_prematch(prematch_read[0], book.prematch_page):
+                            _log("Prematch tab left prelive. Leaving it. Not reloading.")
                     _write_status(book)
             except KeyboardInterrupt:
                 _log("Stopped. The dedicated Chrome stays open.")
