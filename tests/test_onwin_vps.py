@@ -260,7 +260,7 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_load_live_page(
         live_requests=0, seconds_since_traffic=8, challenge=False, loads=0, quiet_reloads=0,
         saw_challenge=False, seconds_since_clear=8,
-    ) is True
+    ) is False
     assert should_load_live_page(
         live_requests=0, seconds_since_traffic=60, challenge=True, loads=0, quiet_reloads=0,
         saw_challenge=True, seconds_since_clear=0,
@@ -268,7 +268,7 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_load_live_page(
         live_requests=4, seconds_since_traffic=75, challenge=False, loads=1, quiet_reloads=0,
         saw_challenge=False, seconds_since_clear=75,
-    ) is True
+    ) is False
     assert should_load_live_page(
         live_requests=4, seconds_since_traffic=30, challenge=False, loads=1, quiet_reloads=0,
         saw_challenge=False, seconds_since_clear=30,
@@ -279,7 +279,7 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_open_live_page(
         live_requests=0, seconds_open=5, challenge=False, opened=False, readable=True,
         saw_challenge=False, seconds_since_clear=5,
-    ) is True
+    ) is False
     assert should_open_live_page(
         live_requests=0, seconds_open=30, challenge=True, opened=False, readable=True,
         saw_challenge=True, seconds_since_clear=0,
@@ -291,7 +291,7 @@ def test_a_dropped_debugger_reattaches_while_chrome_stays_up():
     assert should_open_live_page(
         live_requests=0, seconds_open=60, challenge=False, opened=False, readable=True,
         saw_challenge=True, seconds_since_clear=25,
-    ) is True
+    ) is False
     assert should_open_live_page(
         live_requests=0, seconds_open=60, challenge=False, opened=True, readable=True,
         saw_challenge=False, seconds_since_clear=60,

@@ -11,6 +11,7 @@ engine already reads. No ingest token and no VNC desktop.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -215,21 +216,13 @@ def should_open_live_page(
     saw_challenge: bool,
     seconds_since_clear: float,
 ) -> bool:
-    """Visit the live sportsbook once, and never during a Cloudflare check.
+    """Do not navigate to a sportsbook tab that is already attached.
 
-    A restored tab can show the right URL while its document is frozen, so
-    the check never runs and no odds render. One navigation is the same
-    step as opening that tab by hand. After a check has just cleared, the
-    page is given time to render before that visit, so a finished check is
-    not started over.
+    Opening it again restarts Cloudflare. The check has to finish on the
+    document that is already showing.
     """
-    if live_requests > 0 or opened or challenge:
-        return False
-    if saw_challenge:
-        return readable and seconds_since_clear >= 25
-    if not readable:
-        return seconds_open >= 20
-    return seconds_open >= 3
+    del live_requests, seconds_open, challenge, opened, readable, saw_challenge, seconds_since_clear
+    return False
 
 
 def should_load_live_page(
@@ -244,23 +237,23 @@ def should_load_live_page(
     max_loads: int = 3,
     max_quiet_reloads: int = 2,
 ) -> bool:
-    """Load the live document again when it is idle and not a Cloudflare check.
+    """Never reload an attached sportsbook tab.
 
-    Visiting the address that is already open does not run the sportsbook.
-    A cleared page that has sent nothing, or that sent once and then went
-    quiet, needs a real load. A visible check is left alone.
+    A reload starts the Cloudflare check again. The open document is left
+    in front, and its responses are captured as the page sends them.
     """
-    if challenge:
-        return False
-    if saw_challenge and seconds_since_clear < 25:
-        return False
-    if live_requests == 0:
-        if loads >= max_loads:
-            return False
-        return seconds_since_traffic >= (8 if loads == 0 else 45)
-    if quiet_reloads >= max_quiet_reloads:
-        return False
-    return seconds_since_traffic >= 75
+    del (
+        live_requests,
+        seconds_since_traffic,
+        challenge,
+        loads,
+        quiet_reloads,
+        saw_challenge,
+        seconds_since_clear,
+        max_loads,
+        max_quiet_reloads,
+    )
+    return False
 
 
 def should_wake_silent_live(
@@ -410,11 +403,11 @@ def _keep_page_active(page, step: int) -> None:
     No click and no reload. A background tab stays dormant, which is the
     same state as never opening the live page by hand.
     """
+    del step
     try:
         page.bring_to_front()
     except Exception:
         pass
-    _short(page, 1000, lambda: page.mouse.move(24 + (step % 10) * 14, 36 + (step % 6) * 11))
 
 
 def _page_text(page) -> str:
@@ -442,40 +435,12 @@ def _goto(page, url: str, label: str, wait_until: str = "domcontentloaded", time
         _log(f"{label} navigation did not finish ({type(exc).__name__}). The tab stays open.")
 
 
-def _load_live(page, url: str) -> None:
-    """Load the live sportsbook even when the address bar already shows it.
-
-    page.goto of the current URL leaves the dormant document in place, so
-    the tab never calls get_main_line. A cache-bypass reload is a real visit.
-    """
-    _log("Loading the live sportsbook so the open page renders odds.")
+def _payload_key(url: str, raw) -> str:
     try:
-        page.bring_to_front()
+        sample = json.dumps(raw, sort_keys=True, default=str)[:240]
     except Exception:
-        pass
-    current = ""
-    try:
-        current = (page.url or "").lower()
-    except Exception:
-        current = ""
-    if "sportsbook/live" in current:
-        try:
-            session = page.context.new_cdp_session(page)
-            session.send("Page.reload", {"ignoreCache": True})
-            detach = getattr(session, "detach", None)
-            if detach is not None:
-                try:
-                    detach()
-                except Exception:
-                    pass
-            return
-        except Exception as exc:
-            _log(f"live reload was not available ({type(exc).__name__}).")
-        try:
-            page.goto("about:blank", wait_until="commit", timeout=5000)
-        except Exception:
-            pass
-    _goto(page, url, "live")
+        sample = ""
+    return _safe_path(url) + "|" + sample
 
 
 def _safe_path(url: str) -> str:
@@ -636,85 +601,104 @@ def run_forever(book: CollectionBook | None = None) -> int:
         except Exception as exc:
             _log(f"snapshot rewrite skipped ({type(exc).__name__})")
 
+    seen_payloads: set[str] = set()
+
+    def _note_feed_url(url: str) -> None:
+        lowered = (url or "").lower()
+        if "erisgaming" in lowered or "4297.lol" in lowered:
+            book.note_api(_safe_path(url))
+
+    def apply_captured(url: str, raw, lane: str) -> None:
+        key = _payload_key(url, raw)
+        if key in seen_payloads:
+            return
+        seen_payloads.add(key)
+        if len(seen_payloads) > 4000:
+            seen_payloads.clear()
+        _note_feed_url(url)
+        kind = feed_kind(url)
+        if kind is None:
+            _write_status(book)
+            return
+        payload = unwrap_sports(raw)
+        if payload is None:
+            if kind == "snapshot" and isinstance(raw, dict):
+                _log(
+                    "snapshot body had no sports tree "
+                    f"keys={sorted(raw)[:8]} path={_safe_path(url)}"
+                )
+            book.note_traffic(kind, lane)
+            _write_status(book)
+            return
+        book.note_response()
+        lane = resolve_lane(lane, kind, payload)
+        book.note_traffic(kind, lane)
+        if lane == "prematch" and kind == "snapshot":
+            matches = parse_prematch(payload)
+            if not matches:
+                _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
+                _write_status(book)
+                return
+            prematch["matches"] = matches
+            remember("prematch", matches)
+            publish_prematch(from_network=True)
+            return
+        if lane != "live":
+            _write_status(book)
+            return
+        if kind == "snapshot" or not saw_live["ok"]:
+            if kind == "snapshot":
+                adopted = adopt_live_book(state, payload)
+            else:
+                state.apply_update(payload)
+                if state.event_count:
+                    state.initialized = True
+                adopted = state.event_count > 0
+            saw_live["ok"] = state.initialized and (
+                state.event_count > 0 or bool(held["live"])
+            )
+            odds = state.get_match_odds()
+            _log(
+                f"snapshot events={state.event_count} odds={len(odds)} "
+                f"replaced={adopted} path={_safe_path(url)}"
+            )
+            if odds and (kind == "snapshot" or len(odds) >= len(held["live"])):
+                remember("live", odds)
+                publish_live(from_network=True)
+            else:
+                _write_status(book)
+            return
+        changed = state.apply_update(payload)
+        odds = state.get_match_odds()
+        if odds and len(odds) >= len(held["live"]):
+            remember("live", odds)
+        if changed and odds:
+            _log(f"update changed_1x2={len(changed)} events={state.event_count}")
+            publish_live(from_network=True)
+        else:
+            _write_status(book)
+
     def on_finished(request, live_page, prematch_page) -> None:
         try:
             url = request.url or ""
             lowered = url.lower()
             if "kolay" in lowered:
                 return
-            if "erisgaming" in lowered or "4297.lol" in lowered:
-                book.note_api(_safe_path(url))
-                _write_status(book)
             owner = _owner_page(request)
             if not _on_sportsbook(owner, live_page, prematch_page):
                 return
             kind = feed_kind(url)
             if kind is None:
+                _note_feed_url(url)
                 return
             lane = page_lane(owner, live_page, prematch_page)
             response = request.response()
             if response is None or response.status >= 400:
+                _note_feed_url(url)
                 book.note_traffic(kind, lane)
                 _write_status(book)
                 return
-            raw = json.loads(response.body())
-            payload = unwrap_sports(raw)
-            if payload is None:
-                if kind == "snapshot" and isinstance(raw, dict):
-                    _log(
-                        "snapshot body had no sports tree "
-                        f"keys={sorted(raw)[:8]} path={_safe_path(url)}"
-                    )
-                book.note_traffic(kind, lane)
-                _write_status(book)
-                return
-            book.note_response()
-            lane = resolve_lane(lane, kind, payload)
-            book.note_traffic(kind, lane)
-            if lane == "prematch" and kind == "snapshot":
-                matches = parse_prematch(payload)
-                if not matches:
-                    _log(f"prematch snapshot had no 1X2 rows path={_safe_path(url)}")
-                    _write_status(book)
-                    return
-                prematch["matches"] = matches
-                remember("prematch", matches)
-                publish_prematch(from_network=True)
-                return
-            if lane != "live":
-                _write_status(book)
-                return
-            if kind == "snapshot" or not saw_live["ok"]:
-                if kind == "snapshot":
-                    adopted = adopt_live_book(state, payload)
-                else:
-                    state.apply_update(payload)
-                    if state.event_count:
-                        state.initialized = True
-                    adopted = state.event_count > 0
-                saw_live["ok"] = state.initialized and (
-                    state.event_count > 0 or bool(held["live"])
-                )
-                odds = state.get_match_odds()
-                _log(
-                    f"snapshot events={state.event_count} odds={len(odds)} "
-                    f"replaced={adopted} path={_safe_path(url)}"
-                )
-                if odds and (kind == "snapshot" or len(odds) >= len(held["live"])):
-                    remember("live", odds)
-                    publish_live(from_network=True)
-                else:
-                    _write_status(book)
-                return
-            changed = state.apply_update(payload)
-            odds = state.get_match_odds()
-            if odds and len(odds) >= len(held["live"]):
-                remember("live", odds)
-            if changed and odds:
-                _log(f"update changed_1x2={len(changed)} events={state.event_count}")
-                publish_live(from_network=True)
-            else:
-                _write_status(book)
+            apply_captured(url, json.loads(response.body()), lane)
         except Exception as exc:
             book.last_error = type(exc).__name__
             _log(f"response skipped ({type(exc).__name__})")
@@ -774,6 +758,67 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         watched.on("response", _on_response)
                     except Exception:
                         pass
+
+                def _arm_cdp(page, lane_name: str):
+                    """Record responses the open page sends. Do not reload it."""
+                    try:
+                        session = page.context.new_cdp_session(page)
+                        session.send("Network.enable")
+                    except Exception as exc:
+                        _log(f"{lane_name} network listen was not attached ({type(exc).__name__}).")
+                        return None
+                    if lane_name == "live":
+                        try:
+                            session.send("Emulation.setFocusEmulationOverride", {"focus": True})
+                        except Exception:
+                            pass
+                    pending: dict[str, tuple[str, int]] = {}
+
+                    def response_received(params):
+                        response = params.get("response") or {}
+                        url = str(response.get("url") or "")
+                        lowered = url.lower()
+                        if "erisgaming" not in lowered and "4297.lol" not in lowered:
+                            return
+                        request_id = params.get("requestId")
+                        if request_id:
+                            pending[str(request_id)] = (url, int(response.get("status") or 0))
+
+                    def loading_finished(params):
+                        request_id = str(params.get("requestId") or "")
+                        found = pending.pop(request_id, None)
+                        if not found:
+                            return
+                        url, status = found
+                        kind = feed_kind(url)
+                        if kind is None or status >= 400:
+                            _note_feed_url(url)
+                            if kind is not None:
+                                book.note_traffic(kind, lane_name)
+                                _write_status(book)
+                            return
+                        try:
+                            result = session.send("Network.getResponseBody", {"requestId": request_id})
+                            body = result.get("body") or ""
+                            if result.get("base64Encoded"):
+                                body = base64.b64decode(body)
+                            if isinstance(body, bytes):
+                                body = body.decode("utf-8", "replace")
+                            apply_captured(url, json.loads(body), lane_name)
+                        except Exception as exc:
+                            book.last_error = type(exc).__name__
+                            _log(f"response body was not read ({type(exc).__name__})")
+
+                    session.on("Network.responseReceived", response_received)
+                    session.on("Network.loadingFinished", loading_finished)
+                    return session
+
+                network_sessions = []
+                for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
+                    armed = _arm_cdp(watched, lane_name)
+                    if armed is not None:
+                        network_sessions.append(armed)
+                _log(f"Capturing responses on {len(network_sessions)} open tabs. Those tabs are not reloaded.")
                 try:
                     live_page.set_default_timeout(20000)
                     prematch_page.set_default_timeout(20000)
@@ -798,8 +843,8 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log(f"tabs={len(context.pages)} live={book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
                 _log(
-                    "The live tab stays in front so Cloudflare can finish and the "
-                    "sportsbook can render. It is not reloaded during that check."
+                    "The live tab stays in front and is not reloaded. "
+                    "Responses are captured when the open page sends them."
                 )
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
@@ -848,14 +893,15 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         )
                         continue
                     now = time.time()
-                    open_for = now - watching_since
                     if book.live_requests != quiet["seen_requests"]:
                         quiet["seen_requests"] = book.live_requests
                         quiet["last_traffic"] = now
                     live_read = read_tab_quickly(live_page)
                     live_title = live_read[0] if live_read else ""
                     live_url = live_read[1] if live_read else book.live_page
-                    live_text = _page_text(live_page) if live_read else ""
+                    live_text = ""
+                    if live_read and not is_challenge_text(live_title, live_url):
+                        live_text = _page_text(live_page)
                     challenge = bool(live_read) and live_page_is_challenge(live_title, live_url, live_text)
                     if book.live_requests > 0 and not challenge:
                         book.live_challenge = False
@@ -875,51 +921,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                                 "Cloudflare check is on the live tab. "
                                 "Leaving that page in front until it renders."
                             )
-                    if should_load_live_page(
-                        live_requests=book.live_requests,
-                        seconds_since_traffic=now - quiet["last_traffic"],
-                        challenge=challenge,
-                        loads=quiet["loads"],
-                        quiet_reloads=quiet["quiet_reloads"],
-                        saw_challenge=quiet["saw_challenge"],
-                        seconds_since_clear=now - quiet["challenge_until"],
-                    ):
-                        if book.live_requests == 0:
-                            quiet["loads"] += 1
-                            attempt = quiet["loads"]
-                        else:
-                            quiet["quiet_reloads"] += 1
-                            attempt = quiet["quiet_reloads"]
-                        quiet["last_traffic"] = now
-                        _log(
-                            "Live tab is in front and is not on a Cloudflare check. "
-                            f"Loading it so odds keep rendering ({attempt})."
-                        )
-                        _load_live(live_page, live_page_url())
-                    if (
-                        book.live_requests > 0
-                        and should_wake_silent_live(
-                            live_requests=book.prematch_requests,
-                            seconds_open=open_for,
-                            on_sportsbook="sportsbook/prelive" in (book.prematch_page or "").lower(),
-                            challenge=False,
-                            already_woke=quiet["woke_prematch"],
-                            minimum_seconds=20,
-                        )
-                    ):
-                        prematch_read = read_tab_quickly(prematch_page)
-                        prematch_challenge = prematch_read is None or is_challenge_text(
-                            prematch_read[0] if prematch_read else "",
-                            prematch_read[1] if prematch_read else book.prematch_page,
-                        )
-                        if not prematch_challenge:
-                            quiet["woke_prematch"] = True
-                            _log(
-                                "Live is rendering. Opening prematch once. "
-                                "The live tab comes back to the front."
-                            )
-                            _goto(prematch_page, prematch_page_url(), "prematch", wait_until="commit", timeout=15000)
-                            _keep_page_active(live_page, quiet["step"])
                     if now - last_heartbeat >= 30:
                         last_heartbeat = now
                         live_read = read_tab_quickly(live_page)
