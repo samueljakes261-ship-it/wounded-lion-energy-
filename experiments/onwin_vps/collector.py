@@ -33,6 +33,7 @@ import urllib.request
 from pathlib import Path
 
 from experiments.onwin_vps.book import CollectionBook
+from experiments.onwin_vps.cdp_frames import CdpFrameFeed
 from experiments.onwin_vps.listen import (
     KEEP_AWAKE_SECONDS,
     KEEP_AWAKE_SOURCE,
@@ -520,7 +521,7 @@ def looks_like_onwin_feed(url: str) -> bool:
     )
 
 
-def _reload_sportsbook(page, url: str, label: str) -> bool:
+def _reload_sportsbook(page, url: str, label: str, session=None) -> bool:
     """Reload one sportsbook tab, or open it when the address has left.
 
     Returns True when a navigation was issued. The caller then reads
@@ -538,6 +539,14 @@ def _reload_sportsbook(page, url: str, label: str) -> bool:
     marker = "sportsbook/live" if label == "live" else "sportsbook/prelive"
     on_book = marker in (page_url or "").lower()
     try:
+        if session is not None:
+            if on_book:
+                _log(f"{label} reload started.")
+                session.send("Page.reload", {"ignoreCache": True})
+            else:
+                _log(f"{label} tab left the sportsbook. Opening it for this cycle.")
+                session.send("Page.navigate", {"url": url})
+            return True
         page.set_default_timeout(20000)
         if on_book:
             _log(f"{label} reload started.")
@@ -801,6 +810,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
     try:
         while True:
             playwright = None
+            frame_feed: CdpFrameFeed | None = None
             created: list = []
             failed = False
             try:
@@ -1161,6 +1171,41 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     "Live reloads every 60s and prematch every 120s. "
                     "Odds endpoints in each window are parsed as they arrive."
                 )
+                try:
+                    version_url = cdp_url().rstrip("/") + "/json/version"
+                    with urllib.request.urlopen(version_url, timeout=2) as response:
+                        version = json.loads(response.read().decode("utf-8"))
+                    frame_feed = CdpFrameFeed()
+                    frame_feed.connect(str(version.get("webSocketDebuggerUrl") or ""))
+                    _log("Listening on the browser socket for sportsbook frames.")
+                except Exception as exc:
+                    frame_feed = None
+                    _log(f"browser frame socket was not opened ({type(exc).__name__}).")
+
+                def _pump_frames() -> None:
+                    if frame_feed is None or not frame_feed.alive:
+                        return
+                    try:
+                        frame_feed.pump()
+                    except Exception as exc:
+                        frame_feed.alive = False
+                        _log(f"browser frame socket stopped ({type(exc).__name__}).")
+                        return
+                    book.cdp_frames = frame_feed.targets_seen
+                    book.last_target_url = _safe_path(frame_feed.last_target_url)
+                    for seen_url in frame_feed.take_noticed():
+                        book.note_api(_safe_path(seen_url))
+                    for item in frame_feed.take():
+                        try:
+                            apply_captured(
+                                item["url"],
+                                item["raw"],
+                                item.get("lane") or "",
+                            )
+                        except Exception as exc:
+                            book.last_error = type(exc).__name__
+                            _log(f"frame response skipped ({type(exc).__name__})")
+
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
                 cycles = {"live": 0.0, "prematch": 0.0}
@@ -1176,6 +1221,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     "readable": False,
                 }
                 while True:
+                    _pump_frames()
                     republish()
                     try:
                         live_page.wait_for_timeout(500)
@@ -1220,8 +1266,16 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         ):
                             return False
                         cycles[lane_name] = time.time()
-                        if not _reload_sportsbook(page, page_url, lane_name):
+                        if not _reload_sportsbook(
+                            page,
+                            page_url,
+                            lane_name,
+                            session=sessions.get(lane_name),
+                        ):
                             return False
+                        if frame_feed is not None:
+                            frame_feed.pump_for(2.0)
+                        _pump_frames()
                         sessions[lane_name] = _arm_cdp(page, lane_name)
                         _log(
                             f"{lane_name} cycle open for {int(interval)}s. "
@@ -1317,6 +1371,8 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 prematch["last_post"] = 0.0
                 republish()
             finally:
+                if frame_feed is not None:
+                    frame_feed.close()
                 if failed:
                     _disconnect(playwright)
             if not failed:

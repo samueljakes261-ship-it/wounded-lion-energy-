@@ -44,6 +44,8 @@ class CollectionBook:
         self.phase = "starting"
         self.api_seen = 0
         self.last_api_path = ""
+        self.cdp_frames = 0
+        self.last_target_url = ""
 
     def note_api(self, path: str) -> None:
         self.api_seen += 1
@@ -125,6 +127,8 @@ class CollectionBook:
             "live_challenge": self.live_challenge,
             "api_seen": self.api_seen,
             "last_api_path": self.last_api_path,
+            "cdp_frames": self.cdp_frames,
+            "last_target_url": self.last_target_url,
             "get_main_line_seen": self.snapshots_seen,
             "updates_seen": self.updates_seen,
             "responses_received": self.responses_received,
