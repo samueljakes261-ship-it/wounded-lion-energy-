@@ -10,8 +10,13 @@ engine already reads. No ingest token and no VNC desktop.
 
 Response bodies are read on the collector loop, never inside a debugger
 event. Reading them there stopped the connection after a short burst and
-the dashboard returned to error. When the open live page goes quiet, the
-same request is sent again from that page. The tab is not reloaded.
+the dashboard returned to error.
+
+The live tab is reloaded every 60 seconds and the prematch tab every
+120. A reload starts a cycle. Each odds endpoint observed after that
+reload is parsed and written to the engine as the response arrives.
+The next reload starts the next cycle. A Cloudflare check is not
+reloaded. The collector does not call the feed endpoints itself.
 """
 
 from __future__ import annotations
@@ -192,6 +197,8 @@ LIVE_HOLD_SECONDS = 180.0
 PREMATCH_HOLD_SECONDS = 900.0
 LIVE_REWRITE_SECONDS = 8.0
 PREMATCH_REWRITE_SECONDS = 45.0
+LIVE_RELOAD_SECONDS = 60.0
+PREMATCH_RELOAD_SECONDS = 120.0
 
 
 def should_refresh_quiet_tab(
@@ -295,6 +302,22 @@ def should_wake_silent_live(
     if done >= max_wakes or challenge or not on_sportsbook or live_requests > 0:
         return False
     return seconds_open >= minimum_seconds + done * gap_seconds
+
+
+def should_start_reload_cycle(
+    *,
+    seconds_since_reload: float,
+    interval: float,
+    challenge: bool,
+) -> bool:
+    """True when this tab's reload window has elapsed and the page is usable.
+
+    A Cloudflare check is left on the document that is already showing.
+    Reloading that check starts it again and both feeds go quiet.
+    """
+    if challenge or interval <= 0:
+        return False
+    return seconds_since_reload >= interval
 
 
 def should_republish(*, seconds_since_network: float, hold_seconds: float) -> bool:
@@ -488,6 +511,42 @@ def _safe_path(url: str) -> str:
     return (url or "").split("?", 1)[0][-160:]
 
 
+def _reload_sportsbook(page, url: str, label: str) -> bool:
+    """Reload one sportsbook tab, or open it when the address has left.
+
+    Returns True when a navigation was issued. The caller then reads
+    odds endpoints as they arrive. A challenge, or a tab that is still
+    loading, is left alone.
+    """
+    read = read_tab_quickly(page)
+    if read is None:
+        _log(f"{label} tab is still loading. Reload waits.")
+        return False
+    title, page_url = read
+    if live_page_is_challenge(title, page_url):
+        _log(f"Cloudflare check is on the {label} tab. Not reloading.")
+        return False
+    marker = "sportsbook/live" if label == "live" else "sportsbook/prelive"
+    on_book = marker in (page_url or "").lower()
+    try:
+        page.set_default_timeout(20000)
+        if on_book:
+            _log(f"{label} reload started.")
+            page.reload(wait_until="commit", timeout=20000)
+        else:
+            _log(f"{label} tab left the sportsbook. Opening it for this cycle.")
+            page.goto(url, wait_until="commit", timeout=20000)
+        return True
+    except Exception as exc:
+        _log(f"{label} reload did not finish ({type(exc).__name__}).")
+        return False
+    finally:
+        try:
+            page.set_default_timeout(20000)
+        except Exception:
+            pass
+
+
 def _refresh(page, url: str, label: str) -> None:
     """Leave an open tab alone. Navigate only a blank tab created this run.
 
@@ -566,8 +625,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     return
                 if now - live_post["last"] < LIVE_REWRITE_SECONDS:
                     return
-            elif now - live_post["last"] < 2:
-                return
             started = time.perf_counter()
             published = _deliver(matches, "live")
             events, markets = _shape(matches)
@@ -599,8 +656,6 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     return
                 if now - prematch["last_post"] < PREMATCH_REWRITE_SECONDS:
                     return
-            elif now - prematch["last_post"] < 2:
-                return
             started = time.perf_counter()
             published = _deliver(matches, "prematch")
             events, markets = _shape(matches)
@@ -1059,11 +1114,12 @@ def run_forever(book: CollectionBook | None = None) -> int:
                 _log(f"tabs={len(context.pages)} live={book.live_page}")
                 _log(f"prematch tab {book.prematch_page}")
                 _log(
-                    "The live tab is not reloaded. Responses are read as the open "
-                    "page sends them. A quiet live page is asked again from that same page."
+                    "Live reloads every 60s and prematch every 120s. "
+                    "Odds endpoints in each window are parsed as they arrive."
                 )
                 last_heartbeat = time.time()
                 watching_since = last_heartbeat
+                cycles = {"live": 0.0, "prematch": 0.0}
                 blips = {"n": 0}
                 quiet = {
                     "seen_responses": book.responses_received,
@@ -1110,6 +1166,50 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     drain_tap("prematch")
                     drain_fallback()
                     now = time.time()
+
+                    def _begin_cycle(page, page_url: str, lane_name: str, challenge: bool) -> bool:
+                        interval = LIVE_RELOAD_SECONDS if lane_name == "live" else PREMATCH_RELOAD_SECONDS
+                        if not should_start_reload_cycle(
+                            seconds_since_reload=now - cycles[lane_name],
+                            interval=interval,
+                            challenge=challenge,
+                        ):
+                            return False
+                        cycles[lane_name] = time.time()
+                        if not _reload_sportsbook(page, page_url, lane_name):
+                            return False
+                        sessions[lane_name] = _arm_cdp(page, lane_name)
+                        _log(
+                            f"{lane_name} cycle open for {int(interval)}s. "
+                            "Each odds endpoint is parsed as it arrives."
+                        )
+                        return True
+
+                    live_due = now - cycles["live"] >= LIVE_RELOAD_SECONDS
+                    prematch_due = now - cycles["prematch"] >= PREMATCH_RELOAD_SECONDS
+                    if live_due or prematch_due:
+                        readable, challenge, _title = read_live_tab()
+                        quiet["readable"] = readable
+                        quiet["last_title"] = now
+                        started_cycle = False
+                        if live_due:
+                            started_cycle = _begin_cycle(
+                                live_page,
+                                live_page_url(),
+                                "live",
+                                challenge or not readable,
+                            )
+                        if prematch_due and not started_cycle:
+                            prematch_read = read_tab_quickly(prematch_page)
+                            prematch_challenge = prematch_read is None or is_challenge_text(
+                                prematch_read[0], prematch_read[1]
+                            )
+                            _begin_cycle(
+                                prematch_page,
+                                prematch_page_url(),
+                                "prematch",
+                                prematch_challenge,
+                            )
                     if book.responses_received != quiet["seen_responses"]:
                         quiet["seen_responses"] = book.responses_received
                         quiet["last_traffic"] = now
@@ -1143,14 +1243,14 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         elif challenge:
                             _log("Cloudflare check is on the live tab. Waiting for it to finish. Not reloading.")
                         elif should_reload_live(title, book.live_page):
-                            _log("Live tab left the sportsbook. Leaving it. Not reloading.")
+                            _log("Live tab left the sportsbook. The next cycle opens it again.")
                         prematch_read = read_tab_quickly(prematch_page)
                         if prematch_read is None:
                             _log("Prematch tab title was not read. Leaving it open.")
                         elif is_challenge_text(prematch_read[0], prematch_read[1]):
                             _log("Cloudflare check is on the prematch tab. Leaving it. Not reloading.")
                         elif should_reload_prematch(prematch_read[0], book.prematch_page):
-                            _log("Prematch tab left prelive. Leaving it. Not reloading.")
+                            _log("Prematch tab left prelive. The next cycle opens it again.")
                     _write_status(book)
             except KeyboardInterrupt:
                 _log("Stopped. The dedicated Chrome stays open.")

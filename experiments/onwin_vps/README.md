@@ -9,12 +9,14 @@ display. The collector attaches over the debugging port and writes live
 and prematch odds into the snapshot files the engine already reads. No
 ingest token. A dropped debugger reconnects without closing the tabs.
 Chrome is restarted when port 9223 is down, or when that port answers but the collector still cannot attach. Background-tab
-throttling is disabled so the sportsbook keeps sending odds. A quiet
-tab is left open. Reloading it sent both feeds through Cloudflare and
-both collectors dropped. Response bodies are read on the collector
+throttling is disabled so the sportsbook keeps sending odds. The live
+tab reloads every 60 seconds and the prematch tab every 120. That reload
+starts a cycle. Each odds endpoint the page then requests is parsed and
+written to the engine as the response arrives. The next reload starts
+the next cycle. A Cloudflare check is left alone. The collector does
+not call those endpoints itself. Response bodies are read on the collector
 loop, not inside a debugger event, so a burst of odds cannot stall the
-connection. If the live page then goes quiet, the collector asks that
-same open page for the last feed again. It does not navigate. The last
+connection. The last
 good odds stay in the snapshot files through a debugger reconnect: live
 for three minutes, prematch for fifteen. A Cloudflare check is left
 alone. Chrome comes back on the last session instead of opening the

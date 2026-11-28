@@ -448,6 +448,35 @@ def test_status_file_round_trip(tmp_path, monkeypatch):
     assert payload["cdp_url"].endswith(":9223")
 
 
+def test_reload_cycles_use_60s_live_and_120s_prematch():
+    from experiments.onwin_vps.collector import (
+        LIVE_RELOAD_SECONDS,
+        PREMATCH_RELOAD_SECONDS,
+        should_start_reload_cycle,
+    )
+
+    assert LIVE_RELOAD_SECONDS == 60
+    assert PREMATCH_RELOAD_SECONDS == 120
+    assert should_start_reload_cycle(
+        seconds_since_reload=59, interval=LIVE_RELOAD_SECONDS, challenge=False
+    ) is False
+    assert should_start_reload_cycle(
+        seconds_since_reload=60, interval=LIVE_RELOAD_SECONDS, challenge=False
+    ) is True
+    assert should_start_reload_cycle(
+        seconds_since_reload=60, interval=LIVE_RELOAD_SECONDS, challenge=True
+    ) is False
+    assert should_start_reload_cycle(
+        seconds_since_reload=119, interval=PREMATCH_RELOAD_SECONDS, challenge=False
+    ) is False
+    assert should_start_reload_cycle(
+        seconds_since_reload=120, interval=PREMATCH_RELOAD_SECONDS, challenge=False
+    ) is True
+    source = (ROOT / "experiments" / "onwin_vps" / "collector.py").read_text(encoding="utf-8")
+    assert "page.reload" in source
+    assert "Each odds endpoint is parsed as it arrives." in source
+
+
 def test_quiet_live_page_is_asked_again_without_a_reload():
     from experiments.onwin_vps.collector import _payload_key
     from experiments.onwin_vps.listen import (
