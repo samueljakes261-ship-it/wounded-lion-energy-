@@ -169,3 +169,54 @@ def test_prematch_ingest_uses_the_same_token_and_stays_out_of_live(snapshot_file
     with pytest.raises(Exception) as rejected:
         accept_prematch({"matches": [match_to_payload(_match())]}, "Bearer local-test-token", NOW)
     assert rejected.value.status_code == 400
+
+
+def test_dashboard_reads_the_vps_collector_instead_of_a_dead_worker(tmp_path, monkeypatch):
+    import collector
+
+    now = datetime(2026, 11, 28, 14, 51, 40, tzinfo=timezone.utc)
+    report = {
+        "attached": True,
+        "phase": "watching",
+        "live_odds": 285,
+        "live_events": 160,
+        "prematch_odds": 3197,
+        "prematch_events": 1604,
+        "last_live_success": "2026-11-28T14:51:31.339703+00:00",
+        "last_prematch_success": "2026-11-28T14:35:44.625630+00:00",
+    }
+    path = tmp_path / "status.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(collector, "_onwin_vps_status_path", lambda: path)
+    monkeypatch.setattr(collector, "STATUS_FILE", tmp_path / "dashboard.json")
+    monkeypatch.setattr(collector, "_onwin_handle", None)
+    monkeypatch.setattr(collector, "_betkanyon_worker", None)
+    monkeypatch.setattr(collector, "_orbit_worker", None)
+    monkeypatch.setattr(collector, "_kolay90_live_worker", None)
+    monkeypatch.setattr(collector, "_betkanyon_prematch_worker", None)
+    monkeypatch.setattr(collector, "_orbit_prematch_worker", None)
+    monkeypatch.setattr(collector, "_kolay90_prematch_worker", None)
+    monkeypatch.setattr(collector, "_onwin_prematch_worker", None)
+    stopped = {"status": "stopped", "error": None, "last_update_at": None}
+    error = {"status": "error", "error": "Worker is not running.", "last_update_at": None}
+    collector._write_status(error, stopped, stopped, None, None, None, 0, 0, now)
+    status = json.loads((tmp_path / "dashboard.json").read_text(encoding="utf-8"))
+    assert status["collectors"]["onwin"]["collectorStatus"] == "RUNNING"
+    assert status["collectors"]["onwin"]["workerAlive"] is True
+    assert status["collectors"]["onwin_prematch"]["collectorStatus"] == "DEGRADED"
+    assert status["collectors"]["onwin_prematch"]["rawStatus"] == "running"
+    fresh_prematch = dict(report)
+    fresh_prematch["last_prematch_success"] = "2026-11-28T14:50:00+00:00"
+    path.write_text(json.dumps(fresh_prematch), encoding="utf-8")
+    collector._write_status(error, stopped, stopped, None, None, None, 0, 0, now)
+    status = json.loads((tmp_path / "dashboard.json").read_text(encoding="utf-8"))
+    assert status["collectors"]["onwin_prematch"]["collectorStatus"] == "RUNNING"
+
+    stale = dict(report)
+    stale["last_live_success"] = "2026-11-28T12:00:00+00:00"
+    path.write_text(json.dumps(stale), encoding="utf-8")
+    collector._write_status(error, stopped, stopped, None, None, None, 0, 0, now)
+    status = json.loads((tmp_path / "dashboard.json").read_text(encoding="utf-8"))
+    assert status["collectors"]["onwin"]["collectorStatus"] == "DEGRADED"
+    assert status["collectors"]["onwin_prematch"]["collectorStatus"] == "DEGRADED"
+    assert status["collectors"]["onwin_prematch"]["workerAlive"] is True

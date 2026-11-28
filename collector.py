@@ -2193,6 +2193,53 @@ def _betfair_collector_snapshot(now_dt, now: float) -> dict:
     return snapshot
 
 
+def _onwin_vps_status_path() -> Path:
+    return Path(__file__).resolve().parent / "experiments" / "onwin_vps" / "output" / "status.json"
+
+
+def _read_onwin_vps_status() -> dict | None:
+    """Health of the Chrome collector. The engine does not start that process."""
+    path = _onwin_vps_status_path()
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _parse_status_time(value) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _vps_lane_health(report: dict, lane: str, now: float) -> tuple[bool, float | None, int, int]:
+    """Whether that Onwin lane is being collected, and how old its book is."""
+    if not report.get("attached"):
+        return False, None, 0, 0
+    if report.get("phase") not in ("watching", "attaching"):
+        return False, None, 0, 0
+    odds_key = "live_odds" if lane == "live" else "prematch_odds"
+    events_key = "live_events" if lane == "live" else "prematch_events"
+    success_key = "last_live_success" if lane == "live" else "last_prematch_success"
+    odds = int(report.get(odds_key) or 0)
+    events = int(report.get(events_key) or 0)
+    if odds <= 0 and not report.get(success_key):
+        return False, None, 0, 0
+    success = _parse_status_time(report.get(success_key))
+    age = None if success is None else now - success.timestamp()
+    return True, age, odds, events
+
+
 def _write_status(
     onwin_status, betkanyon_status, orbit_status,
     onwin_age, betkanyon_age, orbit_age,
@@ -2280,6 +2327,20 @@ def _write_status(
     onwin_pm_alive = _worker_alive(
         _onwin_prematch_worker._thread if _onwin_prematch_worker else None
     )
+    vps_report = _read_onwin_vps_status()
+    if vps_report is not None and remote_onwin_age is None:
+        watching, vps_age, vps_odds, vps_events = _vps_lane_health(vps_report, "live", now)
+        if watching:
+            onwin_status = dict(onwin_status)
+            onwin_status["status"] = "running"
+            onwin_status["error"] = None
+            onwin_status["consecutive_failures"] = 0
+            onwin_status["last_odds_count"] = vps_odds
+            onwin_status["event_count"] = vps_events
+            if vps_age is not None:
+                onwin_status["last_update_at"] = now - vps_age
+                onwin_age = vps_age
+            onwin_alive = True
     if prematch_remote_age is not None:
         onwin_pm_status = dict(onwin_pm_status)
         onwin_pm_status["status"] = "running"
@@ -2288,6 +2349,21 @@ def _write_status(
         onwin_pm_status["last_update_at"] = now - prematch_remote_age
         onwin_pm_age = prematch_remote_age
         onwin_pm_alive = True
+    elif vps_report is not None:
+        watching, vps_age, vps_odds, vps_events = _vps_lane_health(
+            vps_report, "prematch", now
+        )
+        if watching:
+            onwin_pm_status = dict(onwin_pm_status)
+            onwin_pm_status["status"] = "running"
+            onwin_pm_status["error"] = None
+            onwin_pm_status["consecutive_failures"] = 0
+            onwin_pm_status["last_odds_count"] = vps_odds
+            onwin_pm_status["event_count"] = vps_events
+            if vps_age is not None:
+                onwin_pm_status["last_update_at"] = now - vps_age
+                onwin_pm_age = vps_age
+            onwin_pm_alive = True
 
     payload = {
         "generatedAt": _iso_dt(now_dt),

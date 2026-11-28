@@ -56,3 +56,12 @@ def test_rest_network_error_is_classified(monkeypatch):
 
     assert exc.value.category == "network"
     assert exc.value.http_status is None
+
+
+def test_live_catalogue_accepts_the_prematch_wrapper():
+    rows = orbit_rest.catalogue_markets(
+        {"content": [{"marketId": "1.1", "event": {"id": 9}}]}
+    )
+    assert rows == [{"marketId": "1.1", "event": {"id": 9}}]
+    assert orbit_rest.catalogue_markets({"marketCatalogueList": {}}) == []
+    assert orbit_rest.catalogue_markets({"unexpected": True}) == []

@@ -69,6 +69,35 @@ def _download_page(page, sports):
         ) from exc
 
 
+def catalogue_markets(data) -> list:
+    """Rows from the in-play highlights body.
+
+    The old body is marketCatalogueList.content. A later body uses the
+    same wrappers as the prematch sport page. An unrecognised page is
+    empty instead of raising, so one odd response does not drop the session.
+    """
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    if not isinstance(data, dict):
+        return []
+    catalogue = data.get("marketCatalogueList")
+    if isinstance(catalogue, list):
+        return [row for row in catalogue if isinstance(row, dict)]
+    if isinstance(catalogue, dict):
+        content = catalogue.get("content") or catalogue.get("markets") or []
+        if isinstance(content, list):
+            return [row for row in content if isinstance(row, dict)]
+    for key in ("content", "marketCatalogues", "marketCatalogue", "markets"):
+        value = data.get(key)
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)]
+        if isinstance(value, dict):
+            inner = value.get("content") or value.get("markets")
+            if isinstance(inner, list):
+                return [row for row in inner if isinstance(row, dict)]
+    return []
+
+
 def get_all_live_markets():
 
     sports = [
@@ -102,13 +131,20 @@ def get_all_live_markets():
 
         data = _download_page(page, sports)
 
-        markets = data["marketCatalogueList"]["content"]
+        markets = catalogue_markets(data)
 
         if not markets:
             break
 
         all_markets.extend(markets)
-
+        catalogue = data.get("marketCatalogueList") if isinstance(data, dict) else None
+        last_page = False
+        if isinstance(catalogue, dict) and catalogue.get("last") is True:
+            last_page = True
+        if isinstance(data, dict) and data.get("last") is True:
+            last_page = True
         page += 1
+        if last_page or page > 40:
+            break
 
     return all_markets
