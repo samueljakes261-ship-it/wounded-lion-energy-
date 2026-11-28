@@ -1,0 +1,31 @@
+[
+  {
+    "id": 1001,
+    "periodName": "",
+    "mainGameId": 1001,
+    "startTs": 1788080400,
+    "sport": {"id": 1, "name": "Football"},
+    "liga": {"id": 9, "name": "Test League"},
+    "opponent1": {"fullName": "Home FC", "id": 41},
+    "opponent2": {"fullName": "Away FC", "id": 42},
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "events": [
+          [{"type": 1, "cf": 2.10}],
+          [{"type": 2, "cf": 3.30}],
+          [{"type": 3, "cf": 3.40}]
+        ]
+      },
+      {
+        "groupId": 17,
+        "events": [
+          [{"type": 9, "parameter": 2.5, "cf": 2.10}],
+          [{"type": 10, "parameter": 2.5, "cf": 2.05}],
+          [{"type": 9, "parameter": 3.5, "cf": 2.30}],
+          [{"type": 10, "parameter": 3.5, "cf": 1.80}]
+        ]
+      }
+    ]
+  }
+]

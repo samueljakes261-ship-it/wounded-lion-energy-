@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "match_id": 28001,
+      "sport_id": 28,
+      "sport_name": "Tennis",
+      "home_team": "Player A",
+      "away_team": "Player B",
+      "competition_name": "WTA",
+      "start_time": "2026-08-30 16:00:00",
+      "odds": [
+        {
+          "sub_type_id": "186",
+          "name": "WINNER",
+          "odds": [
+            {"outcome_id": "4", "display": "1", "odd_key": "Player A", "odd_value": "1.90", "special_bet_value": ""},
+            {"outcome_id": "5", "display": "2", "odd_key": "Player B", "odd_value": "2.10", "special_bet_value": ""}
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {"total": "1", "limit": "10"}
+}

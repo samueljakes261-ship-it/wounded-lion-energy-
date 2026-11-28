@@ -1,0 +1,2439 @@
+[
+  {
+    "zonePlay": 748538515,
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/4269a9d0d55e0c20e4110ce1a41e1cf7.png",
+      "id": 88637,
+      "name": "England. Premier League"
+    },
+    "opponent1": {
+      "fullName": "Leeds United",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 2034,
+          "name": "Leeds United",
+          "image": "/sfiles/logo_teams/8dafff7a4bc7ae83eb47335fae1bd0e9.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Brentford",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 2064,
+          "name": "Brentford",
+          "image": "/sfiles/logo_teams/d39e5e934e338e9802b4cbe851da4359.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 2",
+      "location": "Elland Road (Leeds)",
+      "locationCity": "Leeds",
+      "temperature": "+19\u00b0C",
+      "locationCountry": "England",
+      "weatherCode": "4",
+      "weatherDescription": "Some cloud, rain",
+      "weatherWindCode": "10",
+      "weatherWindParam": "5",
+      "weatherWindDescription": "SSW wind, m/s",
+      "weatherPressure": "754",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "71",
+      "weatherHumidityDescription": "Humidity, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 25,
+              "cfView": "25"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 4.85,
+              "cfView": "4.85"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 1.275,
+              "cfView": "1.275"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "cf": 3.95,
+              "cfView": "3.95"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.2,
+              "cfView": "1.2"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 1.005,
+              "cfView": "1.005"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 2.68,
+              "cfView": "2.68"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 1.47,
+              "cfView": "1.47"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 1.784,
+              "cfView": "1.784",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 2.13,
+              "cfView": "2.13",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": 1,
+              "cf": 1.94,
+              "cfView": "1.94",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": -1,
+              "cf": 1.94,
+              "cfView": "1.94",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 0.5,
+              "cf": 2.68,
+              "cfView": "2.68",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 0.5,
+              "cf": 1.47,
+              "cfView": "1.47",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 1.5,
+              "cf": 2.865,
+              "cfView": "2.865",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 1.5,
+              "cf": 1.42,
+              "cfView": "1.42",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a3512b85e99bd05c63e9772",
+      "stageId": "6a34c3a75e99bd05c63e703a",
+      "stageType": 2,
+      "status": 3,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "scores": {
+      "fullScore": "0-1",
+      "periodScores": [
+        {
+          "period": 1,
+          "scoreOpp2": 1,
+          "periodNameFull": "1st half"
+        },
+        {
+          "period": 2,
+          "periodNameFull": "2nd half"
+        }
+      ],
+      "currentPeriod": 2,
+      "currentPeriodName": "2nd half",
+      "scoreOpp1": 0,
+      "scoreOpp2": 1,
+      "periodScoresStr": "0-1,0-0",
+      "timer": {
+        "timeSec": 4481,
+        "timeDirection": 0,
+        "timeRun": true
+      },
+      "hasCourseOfPlay": true,
+      "tabloStats": {
+        "0": [
+          {
+            "id": 93,
+            "s1": "0.31",
+            "s2": "0.97",
+            "name": "xG"
+          },
+          {
+            "id": 45,
+            "s1": "79",
+            "s2": "97",
+            "name": "Attacks"
+          },
+          {
+            "id": 58,
+            "s1": "33",
+            "s2": "56",
+            "name": "Dangerous attacks"
+          },
+          {
+            "id": 29,
+            "s1": "52",
+            "s2": "48",
+            "name": "Possession %"
+          },
+          {
+            "id": 59,
+            "s1": "1",
+            "s2": "4",
+            "name": "Shots on target"
+          },
+          {
+            "id": 60,
+            "s1": "6",
+            "s2": "15",
+            "name": "Shots off target"
+          },
+          {
+            "id": 26,
+            "s1": "0",
+            "s2": "2",
+            "name": "Yellow cards"
+          },
+          {
+            "id": 47,
+            "s1": "3",
+            "s2": "1",
+            "name": "Saves"
+          },
+          {
+            "id": 70,
+            "s1": "3",
+            "s2": "6",
+            "name": "Corner"
+          },
+          {
+            "id": 71,
+            "s1": "0",
+            "s2": "0",
+            "name": "Red card"
+          },
+          {
+            "id": 72,
+            "s1": "0",
+            "s2": "0",
+            "name": "Penalty"
+          },
+          {
+            "id": 92,
+            "s1": "5",
+            "s2": "2",
+            "name": "Substitutions"
+          },
+          {
+            "id": 94,
+            "s1": "3",
+            "s2": "16",
+            "name": "Key Passes"
+          },
+          {
+            "id": 95,
+            "s1": "76",
+            "s2": "80",
+            "name": "Passing Accuracy %"
+          },
+          {
+            "id": 96,
+            "s1": "13",
+            "s2": "20",
+            "name": "Crosses"
+          }
+        ]
+      },
+      "fullScoreDetail": {
+        "scoreOpp1": 0,
+        "scoreOpp2": 1
+      },
+      "statusLineStr": "74 minutes"
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 1.784,
+              "cfView": "1.784",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2,
+              "cf": 3.395,
+              "cfView": "3.395",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 4.96,
+              "cfView": "4.96",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 13.2,
+              "cfView": "13.2",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 2.13,
+              "cfView": "2.13",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2,
+              "cf": 1.33,
+              "cfView": "1.33",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 1.184,
+              "cfView": "1.184",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.03,
+              "cfView": "1.03",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "cf": 15.5,
+              "cfView": "15.5",
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1,
+              "cf": 1.94,
+              "cfView": "1.94",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 1.5,
+              "cf": 1.27,
+              "cfView": "1.27",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": 2,
+              "cf": 1.04,
+              "cfView": "1.04",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "cf": 1.016,
+              "cfView": "1.016",
+              "eventParams": {
+                "params": [
+                  "(0)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1,
+              "cf": 1.94,
+              "cfView": "1.94",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -1.5,
+              "cf": 3.86,
+              "cfView": "3.86",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": -2,
+              "cf": 11.9,
+              "cfView": "11.9",
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 258,
+    "subGamesCount": 13,
+    "hasGraph": true,
+    "id": 748538515,
+    "num": 224861,
+    "mainGameId": 748538515,
+    "constId": 362183340,
+    "startTs": 1788094800,
+    "countryId": 231,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 7,
+    "mainConstId": 362183340,
+    "kind": 1,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "zonePlay": 748537948,
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/4269a9d0d55e0c20e4110ce1a41e1cf7.png",
+      "id": 88637,
+      "name": "England. Premier League"
+    },
+    "opponent1": {
+      "fullName": "Sunderland",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 2004,
+          "name": "Sunderland",
+          "image": "/sfiles/logo_teams/2004.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Fulham",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 1986,
+          "name": "Fulham",
+          "image": "/sfiles/logo_teams/1986.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 2",
+      "location": "Stadium of Light (Sunderland)",
+      "locationCity": "Sunderland",
+      "temperature": "+17\u00b0C",
+      "locationCountry": "England",
+      "weatherCode": "3",
+      "weatherDescription": "Some cloud",
+      "weatherWindCode": "9",
+      "weatherWindParam": "3.1",
+      "weatherWindDescription": "S wind, m/s",
+      "weatherPressure": "753",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "96",
+      "weatherHumidityDescription": "Humidity, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 1.184,
+              "cfView": "1.184"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 5,
+              "cfView": "5"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 39,
+              "cfView": "39"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "blocked": true,
+              "cf": 1.001,
+              "cfView": "1.001"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.184,
+              "cfView": "1.184"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 4.49,
+              "cfView": "4.49"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 3.83,
+              "cfView": "3.83"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 1.264,
+              "cfView": "1.264"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 2.39,
+              "cfView": "2.39",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 1.63,
+              "cfView": "1.63",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -1,
+              "cf": 2.08,
+              "cfView": "2.08",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 1,
+              "cf": 1.816,
+              "cfView": "1.816",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 1.5,
+              "cf": 4.17,
+              "cfView": "4.17",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 1.5,
+              "cf": 1.23,
+              "cfView": "1.23",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 0.5,
+              "cf": 3.83,
+              "cfView": "3.83",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 0.5,
+              "cf": 1.264,
+              "cfView": "1.264",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a3512b85e99bd05c63e9781",
+      "stageId": "6a34c3a75e99bd05c63e703a",
+      "stageType": 2,
+      "status": 3,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "scores": {
+      "fullScore": "1-0",
+      "periodScores": [
+        {
+          "period": 1,
+          "periodNameFull": "1st half"
+        },
+        {
+          "period": 2,
+          "scoreOpp1": 1,
+          "periodNameFull": "2nd half"
+        }
+      ],
+      "currentPeriod": 2,
+      "currentPeriodName": "2nd half",
+      "scoreOpp1": 1,
+      "scoreOpp2": 0,
+      "periodScoresStr": "0-0,1-0",
+      "timer": {
+        "timeSec": 4738,
+        "timeDirection": 0,
+        "timeRun": true
+      },
+      "hasCourseOfPlay": true,
+      "tabloStats": {
+        "0": [
+          {
+            "id": 93,
+            "s1": "1.55",
+            "s2": "0.62",
+            "name": "xG"
+          },
+          {
+            "id": 45,
+            "s1": "79",
+            "s2": "82",
+            "name": "Attacks"
+          },
+          {
+            "id": 58,
+            "s1": "32",
+            "s2": "34",
+            "name": "Dangerous attacks"
+          },
+          {
+            "id": 29,
+            "s1": "47",
+            "s2": "53",
+            "name": "Possession %"
+          },
+          {
+            "id": 59,
+            "s1": "2",
+            "s2": "0",
+            "name": "Shots on target"
+          },
+          {
+            "id": 60,
+            "s1": "8",
+            "s2": "5",
+            "name": "Shots off target"
+          },
+          {
+            "id": 26,
+            "s1": "0",
+            "s2": "2",
+            "name": "Yellow cards"
+          },
+          {
+            "id": 47,
+            "s1": "0",
+            "s2": "1",
+            "name": "Saves"
+          },
+          {
+            "id": 70,
+            "s1": "3",
+            "s2": "2",
+            "name": "Corner"
+          },
+          {
+            "id": 71,
+            "s1": "0",
+            "s2": "0",
+            "name": "Red card"
+          },
+          {
+            "id": 72,
+            "s1": "0",
+            "s2": "0",
+            "name": "Penalty"
+          },
+          {
+            "id": 92,
+            "s1": "2",
+            "s2": "3",
+            "name": "Substitutions"
+          },
+          {
+            "id": 94,
+            "s1": "7",
+            "s2": "4",
+            "name": "Key Passes"
+          },
+          {
+            "id": 95,
+            "s1": "84",
+            "s2": "84",
+            "name": "Passing Accuracy %"
+          },
+          {
+            "id": 96,
+            "s1": "15",
+            "s2": "5",
+            "name": "Crosses"
+          }
+        ]
+      },
+      "fullScoreDetail": {
+        "scoreOpp1": 1,
+        "scoreOpp2": 0
+      },
+      "statusLineStr": "78 minutes"
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 1.5,
+              "cf": 2.39,
+              "cfView": "2.39",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2,
+              "cf": 5.99,
+              "cfView": "5.99",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 9.96,
+              "cfView": "9.96",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 1.5,
+              "cf": 1.63,
+              "cfView": "1.63",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2,
+              "cf": 1.13,
+              "cfView": "1.13",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 1.056,
+              "cfView": "1.056",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 5.01,
+              "cfView": "5.01",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1,
+              "cf": 2.08,
+              "cfView": "2.08",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-1)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 1.18,
+              "cfView": "1.18",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1,
+              "cf": 1.816,
+              "cfView": "1.816",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(1)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 131,
+    "subGamesCount": 10,
+    "hasGraph": true,
+    "id": 748537948,
+    "num": 248980,
+    "mainGameId": 748537948,
+    "constId": 362574548,
+    "startTs": 1788094800,
+    "countryId": 231,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 7,
+    "mainConstId": 362574548,
+    "kind": 1,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "zonePlay": 748539200,
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/4269a9d0d55e0c20e4110ce1a41e1cf7.png",
+      "id": 88637,
+      "name": "England. Premier League"
+    },
+    "opponent1": {
+      "fullName": "Chelsea",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 1988,
+          "name": "Chelsea",
+          "image": "/sfiles/logo_teams/4d19a56f7c6e34c48f0f5e0f07bf9ac5.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Brighton & Hove Albion",
+      "countryId": 231,
+      "opps": [
+        {
+          "id": 2026,
+          "name": "Brighton & Hove Albion",
+          "image": "/sfiles/logo_teams/2026.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 2",
+      "location": "Stamford Bridge (London)",
+      "locationCity": "London",
+      "temperature": "+23\u00b0C",
+      "locationCountry": "England",
+      "weatherCode": "4",
+      "weatherDescription": "Some cloud, rain",
+      "weatherWindCode": "10",
+      "weatherWindParam": "7.2",
+      "weatherWindDescription": "SSW wind, m/s",
+      "weatherPressure": "756",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "62",
+      "weatherHumidityDescription": "Humidity, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 1.025,
+              "cfView": "1.025"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 17,
+              "cfView": "17"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 51,
+              "cfView": "51"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "blocked": true,
+              "cf": 1.001,
+              "cfView": "1.001"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.025,
+              "cfView": "1.025"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 12.6,
+              "cfView": "12.6"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 6.5,
+              "cf": 1.656,
+              "cfView": "1.656",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(6.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 6.5,
+              "cf": 2.34,
+              "cfView": "2.34",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(6.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -2,
+              "cf": 1.77,
+              "cfView": "1.77",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 2,
+              "cf": 2.15,
+              "cfView": "2.15",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 4.5,
+              "cf": 2.39,
+              "cfView": "2.39",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 4.5,
+              "cf": 1.575,
+              "cfView": "1.575",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 2.5,
+              "cf": 2.656,
+              "cfView": "2.656",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 2.5,
+              "cf": 1.48,
+              "cfView": "1.48",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a3512b85e99bd05c63e9776",
+      "stageId": "6a34c3a75e99bd05c63e703a",
+      "stageType": 2,
+      "status": 3,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "scores": {
+      "fullScore": "4-2",
+      "periodScores": [
+        {
+          "period": 1,
+          "scoreOpp1": 3,
+          "scoreOpp2": 1,
+          "periodNameFull": "1st half"
+        },
+        {
+          "period": 2,
+          "scoreOpp1": 1,
+          "scoreOpp2": 1,
+          "periodNameFull": "2nd half"
+        }
+      ],
+      "currentPeriod": 2,
+      "currentPeriodName": "2nd half",
+      "scoreOpp1": 4,
+      "scoreOpp2": 2,
+      "periodScoresStr": "3-1,1-1",
+      "timer": {
+        "timeSec": 4555,
+        "timeDirection": 0,
+        "timeRun": true
+      },
+      "hasCourseOfPlay": true,
+      "tabloStats": {
+        "0": [
+          {
+            "id": 93,
+            "s1": "2.86",
+            "s2": "1.41",
+            "name": "xG"
+          },
+          {
+            "id": 45,
+            "s1": "47",
+            "s2": "87",
+            "name": "Attacks"
+          },
+          {
+            "id": 58,
+            "s1": "21",
+            "s2": "49",
+            "name": "Dangerous attacks"
+          },
+          {
+            "id": 29,
+            "s1": "26",
+            "s2": "74",
+            "name": "Possession %"
+          },
+          {
+            "id": 59,
+            "s1": "6",
+            "s2": "5",
+            "name": "Shots on target"
+          },
+          {
+            "id": 60,
+            "s1": "10",
+            "s2": "7",
+            "name": "Shots off target"
+          },
+          {
+            "id": 26,
+            "s1": "1",
+            "s2": "1",
+            "name": "Yellow cards"
+          },
+          {
+            "id": 47,
+            "s1": "4",
+            "s2": "1",
+            "name": "Saves"
+          },
+          {
+            "id": 70,
+            "s1": "4",
+            "s2": "5",
+            "name": "Corner"
+          },
+          {
+            "id": 71,
+            "s1": "0",
+            "s2": "0",
+            "name": "Red card"
+          },
+          {
+            "id": 72,
+            "s1": "0",
+            "s2": "0",
+            "name": "Penalty"
+          },
+          {
+            "id": 92,
+            "s1": "4",
+            "s2": "1",
+            "name": "Substitutions"
+          },
+          {
+            "id": 94,
+            "s1": "13",
+            "s2": "7",
+            "name": "Key Passes"
+          },
+          {
+            "id": 95,
+            "s1": "69",
+            "s2": "88",
+            "name": "Passing Accuracy %"
+          },
+          {
+            "id": 96,
+            "s1": "5",
+            "s2": "20",
+            "name": "Crosses"
+          }
+        ]
+      },
+      "fullScoreDetail": {
+        "scoreOpp1": 4,
+        "scoreOpp2": 2
+      },
+      "statusLineStr": "75 minutes"
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 6.5,
+              "cf": 1.656,
+              "cfView": "1.656",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(6.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 7,
+              "cf": 2.832,
+              "cfView": "2.832",
+              "eventParams": {
+                "params": [
+                  "(7)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 7.5,
+              "cf": 4.12,
+              "cfView": "4.12",
+              "eventParams": {
+                "params": [
+                  "(7.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 8.5,
+              "cf": 11,
+              "cfView": "11",
+              "eventParams": {
+                "params": [
+                  "(8.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 6.5,
+              "cf": 2.34,
+              "cfView": "2.34",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(6.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 7,
+              "cf": 1.44,
+              "cfView": "1.44",
+              "eventParams": {
+                "params": [
+                  "(7)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 7.5,
+              "cf": 1.245,
+              "cfView": "1.245",
+              "eventParams": {
+                "params": [
+                  "(7.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 8.5,
+              "cf": 1.048,
+              "cfView": "1.048",
+              "eventParams": {
+                "params": [
+                  "(8.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -3,
+              "cf": 10.6,
+              "cfView": "10.6",
+              "eventParams": {
+                "params": [
+                  "(-3)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 3.49,
+              "cfView": "3.49",
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2,
+              "cf": 1.77,
+              "cfView": "1.77",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 1.25,
+              "cfView": "1.25",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 3.5,
+              "cf": 1.04,
+              "cfView": "1.04",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 3,
+              "cf": 1.05,
+              "cfView": "1.05",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 1.315,
+              "cfView": "1.315",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2,
+              "cf": 2.15,
+              "cfView": "2.15",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 4.06,
+              "cfView": "4.06",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 169,
+    "subGamesCount": 14,
+    "hasGraph": true,
+    "id": 748539200,
+    "num": 224654,
+    "mainGameId": 748539200,
+    "constId": 362183330,
+    "startTs": 1788094800,
+    "countryId": 231,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 7,
+    "mainConstId": 362183330,
+    "kind": 1,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  },
+  {
+    "zonePlay": 748548723,
+    "sport": {
+      "timeName": "Half",
+      "timesName": "Halves",
+      "id": 1,
+      "name": "Football"
+    },
+    "liga": {
+      "countryImage": "/sfiles/logo-flag/d4567348989cea3937d84a953323b252.png",
+      "id": 96463,
+      "name": "Germany. Bundesliga"
+    },
+    "opponent1": {
+      "fullName": "Freiburg",
+      "countryId": 53,
+      "opps": [
+        {
+          "id": 2880,
+          "name": "Freiburg",
+          "image": "/sfiles/logo_teams/8145ead5ff5129c4a470a0de050460fb.png"
+        }
+      ]
+    },
+    "opponent2": {
+      "fullName": "Werder Bremen",
+      "countryId": 53,
+      "opps": [
+        {
+          "id": 2862,
+          "name": "Werder Bremen",
+          "image": "/sfiles/logo_teams/c9255853da2a512b273306a46ab09f50.png"
+        }
+      ]
+    },
+    "matchInfo": {
+      "tournamentStage": "Round 1",
+      "location": "Europa Park (Freiburg im Breisgau)",
+      "locationCity": "Freiburg im Breisgau",
+      "temperature": "+28\u00b0C",
+      "locationCountry": "Germany",
+      "weatherCode": "15",
+      "weatherDescription": "Clear skies",
+      "weatherWindCode": "11",
+      "weatherWindParam": "4.4",
+      "weatherWindDescription": "SW wind, m/s",
+      "weatherPressure": "762",
+      "weatherPressureDescription": "Pressure, mmHg",
+      "weatherHumidity": "49",
+      "weatherHumidityDescription": "Humidity, %"
+    },
+    "eventGroups": [
+      {
+        "groupId": 1,
+        "shortGroupId": 1,
+        "events": [
+          [
+            {
+              "type": 1,
+              "cf": 1.03,
+              "cfView": "1.03"
+            }
+          ],
+          [
+            {
+              "type": 2,
+              "cf": 15,
+              "cfView": "15"
+            }
+          ],
+          [
+            {
+              "type": 3,
+              "cf": 41,
+              "cfView": "41"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 8,
+        "shortGroupId": 2,
+        "events": [
+          [
+            {
+              "type": 4,
+              "blocked": true,
+              "cf": 1.001,
+              "cfView": "1.001"
+            }
+          ],
+          [
+            {
+              "type": 5,
+              "cf": 1.03,
+              "cfView": "1.03"
+            }
+          ],
+          [
+            {
+              "type": 6,
+              "cf": 11,
+              "cfView": "11"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 19,
+        "shortGroupId": 21,
+        "events": [
+          [
+            {
+              "type": 180,
+              "cf": 1.995,
+              "cfView": "1.995"
+            }
+          ],
+          [
+            {
+              "type": 181,
+              "cf": 1.815,
+              "cfView": "1.815"
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 1.984,
+              "cfView": "1.984",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.896,
+              "cfView": "1.896",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 2.15,
+              "cfView": "2.15",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 1.768,
+              "cfView": "1.768",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 15,
+        "shortGroupId": 5,
+        "events": [
+          [
+            {
+              "type": 11,
+              "parameter": 3,
+              "cf": 2.155,
+              "cfView": "2.155",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 12,
+              "parameter": 3,
+              "cf": 1.7,
+              "cfView": "1.7",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 62,
+        "shortGroupId": 6,
+        "events": [
+          [
+            {
+              "type": 13,
+              "parameter": 0.5,
+              "cf": 1.995,
+              "cfView": "1.995",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 14,
+              "parameter": 0.5,
+              "cf": 1.815,
+              "cfView": "1.815",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(0.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "statisticInfo": {
+      "gameId": "6a4679f75e99bd05c646ed87",
+      "stageId": "6a46569f5e99bd05c646de32",
+      "stageType": 2,
+      "status": 3,
+      "hasLineUps": true,
+      "hasStadiumInfo": true
+    },
+    "scores": {
+      "fullScore": "2-0",
+      "periodScores": [
+        {
+          "period": 1,
+          "scoreOpp1": 2,
+          "periodNameFull": "1st half"
+        },
+        {
+          "period": 2,
+          "periodNameFull": "2nd half"
+        }
+      ],
+      "currentPeriod": 2,
+      "currentPeriodName": "2nd half",
+      "scoreOpp1": 2,
+      "scoreOpp2": 0,
+      "periodScoresStr": "2-0,0-0",
+      "timer": {
+        "timeSec": 2820,
+        "timeDirection": 0,
+        "timeRun": true
+      },
+      "hasCourseOfPlay": true,
+      "tabloStats": {
+        "0": [
+          {
+            "id": 93,
+            "s1": "0.79",
+            "s2": "0.12",
+            "name": "xG"
+          },
+          {
+            "id": 45,
+            "s1": "56",
+            "s2": "30",
+            "name": "Attacks"
+          },
+          {
+            "id": 58,
+            "s1": "32",
+            "s2": "13",
+            "name": "Dangerous attacks"
+          },
+          {
+            "id": 29,
+            "s1": "64",
+            "s2": "36",
+            "name": "Possession %"
+          },
+          {
+            "id": 59,
+            "s1": "2",
+            "s2": "1",
+            "name": "Shots on target"
+          },
+          {
+            "id": 60,
+            "s1": "11",
+            "s2": "1",
+            "name": "Shots off target"
+          },
+          {
+            "id": 26,
+            "s1": "0",
+            "s2": "0",
+            "name": "Yellow cards"
+          },
+          {
+            "id": 47,
+            "s1": "1",
+            "s2": "0",
+            "name": "Saves"
+          },
+          {
+            "id": 70,
+            "s1": "4",
+            "s2": "0",
+            "name": "Corner"
+          },
+          {
+            "id": 71,
+            "s1": "0",
+            "s2": "0",
+            "name": "Red card"
+          },
+          {
+            "id": 72,
+            "s1": "0",
+            "s2": "0",
+            "name": "Penalty"
+          },
+          {
+            "id": 92,
+            "s1": "1",
+            "s2": "1",
+            "name": "Substitutions"
+          },
+          {
+            "id": 94,
+            "s1": "8",
+            "s2": "1",
+            "name": "Key Passes"
+          },
+          {
+            "id": 95,
+            "s1": "92",
+            "s2": "79",
+            "name": "Passing Accuracy %"
+          },
+          {
+            "id": 96,
+            "s1": "6",
+            "s2": "8",
+            "name": "Crosses"
+          }
+        ]
+      },
+      "fullScoreDetail": {
+        "scoreOpp1": 2,
+        "scoreOpp2": 0
+      },
+      "statusLineStr": "47 minutes"
+    },
+    "centralBlockEventGroups": [
+      {
+        "groupId": 17,
+        "shortGroupId": 4,
+        "events": [
+          [
+            {
+              "type": 9,
+              "parameter": 2.5,
+              "cf": 1.205,
+              "cfView": "1.205",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3,
+              "cf": 1.392,
+              "cfView": "1.392",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 3.5,
+              "cf": 1.984,
+              "cfView": "1.984",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 4,
+              "cf": 3.225,
+              "cfView": "3.225",
+              "eventParams": {
+                "params": [
+                  "(4)"
+                ]
+              }
+            },
+            {
+              "type": 9,
+              "parameter": 4.5,
+              "cf": 4.12,
+              "cfView": "4.12",
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 10,
+              "parameter": 2.5,
+              "cf": 4.61,
+              "cfView": "4.61",
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3,
+              "cf": 3.03,
+              "cfView": "3.03",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 3.5,
+              "cf": 1.896,
+              "cfView": "1.896",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 4,
+              "cf": 1.355,
+              "cfView": "1.355",
+              "eventParams": {
+                "params": [
+                  "(4)"
+                ]
+              }
+            },
+            {
+              "type": 10,
+              "parameter": 4.5,
+              "cf": 1.245,
+              "cfView": "1.245",
+              "eventParams": {
+                "params": [
+                  "(4.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "groupId": 2,
+        "shortGroupId": 3,
+        "events": [
+          [
+            {
+              "type": 7,
+              "parameter": -3.5,
+              "cf": 4.95,
+              "cfView": "4.95",
+              "eventParams": {
+                "params": [
+                  "(-3.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -3,
+              "cf": 3.7,
+              "cfView": "3.7",
+              "eventParams": {
+                "params": [
+                  "(-3)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2.5,
+              "cf": 2.15,
+              "cfView": "2.15",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(-2.5)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -2,
+              "cf": 1.43,
+              "cfView": "1.43",
+              "eventParams": {
+                "params": [
+                  "(-2)"
+                ]
+              }
+            },
+            {
+              "type": 7,
+              "parameter": -1.5,
+              "cf": 1.24,
+              "cfView": "1.24",
+              "eventParams": {
+                "params": [
+                  "(-1.5)"
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "type": 8,
+              "parameter": 3.5,
+              "cf": 1.175,
+              "cfView": "1.175",
+              "eventParams": {
+                "params": [
+                  "(3.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 3,
+              "cf": 1.28,
+              "cfView": "1.28",
+              "eventParams": {
+                "params": [
+                  "(3)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2.5,
+              "cf": 1.768,
+              "cfView": "1.768",
+              "isCenter": true,
+              "eventParams": {
+                "params": [
+                  "(2.5)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 2,
+              "cf": 2.885,
+              "cfView": "2.885",
+              "eventParams": {
+                "params": [
+                  "(2)"
+                ]
+              }
+            },
+            {
+              "type": 8,
+              "parameter": 1.5,
+              "cf": 4.07,
+              "cfView": "4.07",
+              "eventParams": {
+                "params": [
+                  "(1.5)"
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "eventsCount": 369,
+    "subGamesCount": 13,
+    "hasGraph": true,
+    "id": 748548723,
+    "num": 180325,
+    "mainGameId": 748548723,
+    "constId": 351232468,
+    "startTs": 1788096600,
+    "countryId": 53,
+    "gameTypeName": "",
+    "periodName": "",
+    "menuSection": 2,
+    "globalChampId": 107,
+    "mainConstId": 351232468,
+    "kind": 1,
+    "hasHeadToHead": true,
+    "subscriptionAvailable": true,
+    "isFavoriteAvailable": true
+  }
+]

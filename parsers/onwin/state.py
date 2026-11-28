@@ -25,11 +25,13 @@ traffic (see output/onwin_event_snapshots.json):
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
+from debug import odds_trace
 from models.match import MatchOdds
 from parsers.onwin.parser import (
     FOOTBALL_SPORT_ID,
     extract_1x2_market,
     extract_event_diff,
+    extract_ou_2_5,
 )
 
 
@@ -56,6 +58,11 @@ class OnwinEventState:
     home_updated_at: int | None = None
     draw_updated_at: int | None = None
     away_updated_at: int | None = None
+
+    ou_line: float | None = None
+    ou_over: float | None = None
+    ou_under: float | None = None
+    ou_updated_at: int | None = None
 
 
 class OnwinState:
@@ -102,20 +109,48 @@ class OnwinState:
 
         return set(events.keys())
 
-    def apply_update(self, raw_json: dict) -> set[str]:
+    def apply_update(self, raw_json) -> set[str]:
         """
-        Merge a find_event_snapshots.erisgaming payload into local state.
+        Merge a live-update payload into local state.
 
-        Only events present in `raw_json` are examined. Nothing is ever
-        deleted here: an event/market/outcome missing from this payload
-        simply keeps whatever value local state already had.
-
-        Returns the set of event_ids whose stored state actually
-        changed value (new event, or a field genuinely differs from
-        what was already known) so callers can regenerate MatchOdds
-        only for affected events instead of rebuilding everything.
+        Accepts the documented find_event_snapshots object shape
+        (`{"sports": ...}`) and the live get_main_line_gap form, which
+        arrives as a JSON array of the same objects (or of wrapper
+        dicts with a sports/result/data field). A list payload used to
+        raise AttributeError and freeze OnWin odds after the snapshot.
         """
 
+        changed: set[str] = set()
+        for payload in self._coerce_update_payloads(raw_json):
+            changed |= self._apply_one_update(payload)
+        return changed
+
+    @staticmethod
+    def _coerce_update_payloads(raw_json) -> list[dict]:
+        """Unwrap list/result wrappers into dicts that have `sports`."""
+        if raw_json is None:
+            return []
+
+        if isinstance(raw_json, list):
+            payloads: list[dict] = []
+            for item in raw_json:
+                payloads.extend(OnwinState._coerce_update_payloads(item))
+            return payloads
+
+        if not isinstance(raw_json, dict):
+            return []
+
+        if "sports" in raw_json:
+            return [raw_json]
+
+        for key in ("result", "data", "payload", "diff"):
+            inner = raw_json.get(key)
+            if isinstance(inner, (dict, list)):
+                return OnwinState._coerce_update_payloads(inner)
+
+        return [raw_json]
+
+    def _apply_one_update(self, raw_json: dict) -> set[str]:
         changed: set[str] = set()
 
         incoming: dict[str, OnwinEventState] = {}
@@ -171,6 +206,19 @@ class OnwinState:
             existing.away_odds, existing.away_updated_at,
             candidate.away_odds, candidate.away_updated_at,
         )
+        ou_over, ou_updated_at = self._pick_newer(
+            existing.ou_over, existing.ou_updated_at,
+            candidate.ou_over, candidate.ou_updated_at,
+        )
+        ou_under = existing.ou_under if candidate.ou_under is None else candidate.ou_under
+        if candidate.ou_over is None:
+            ou_under = existing.ou_under
+            ou_line = existing.ou_line
+        elif ou_over == existing.ou_over and ou_updated_at == existing.ou_updated_at:
+            ou_under = existing.ou_under
+            ou_line = existing.ou_line
+        else:
+            ou_line = candidate.ou_line
 
         return replace(
             existing,
@@ -190,6 +238,10 @@ class OnwinState:
             home_updated_at=home_updated_at,
             draw_updated_at=draw_updated_at,
             away_updated_at=away_updated_at,
+            ou_line=ou_line,
+            ou_over=ou_over,
+            ou_under=ou_under,
+            ou_updated_at=ou_updated_at,
         )
 
     @staticmethod
@@ -268,11 +320,32 @@ class OnwinState:
 
         market = extract_1x2_market(event)
 
+        ou_line = ou_over = ou_under = ou_updated_at = None
+        totals = extract_ou_2_5(event)
+        if totals is not None:
+            ou_line, ou_over, ou_under, ou_updated_at = totals
+
         if market is not None:
             home_odds, draw_odds, away_odds, updated_at = market
             home_updated_at = updated_at.get("p1")
             draw_updated_at = updated_at.get("draw")
             away_updated_at = updated_at.get("p2")
+
+            # OnWin's "coefficient" field is already a JSON number, not
+            # a string -- float() below is a no-op for precision, so
+            # RAW and PARSED are traced as the same value (unlike
+            # BetKanyon, there's no separate raw-string stage here).
+            odds_trace.record(
+                "PARSED",
+                "OnWin",
+                event_fields["home_team"],
+                event_fields["away_team"],
+                "1X2",
+                None,
+                home_odds,
+                draw_odds,
+                away_odds,
+            )
 
         return OnwinEventState(
             event_id=event_id,
@@ -289,6 +362,10 @@ class OnwinState:
             home_updated_at=home_updated_at,
             draw_updated_at=draw_updated_at,
             away_updated_at=away_updated_at,
+            ou_line=ou_line,
+            ou_over=ou_over,
+            ou_under=ou_under,
+            ou_updated_at=ou_updated_at,
         )
 
     @staticmethod
@@ -328,9 +405,11 @@ class OnwinState:
 
         for state in targets:
             match_odds = self._state_to_match_odds(state)
-
             if match_odds is not None:
                 results.append(match_odds)
+            totals = self._ou_to_match_odds(state)
+            if totals is not None:
+                results.append(totals)
 
         return results
 
@@ -365,6 +444,33 @@ class OnwinState:
             away_odds=state.away_odds,
             start_time=start_time,
             collected_at=datetime.now(timezone.utc),
+        )
+
+    @staticmethod
+    def _ou_to_match_odds(state: OnwinEventState) -> MatchOdds | None:
+        if state.status != "in_progress":
+            return None
+        if state.start_time_ms is None:
+            return None
+        if None in (state.ou_line, state.ou_over, state.ou_under):
+            return None
+        start_time = datetime.fromtimestamp(
+            state.start_time_ms / 1000,
+            tz=timezone.utc,
+        )
+        return MatchOdds(
+            bookmaker="OnWin",
+            competition=state.competition,
+            sport="football",
+            market="over_under",
+            home_team=state.home_team,
+            away_team=state.away_team,
+            home_odds=state.ou_over,
+            draw_odds=0.0,
+            away_odds=state.ou_under,
+            start_time=start_time,
+            collected_at=datetime.now(timezone.utc),
+            line=state.ou_line,
         )
 
     def all_event_ids(self) -> set[str]:

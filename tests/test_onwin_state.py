@@ -166,6 +166,43 @@ def test_update_changes_existing_outcome():
     assert match.away_odds == 3.55
 
 
+def test_apply_update_accepts_list_wrapped_payload():
+    """Live get_main_line_gap responses arrive as a JSON array."""
+    state = OnwinState()
+    state.load_initial(make_payload({
+        "evt-1": make_event(odds=(2.07, 3.30, 3.60, 1000)),
+    }))
+
+    changed = state.apply_update([
+        make_payload(
+            {"evt-1": make_event(odds=(2.09, 3.31, 3.50, 3000))},
+            versions=[3],
+        )
+    ])
+
+    assert changed == {"evt-1"}
+    [match] = state.get_match_odds(["evt-1"])
+    assert match.home_odds == 2.09
+
+
+def test_apply_update_accepts_result_wrapper():
+    state = OnwinState()
+    state.load_initial(make_payload({
+        "evt-1": make_event(odds=(2.07, 3.30, 3.60, 1000)),
+    }))
+
+    changed = state.apply_update({
+        "result": make_payload(
+            {"evt-1": make_event(odds=(2.11, 3.30, 3.40, 4000))},
+            versions=[4],
+        )
+    })
+
+    assert changed == {"evt-1"}
+    [match] = state.get_match_odds(["evt-1"])
+    assert match.home_odds == 2.11
+
+
 # ----------------------------------------------------------------------
 # 4. An update containing only one event does not erase other events
 # ----------------------------------------------------------------------
@@ -542,3 +579,36 @@ def test_real_event_ids_shared_between_main_line_and_snapshots():
     # two feeds share the same event ID space for football events that
     # appear in both captures.
     assert len(shared_ids) > 0
+
+
+def test_live_state_keeps_1x2_and_over_under_2_5_on_separate_rows():
+    event = make_event()
+    event["scopes"]["normal_time--0"]["markets"]["score_ou--2.5"] = {
+        "outcomes": {
+            "outcome::over": {"coefficient": 1.91, "updatedAt": 1000},
+            "outcome::under": {"coefficient": 1.89, "updatedAt": 1000},
+        }
+    }
+    event["scopes"]["normal_time--0"]["markets"]["score_ou--1.5"] = {
+        "outcomes": {
+            "outcome::over": {"coefficient": 1.40, "updatedAt": 1000},
+            "outcome::under": {"coefficient": 2.80, "updatedAt": 1000},
+        }
+    }
+    state = OnwinState()
+    state.load_initial(make_payload({"e1": event}))
+    rows = state.get_match_odds()
+    one = [row for row in rows if row.market == "1X2"]
+    totals = [row for row in rows if row.market == "over_under"]
+    assert len(one) == 1
+    assert len(totals) == 1
+    assert totals[0].line == 2.5
+    assert totals[0].home_odds == 1.91
+    assert totals[0].away_odds == 1.89
+    assert totals[0].draw_odds == 0.0
+
+    bare = make_event(include_market=False, odds=(1.90, 3.40, 4.10, 2000))
+    state.apply_update(make_payload({"e1": bare}, versions=[2]))
+    kept = [row for row in state.get_match_odds() if row.market == "over_under"]
+    assert len(kept) == 1
+    assert kept[0].line == 2.5

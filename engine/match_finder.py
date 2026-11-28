@@ -1,7 +1,25 @@
 from engine.matcher import EventMatcher
 
 from models.match import MatchOdds
+from models.markets import arb_group_key
 from models.matched_event import MatchedEvent
+
+
+def quotes_for_cross_book_groups(matches):
+    """Drop LAY quotes before KenyanMatchFinder groups a fixture.
+
+    KenyanMatchFinder treats two listings from one bookmaker as ambiguous
+    and drops the fixture. Orbit publishes a BACK quote and a LAY quote
+    for the same event. The LAY quote stays available to the BACK-vs-LAY
+    detector, which compares it one pair at a time.
+    """
+    grouped = []
+    for match in matches:
+        side = getattr(match, "side", None)
+        if side is not None and str(side).strip().upper() == "LAY":
+            continue
+        grouped.append(match)
+    return grouped
 
 
 class MatchFinder:
@@ -52,6 +70,10 @@ class MatchFinder:
                 #
 
                 if match.bookmaker == other.bookmaker:
+                    continue
+
+                # Same teams can carry 1X2 and O/U; arb groups must not mix.
+                if arb_group_key(match) != arb_group_key(other):
                     continue
 
                 #
