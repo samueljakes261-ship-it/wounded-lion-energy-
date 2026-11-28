@@ -14,7 +14,8 @@ from models.arbitrage_opportunity import ArbitrageOpportunity
 from models.back_lay_opportunity import OPPORTUNITY_TYPE_BACK_BACK
 from models.markets import is_1x2_market, is_over_under_market
 from prematch.back_lay import serialize_back_lay_opportunities
-from prematch.matcher import PrematchMatchFinder
+from engine.match_finder import quotes_for_cross_book_groups
+from kenyan.matcher import KenyanMatchFinder
 
 PREMATCH_CACHE_FILE = Path("cached_prematch_opportunities.json")
 # Prematch snapshots can take longer than a live poll (many tournament
@@ -72,12 +73,12 @@ def _opportunity_is_source_safe(opportunity):
 
 
 def build_prematch_opportunities(matches, bankroll=1000):
-    finder = PrematchMatchFinder()
+    finder = KenyanMatchFinder()
     selector = BestOddsSelector()
     detector = ArbitrageDetector()
     calculator = StakeCalculator()
 
-    matched_events = finder.find(matches)
+    matched_events = finder.find(quotes_for_cross_book_groups(matches))
     opportunities = []
     for event in matched_events:
         if is_over_under_market(event.market):

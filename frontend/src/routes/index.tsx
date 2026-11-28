@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { resolveApiConfig } from "@/lib/api-config"
-import {
-  filterBetfairOpportunities,
-  formatUtcTimestamp,
-  isBetfairOpportunity,
-  type BetfairOpportunity,
-} from "@/lib/betfair"
 import { t, type FeedMode, type Lang } from "@/lib/i18n"
 import {
   bookmakersFromOpportunities,
@@ -105,7 +99,7 @@ type OverUnderOpportunity = {
   under: Leg
 }
 
-type ApiOpportunity = Opportunity | BackLayOpportunity | OverUnderOpportunity | BetfairOpportunity
+type ApiOpportunity = Opportunity | BackLayOpportunity | OverUnderOpportunity
 
 function isBackLayOpportunity(
   opportunity: ApiOpportunity
@@ -301,8 +295,8 @@ function CollectorStatusPanel({
 
   const order =
     mode === "prematch"
-      ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch", "kolay90_prematch", "betfair"]
-      : ["orbit", "betkanyon", "onwin", "kolay90", "betfair"]
+      ? ["orbit_prematch", "betkanyon_prematch", "onwin_prematch", "kolay90_prematch"]
+      : ["orbit", "betkanyon", "onwin", "kolay90"]
   const matched =
     mode === "prematch"
       ? (status as CollectorStatusResponse & { prematchMatchedEvents?: number })
@@ -326,14 +320,11 @@ function CollectorStatusPanel({
             if (!collector) {
               return null
             }
-            const suspended =
-              mode === "live" && (key === "orbit" || key === "betkanyon")
-            const shown = suspended
-              ? "MAINTENANCE"
-              : status.scheduledRestart &&
-                  (collector.collectorStatus === "STARTING" ||
-                    collector.collectorStatus === "RECOVERING" ||
-                    collector.collectorStatus === "STOPPED")
+            const shown =
+              status.scheduledRestart &&
+              (collector.collectorStatus === "STARTING" ||
+                collector.collectorStatus === "RECOVERING" ||
+                collector.collectorStatus === "STOPPED")
                 ? "RUNNING"
                 : collector.collectorStatus
             return (
@@ -342,21 +333,14 @@ function CollectorStatusPanel({
               <span className="text-sm text-slate-300">{collector.name}</span>
               <Badge
                 className={
-                  suspended
-                    ? "bg-amber-500/20 text-amber-200 border-amber-500/40"
-                    : COLLECTOR_STATUS_STYLES[shown as CollectorHealth["collectorStatus"]]
+                  COLLECTOR_STATUS_STYLES[shown as CollectorHealth["collectorStatus"]]
                 }
               >
                 {shown}
               </Badge>
               <span className="text-xs text-slate-500">
-                {suspended ? "temporarily paused" : formatAge(collector.ageSeconds)}
+                {formatAge(collector.ageSeconds)}
               </span>
-              {collector.name === "Betfair" ? (
-                <span className="text-xs text-slate-500">
-                  L{collector.liveRecords ?? 0}/P{collector.prematchRecords ?? 0}
-                </span>
-              ) : null}
             </div>
             )
           })}
@@ -572,106 +556,6 @@ function OpportunityCard({
   )
 }
 
-function formatMaybeNumber(value: number | null | undefined, digits = 2): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "—"
-  }
-  return value.toFixed(digits)
-}
-
-function BetfairCard({
-  opportunity,
-  lang,
-  mode,
-}: {
-  opportunity: BetfairOpportunity
-  lang: Lang
-  mode: FeedMode
-}) {
-  const profitable = opportunity.isProfitable === true
-  const value = opportunity.valuePct ?? opportunity.profitPercentage
-  return (
-    <Card className="bg-slate-900 border-slate-800 hover:border-amber-500/40 transition-colors duration-300">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40">
-                {t(lang, "betfair")}
-              </Badge>
-              <Badge variant="outline">{opportunity.direction || "—"}</Badge>
-              {opportunity.executionGrade ? (
-                <Badge variant="outline">{opportunity.executionGrade}</Badge>
-              ) : null}
-            </div>
-            <CardTitle className="text-lg">
-              {opportunity.homeTeam} vs {opportunity.awayTeam}
-            </CardTitle>
-            <div className="text-slate-400 text-sm mt-1 truncate">
-              {opportunity.league || opportunity.competition}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <Badge
-              className={
-                profitable
-                  ? "bg-emerald-500 text-black"
-                  : "bg-slate-700 text-slate-200"
-              }
-            >
-              {typeof value === "number" ? `${value.toFixed(2)}%` : "—"}
-            </Badge>
-            {!profitable ? (
-              <span className="text-[11px] text-slate-500">
-                {opportunity.status || t(lang, "notProfitable")}
-              </span>
-            ) : (
-              <span className="text-[11px] text-slate-500">{opportunity.status}</span>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 space-y-2 text-sm">
-        <div className="text-slate-300">
-          {opportunity.marketLabel || opportunity.market}
-          {opportunity.line != null ? ` (${opportunity.line})` : ""}
-          {opportunity.outcome ? ` — ${opportunity.outcome}` : ""}
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-400">
-          <span>
-            {t(lang, "direction")}: {opportunity.direction || "—"}
-          </span>
-          <span>
-            {t(lang, "valuePct")}: {formatMaybeNumber(value)}%
-          </span>
-          <span>
-            {t(lang, "guaranteedProfit")}: {formatMaybeNumber(opportunity.guaranteedProfit)}
-          </span>
-          <span>
-            {t(lang, "layAvailability")}: {formatMaybeNumber(opportunity.layAvailableSize)}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-500 text-xs">
-          <span>
-            {opportunity.bestBackBookmaker || "—"} @ {formatMaybeNumber(opportunity.iddaaOdd)}
-          </span>
-          <span>
-            {opportunity.refBookmaker || t(lang, "betfair")} @ {formatMaybeNumber(opportunity.refOdd)}
-          </span>
-          {mode === "prematch" && opportunity.startTime ? (
-            <span>{formatUtcTimestamp(opportunity.startTime)}</span>
-          ) : null}
-          {opportunity.isLive === true && opportunity.liveClock ? (
-            <span>
-              {t(lang, "liveClock")}: {opportunity.liveClock}
-            </span>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 function Dashboard() {
   const [opportunities, setOpportunities] = useState<ApiOpportunity[]>([])
   const [loading, setLoading] = useState(true)
@@ -687,7 +571,6 @@ function Dashboard() {
   const [minOdds, setMinOdds] = useState("")
   const [maxOdds, setMaxOdds] = useState("")
   const [selectedBooks, setSelectedBooks] = useState<string[]>([])
-  const [betfairPositiveOnly, setBetfairPositiveOnly] = useState(false)
 
   const loadCollectorStatus = async () => {
     try {
@@ -764,43 +647,22 @@ function Dashboard() {
 
   const bookmakerOptions = useMemo(() => {
     const fromStatus = bookmakersFromStatus(collectorStatus?.collectors, mode)
-    const fromOpps = bookmakersFromOpportunities(
-      opportunities.filter((item) => !isBetfairOpportunity(item))
-    )
+    const fromOpps = bookmakersFromOpportunities(opportunities)
     return [...new Set([...fromStatus, ...fromOpps])].sort((left, right) =>
       left.localeCompare(right)
     )
   }, [collectorStatus, mode, opportunities])
 
-  const kenyanTurkishOpportunities = useMemo(
-    () => opportunities.filter((item) => !isBetfairOpportunity(item)),
-    [opportunities]
-  )
-
   const visibleOpportunities = useMemo(
     () =>
-      filterOpportunities(kenyanTurkishOpportunities, {
+      filterOpportunities(opportunities, {
         minArb: parseOptionalNumber(minArb),
         maxArb: parseOptionalNumber(maxArb),
         minOdds: parseOptionalNumber(minOdds),
         maxOdds: parseOptionalNumber(maxOdds),
         bookmakers: selectedBooks,
       }),
-    [kenyanTurkishOpportunities, minArb, maxArb, minOdds, maxOdds, selectedBooks]
-  )
-
-  const betfairOpportunities = useMemo(
-    () =>
-      filterBetfairOpportunities(
-        opportunities.filter(isBetfairOpportunity),
-        {
-          mode,
-          minArb: parseOptionalNumber(minArb),
-          maxArb: parseOptionalNumber(maxArb),
-          positiveValueOnly: betfairPositiveOnly,
-        }
-      ),
-    [opportunities, mode, minArb, maxArb, betfairPositiveOnly]
+    [opportunities, minArb, maxArb, minOdds, maxOdds, selectedBooks]
   )
 
   const backLayOpportunities = visibleOpportunities.filter(isBackLayOpportunity)
@@ -808,12 +670,8 @@ function Dashboard() {
   const backBackOpportunities = visibleOpportunities.filter(
     (opportunity): opportunity is Opportunity =>
       !isBackLayOpportunity(opportunity) &&
-      !isOverUnderOpportunity(opportunity) &&
-      !isBetfairOpportunity(opportunity)
+      !isOverUnderOpportunity(opportunity)
   )
-
-  const unknownBetfairCount =
-    collectorStatus?.collectors?.betfair?.unknownRecords ?? 0
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -1024,59 +882,6 @@ function Dashboard() {
           </Card>
         ) : (
           <div className="space-y-6">
-            <section className="space-y-3" data-testid="betfair-opportunities">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold tracking-wide text-amber-200/80">
-                  {t(lang, "betfairValueOpportunities")} · {mode === "live" ? t(lang, "live") : t(lang, "prematch")}
-                </h2>
-                <button
-                  type="button"
-                  className={`px-2 py-1 text-xs rounded-md border ${
-                    betfairPositiveOnly
-                      ? "bg-cyan-500 text-black border-cyan-500"
-                      : "bg-slate-950 text-slate-300 border-slate-700"
-                  }`}
-                  onClick={() => setBetfairPositiveOnly((current) => !current)}
-                >
-                  {t(lang, "positiveValueOnly")}
-                </button>
-              </div>
-              {unknownBetfairCount > 0 ? (
-                <div className="text-xs text-amber-400/80">
-                  {t(lang, "betfairUnknownExcluded")}: {unknownBetfairCount}
-                </div>
-              ) : null}
-              {betfairOpportunities.length === 0 ? (
-                <div className="text-sm text-slate-500">{t(lang, "noBetfair")}</div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {betfairOpportunities.map((opportunity, index) => (
-                    <BetfairCard
-                      key={opportunity.clusterId || `betfair-${index}`}
-                      opportunity={opportunity}
-                      lang={lang}
-                      mode={mode}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {mode === "live" ? (
-              <Card
-                className="bg-slate-900 border-amber-500/40"
-                data-testid="turkish-live-maintenance"
-              >
-                <CardContent className="py-4">
-                  <div className="text-xs font-semibold tracking-wide text-amber-200">
-                    Maintenance
-                  </div>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-100">
-                    BetKanyon and Orbit LIVE remain paused. Onwin LIVE is collected from the local Chrome session. PREMATCH services remain available.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : null}
             <>
             <section className="space-y-3">
               <h2 className="text-sm font-semibold tracking-wide text-slate-400">

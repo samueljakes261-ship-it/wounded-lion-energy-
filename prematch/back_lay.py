@@ -21,7 +21,8 @@ from models.back_lay_opportunity import (
     BackLayOpportunity,
 )
 from models.markets import arb_group_key, is_over_under_market
-from prematch.matcher import PrematchMatchFinder
+from engine.match_finder import quotes_for_cross_book_groups
+from kenyan.matcher import KenyanEventMatcher, KenyanMatchFinder
 
 
 OUTCOME_FIELDS = {
@@ -79,10 +80,11 @@ def log_back_lay_decision(
 
 class PrematchBackLayDetector:
     def __init__(self):
-        self.finder = PrematchMatchFinder()
+        self.finder = KenyanMatchFinder()
 
     def find(self, matches, log=False) -> list[BackLayOpportunity]:
-        events = self.finder.find(matches)
+        events = self.finder.find(quotes_for_cross_book_groups(matches))
+        self._attach_unique_lays(events, matches)
         opportunities = []
         rejected_logged = 0
         evaluated = 0
@@ -172,6 +174,26 @@ class PrematchBackLayDetector:
                 f"accepted={accepted} rejected={evaluated - accepted}"
             )
         return opportunities
+
+    def _attach_unique_lays(self, events, matches):
+        """Attach a LAY quote only when one grouped event matches it.
+
+        KenyanEventMatcher still decides the pair. Two candidate events
+        leave the LAY unattached.
+        """
+        matcher = KenyanEventMatcher()
+        lays = [match for match in matches if explicit_side(match) == "LAY"]
+        for lay in lays:
+            hits = []
+            for event in events:
+                for back in event.matches:
+                    if back.bookmaker == lay.bookmaker:
+                        continue
+                    if matcher.is_same_event(back, lay):
+                        hits.append(event)
+                        break
+            if len(hits) == 1:
+                hits[0].add_match(lay)
 
 
 def find_prematch_back_lay(matches, log=False) -> list[BackLayOpportunity]:

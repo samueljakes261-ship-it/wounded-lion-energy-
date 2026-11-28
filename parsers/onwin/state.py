@@ -31,6 +31,7 @@ from parsers.onwin.parser import (
     FOOTBALL_SPORT_ID,
     extract_1x2_market,
     extract_event_diff,
+    extract_ou_2_5,
 )
 
 
@@ -57,6 +58,11 @@ class OnwinEventState:
     home_updated_at: int | None = None
     draw_updated_at: int | None = None
     away_updated_at: int | None = None
+
+    ou_line: float | None = None
+    ou_over: float | None = None
+    ou_under: float | None = None
+    ou_updated_at: int | None = None
 
 
 class OnwinState:
@@ -200,6 +206,19 @@ class OnwinState:
             existing.away_odds, existing.away_updated_at,
             candidate.away_odds, candidate.away_updated_at,
         )
+        ou_over, ou_updated_at = self._pick_newer(
+            existing.ou_over, existing.ou_updated_at,
+            candidate.ou_over, candidate.ou_updated_at,
+        )
+        ou_under = existing.ou_under if candidate.ou_under is None else candidate.ou_under
+        if candidate.ou_over is None:
+            ou_under = existing.ou_under
+            ou_line = existing.ou_line
+        elif ou_over == existing.ou_over and ou_updated_at == existing.ou_updated_at:
+            ou_under = existing.ou_under
+            ou_line = existing.ou_line
+        else:
+            ou_line = candidate.ou_line
 
         return replace(
             existing,
@@ -219,6 +238,10 @@ class OnwinState:
             home_updated_at=home_updated_at,
             draw_updated_at=draw_updated_at,
             away_updated_at=away_updated_at,
+            ou_line=ou_line,
+            ou_over=ou_over,
+            ou_under=ou_under,
+            ou_updated_at=ou_updated_at,
         )
 
     @staticmethod
@@ -297,6 +320,11 @@ class OnwinState:
 
         market = extract_1x2_market(event)
 
+        ou_line = ou_over = ou_under = ou_updated_at = None
+        totals = extract_ou_2_5(event)
+        if totals is not None:
+            ou_line, ou_over, ou_under, ou_updated_at = totals
+
         if market is not None:
             home_odds, draw_odds, away_odds, updated_at = market
             home_updated_at = updated_at.get("p1")
@@ -334,6 +362,10 @@ class OnwinState:
             home_updated_at=home_updated_at,
             draw_updated_at=draw_updated_at,
             away_updated_at=away_updated_at,
+            ou_line=ou_line,
+            ou_over=ou_over,
+            ou_under=ou_under,
+            ou_updated_at=ou_updated_at,
         )
 
     @staticmethod
@@ -373,9 +405,11 @@ class OnwinState:
 
         for state in targets:
             match_odds = self._state_to_match_odds(state)
-
             if match_odds is not None:
                 results.append(match_odds)
+            totals = self._ou_to_match_odds(state)
+            if totals is not None:
+                results.append(totals)
 
         return results
 
@@ -410,6 +444,33 @@ class OnwinState:
             away_odds=state.away_odds,
             start_time=start_time,
             collected_at=datetime.now(timezone.utc),
+        )
+
+    @staticmethod
+    def _ou_to_match_odds(state: OnwinEventState) -> MatchOdds | None:
+        if state.status != "in_progress":
+            return None
+        if state.start_time_ms is None:
+            return None
+        if None in (state.ou_line, state.ou_over, state.ou_under):
+            return None
+        start_time = datetime.fromtimestamp(
+            state.start_time_ms / 1000,
+            tz=timezone.utc,
+        )
+        return MatchOdds(
+            bookmaker="OnWin",
+            competition=state.competition,
+            sport="football",
+            market="over_under",
+            home_team=state.home_team,
+            away_team=state.away_team,
+            home_odds=state.ou_over,
+            draw_odds=0.0,
+            away_odds=state.ou_under,
+            start_time=start_time,
+            collected_at=datetime.now(timezone.utc),
+            line=state.ou_line,
         )
 
     def all_event_ids(self) -> set[str]:

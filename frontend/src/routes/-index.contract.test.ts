@@ -98,14 +98,11 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     expect(SOURCE).toMatch(/<OpportunityCard/)
   })
 
-  it("shows a temporary maintenance notice for Turkish LIVE only", () => {
-    expect(SOURCE).toContain(
-      "Turkish bookmakers' LIVE feeds are temporarily disabled while we carry out maintenance and repairs. PREMATCH services remain available."
-    )
-    expect(SOURCE).toContain('data-testid="turkish-live-maintenance"')
-    expect(SOURCE).toMatch(/mode === "live" \? \(/)
-    expect(SOURCE).toContain('data-testid="betfair-opportunities"')
-    expect(SOURCE).toMatch(/key === "orbit" \|\| key === "betkanyon" \|\| key === "onwin"/)
+  it("does not show the temporary Turkish LIVE maintenance notice", () => {
+    expect(SOURCE).not.toContain("temporarily disabled")
+    expect(SOURCE).not.toContain("temporarily paused")
+    expect(SOURCE).not.toContain('data-testid="turkish-live-maintenance"')
+    expect(SOURCE).not.toContain("MAINTENANCE")
   })
 
   it("shows BACK vs LAY opportunities first", () => {
@@ -141,12 +138,10 @@ describe("BACK vs LAY UI contract (frontend/src/routes/index.tsx)", () => {
     expect(i18n).toMatch(/backVsBackOpportunities: "BACK vs BACK OPPORTUNITIES"/)
   })
 
-  it("renders Betfair opportunities in a dedicated section using isLive", () => {
-    expect(SOURCE).toMatch(/function BetfairCard/)
-    expect(SOURCE).toMatch(/data-testid="betfair-opportunities"/)
-    expect(SOURCE).toMatch(/filterBetfairOpportunities/)
-    expect(SOURCE).toMatch(/isBetfairOpportunity/)
-    expect(SOURCE).toMatch(/\["orbit", "betkanyon", "onwin", "betfair"\]/)
-    expect(SOURCE).toMatch(/betfairValueOpportunities/)
+  it("keeps the Turkish collector chips and leaves Betfair off the dashboard", () => {
+    expect(SOURCE).toMatch(/\["orbit", "betkanyon", "onwin", "kolay90"\]/)
+    expect(SOURCE).not.toMatch(/function BetfairCard/)
+    expect(SOURCE).not.toMatch(/data-testid="betfair-opportunities"/)
+    expect(SOURCE).not.toMatch(/betfairValueOpportunities/)
   })
 })

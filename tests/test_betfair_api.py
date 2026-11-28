@@ -44,19 +44,11 @@ def test_opportunities_live_appends_only_live_betfair(monkeypatch, tmp_path):
     cache.write_text(json.dumps(snapshot), encoding="utf-8")
     monkeypatch.setattr(collector, "BETFAIR_CACHE_FILE", cache)
     monkeypatch.setattr(api, "get_cached_opportunities", lambda: [{"feed": "turkish-live"}])
-    monkeypatch.setattr(
-        api, "get_cached_betfair_opportunities", collector.get_cached_betfair_opportunities
-    )
 
     result = api.opportunities(mode="live")
     homes = [row.get("homeTeam") or row.get("feed") for row in result]
-    assert "turkish-live" in homes
-    assert "Live" in homes
-    assert "Prematch" not in homes
-    assert "Unknown" not in homes
-    betfair = [row for row in result if row.get("opportunityType") == "BETFAIR"]
-    assert all(row["source"] == "betfair" for row in betfair)
-    assert all(row["isLive"] is True for row in betfair)
+    assert homes == ["turkish-live"]
+    assert [row for row in result if row.get("opportunityType") == "BETFAIR"] == []
 
 
 def test_opportunities_prematch_appends_only_prematch_betfair(monkeypatch, tmp_path):
@@ -71,24 +63,18 @@ def test_opportunities_prematch_appends_only_prematch_betfair(monkeypatch, tmp_p
     cache.write_text(json.dumps(snapshot), encoding="utf-8")
     monkeypatch.setattr(collector, "BETFAIR_CACHE_FILE", cache)
     monkeypatch.setattr(api, "get_cached_prematch_opportunities", lambda: [{"feed": "turkish-pre"}])
-    monkeypatch.setattr(
-        api, "get_cached_betfair_opportunities", collector.get_cached_betfair_opportunities
-    )
 
     result = api.opportunities(mode="prematch")
     homes = [row.get("homeTeam") or row.get("feed") for row in result]
-    assert "turkish-pre" in homes
-    assert "Prematch" in homes
-    assert "Live" not in homes
+    assert homes == ["turkish-pre"]
+    assert [row for row in result if row.get("opportunityType") == "BETFAIR"] == []
 
 
 def test_status_includes_betfair_collector(monkeypatch, tmp_path):
     status_file = tmp_path / "cached_status.json"
     monkeypatch.setattr(collector, "STATUS_FILE", status_file)
     payload = collector.get_collector_status()
-    assert "betfair" in payload["collectors"]
-    assert payload["collectors"]["betfair"]["name"] == "Betfair"
-    assert payload["collectors"]["betfair"]["collectorStatus"] == "STOPPED"
+    assert "betfair" not in payload["collectors"]
 
 
 def test_start_prematch_and_live_workers_do_not_start_betfair():
@@ -96,4 +82,5 @@ def test_start_prematch_and_live_workers_do_not_start_betfair():
 
     assert "betfair" not in inspect.getsource(collector.start_prematch_workers).lower()
     assert "betfair" not in inspect.getsource(collector.start_workers).lower()
-    assert "start_betfair_worker" in inspect.getsource(__import__("run_engine"))
+    source = inspect.getsource(__import__("run_engine"))
+    assert "start_betfair_worker()" not in source
