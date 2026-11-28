@@ -1,4 +1,5 @@
-from engine.match_finder import MatchFinder
+from engine.match_finder import quotes_for_cross_book_groups
+from kenyan.matcher import KenyanMatchFinder
 from engine.best_odds_selector import BestOddsSelector
 from engine.arbitrage_detector import ArbitrageDetector
 from engine.stake_calculator import StakeCalculator
@@ -13,7 +14,7 @@ class ScannerService:
 
     def __init__(self):
 
-        self.match_finder = MatchFinder()
+        self.match_finder = KenyanMatchFinder()
         self.best_selector = BestOddsSelector()
         self.detector = ArbitrageDetector()
         self.calculator = StakeCalculator()
@@ -30,7 +31,7 @@ class ScannerService:
 
         print(f"Incoming MatchOdds : {len(matches)}")
 
-        matched_events = self.match_finder.find(matches)
+        matched_events = self.match_finder.find(quotes_for_cross_book_groups(matches))
 
         print(f"Matched Events : {len(matched_events)}")
         print()

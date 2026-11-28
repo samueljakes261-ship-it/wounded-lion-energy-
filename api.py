@@ -2,7 +2,6 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from collector import (
-    get_cached_betfair_opportunities,
     get_cached_opportunities,
     get_cached_prematch_opportunities,
     get_collector_status,
@@ -104,16 +103,8 @@ def opportunities(mode: str = "live"):
     """
     normalized = (mode or "live").strip().lower()
     if normalized in ("prematch", "pre-match", "mac-oncesi", "maç öncesi"):
-        base = get_cached_prematch_opportunities()
-        betfair = get_cached_betfair_opportunities(live=False)
-    else:
-        base = get_cached_opportunities()
-        betfair = get_cached_betfair_opportunities(live=True)
-    if not betfair:
-        return base
-    if not isinstance(base, list):
-        return base
-    return list(base) + list(betfair)
+        return get_cached_prematch_opportunities()
+    return get_cached_opportunities()
 
 
 @app.get("/status")

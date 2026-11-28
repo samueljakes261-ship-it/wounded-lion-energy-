@@ -1,4 +1,4 @@
-from engine.matcher import EventMatcher
+from kenyan.matcher import KenyanEventMatcher
 from models.back_lay_opportunity import BackLayOpportunity
 from models.markets import arb_group_key, is_over_under_market
 from models.match import MatchOdds
@@ -45,7 +45,7 @@ class BackLayDetector:
     }
 
     def __init__(self):
-        self.matcher = EventMatcher()
+        self.matcher = KenyanEventMatcher()
 
     def find(self, matches: list[MatchOdds]) -> list[BackLayOpportunity]:
 

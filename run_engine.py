@@ -4,7 +4,6 @@ import time
 from collector import (
     ENGINE_TICK_SECONDS,
     collect_opportunities,
-    start_betfair_worker,
     start_prematch_workers,
     start_workers,
     stop_betfair_worker,
@@ -38,13 +37,11 @@ async def restart_workers_gracefully():
         stop_kolay90_prematch_worker()
         stop_kolay90_live_worker()
         stop_onwin_prematch_worker()
-        stop_betfair_worker()
         if is_prematch_only():
             start_prematch_workers()
         else:
             start_workers()
             start_prematch_workers()
-        start_betfair_worker()
     finally:
         end_scheduled_restart()
 
@@ -68,7 +65,6 @@ async def main():
         print()
         start_workers()
         start_prematch_workers()
-    start_betfair_worker()
 
     cycle_started = time.monotonic()
     try:

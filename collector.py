@@ -16,7 +16,8 @@ from engine.collector_health import (
     RECOVER_AFTER_CONSECUTIVE_SUCCESSES,
     is_connection_dead_error,
 )
-from engine.match_finder import MatchFinder
+from engine.match_finder import quotes_for_cross_book_groups
+from kenyan.matcher import KenyanMatchFinder
 from engine.best_odds_selector import BestOddsSelector, NoBackableOddsError
 from engine.arbitrage_detector import ArbitrageDetector
 from engine.over_under import build_over_under_opportunities
@@ -1009,10 +1010,6 @@ async def _ensure_workers_alive():
             _get_kolay90_prematch_worker,
         )
 
-    if _betfair_worker is not None and not _worker_alive(_betfair_worker._thread):
-        await _restart_worker("betfair", stop_betfair_worker, _get_betfair_worker)
-
-
 # ============================================================
 # ENGINE ACTIVITY MONITOR
 #
@@ -1416,7 +1413,7 @@ async def collect_opportunities(bankroll=1000):
     the background, NOT from this function's call frequency.
     """
 
-    finder = MatchFinder()
+    finder = KenyanMatchFinder()
     selector = BestOddsSelector()
     detector = ArbitrageDetector()
     calculator = StakeCalculator()
@@ -1645,7 +1642,7 @@ async def collect_opportunities(bankroll=1000):
     # bookmaker price (see engine/best_odds_selector.py).
     # --------------------------------------------------------
 
-    matched_events = finder.find(matches)
+    matched_events = finder.find(quotes_for_cross_book_groups(matches))
 
     opportunities = []
 
@@ -2372,7 +2369,6 @@ def _write_status(
                 now_dt,
                 max_age=PREMATCH_MAX_ODDS_AGE_SECONDS,
             ),
-            "betfair": _betfair_collector_snapshot(now_dt, now),
         },
     }
 
@@ -2483,7 +2479,6 @@ def get_collector_status():
                     ("orbit_prematch", "Orbit Prematch"),
                     ("onwin_prematch", "OnWin Prematch"),
                     ("kolay90_prematch", "Kolay90 Prematch"),
-                    ("betfair", "Betfair"),
                 )
             },
         }
