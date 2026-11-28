@@ -153,7 +153,7 @@ class CdpFrameFeed:
             "Target.setAutoAttach",
             {
                 "autoAttach": True,
-                "waitForDebuggerOnStart": False,
+                "waitForDebuggerOnStart": True,
                 "flatten": True,
             },
         )
@@ -211,6 +211,8 @@ class CdpFrameFeed:
             self._response(params, parent if isinstance(parent, str) else "")
         elif method == "Network.loadingFinished":
             self._finished(params, parent if isinstance(parent, str) else "")
+        elif method == "Fetch.requestPaused":
+            self._paused(params, parent if isinstance(parent, str) else "")
 
     def _attach(self, params: dict, parent: str) -> None:
         child = str(params.get("sessionId") or "")
@@ -232,10 +234,15 @@ class CdpFrameFeed:
             child,
         )
         self._command(
+            "Fetch.enable",
+            {"patterns": [{"urlPattern": pattern, "requestStage": "Response"} for pattern in _FEED_PATTERNS]},
+            child,
+        )
+        self._command(
             "Target.setAutoAttach",
             {
                 "autoAttach": True,
-                "waitForDebuggerOnStart": False,
+                "waitForDebuggerOnStart": True,
                 "flatten": True,
             },
             child,
@@ -260,6 +267,31 @@ class CdpFrameFeed:
             "lane": lane,
             "kind": kind,
         }
+
+    def _paused(self, params: dict, session_id: str) -> None:
+        """Take the odds body while Chrome is still holding the response."""
+        request_id = str(params.get("requestId") or "")
+        request = params.get("request") or {}
+        url = str(request.get("url") or "")
+        if not request_id:
+            return
+        if url and looks_like_feed_url(url):
+            self.noticed.append(url)
+        kind = feed_kind(url)
+        status = int(params.get("responseStatusCode") or 0)
+        if kind is not None and status < 400:
+            lane = self._session_lane.get(session_id) or lane_for_target(url)
+            command_id = self._command(
+                "Fetch.getResponseBody",
+                {"requestId": request_id},
+                session_id or None,
+            )
+            self._bodies[command_id] = {"url": url, "lane": lane, "kind": kind}
+        self._command(
+            "Fetch.continueResponse",
+            {"requestId": request_id},
+            session_id or None,
+        )
 
     def _finished(self, params: dict, session_id: str) -> None:
         request_id = str(params.get("requestId") or "")
@@ -350,6 +382,14 @@ class CdpFrameFeed:
                 sock.settimeout(previous)
             except Exception:
                 pass
+
+
+_FEED_PATTERNS = (
+    "*get_main_line.erisgaming*",
+    "*get_main_line_compact.erisgaming*",
+    "*get_main_line_gap.erisgaming*",
+    "*find_event_snapshots.erisgaming*",
+)
 
 
 def looks_like_feed_url(url: str) -> bool:

@@ -73,6 +73,40 @@ def test_attached_sportsbook_frame_gets_network_enabled_on_its_session():
     assert feed.targets_seen == 1
 
 
+def test_paused_live_odds_response_is_taken_and_released():
+    feed = CdpFrameFeed()
+    feed._session_lane["live-page"] = "live"
+    url = (
+        "https://api-onwin-tr--prd--sb.4298.lol/frontserver-erisgaming__api/rpc/"
+        "sumstats.frontserver.command.get_main_line_compact.erisgaming"
+    )
+    feed.handle_message(
+        {
+            "method": "Fetch.requestPaused",
+            "sessionId": "live-page",
+            "params": {
+                "requestId": "paused-1",
+                "responseStatusCode": 200,
+                "request": {"url": url},
+            },
+        }
+    )
+    methods = [(item["method"], item.get("sessionId")) for item in feed.commands]
+    assert ("Fetch.getResponseBody", "live-page") in methods
+    assert ("Fetch.continueResponse", "live-page") in methods
+    body_call = [item for item in feed.commands if item["method"] == "Fetch.getResponseBody"][-1]
+    feed.handle_message(
+        {
+            "id": body_call["id"],
+            "sessionId": "live-page",
+            "result": {"body": '{"sports":{"1":{"categories":{}}}}', "base64Encoded": False},
+        }
+    )
+    captured = feed.take()
+    assert captured[0]["lane"] == "live"
+    assert captured[0]["url"] == url
+
+
 def test_blank_iframe_keeps_its_parent_lane_and_a_body_is_captured():
     feed = CdpFrameFeed()
     feed._session_lane["parent"] = "prematch"
