@@ -1,5 +1,5 @@
 [Unit]
-Description=Onwin dedicated headless Chrome
+Description=Onwin visible Chrome on its TigerVNC desktop
 After=network.target
 
 [Service]

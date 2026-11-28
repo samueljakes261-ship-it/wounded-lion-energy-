@@ -1,12 +1,12 @@
-"""Onwin collector for a dedicated headless Chrome on the VPS.
+"""Onwin collector for the visible Onwin Chrome on its TigerVNC desktop.
 
-Google Chrome is started by experiments/onwin_vps/chrome.sh. This process
-attaches to that Chrome the same way the Windows collector attaches to
-the Kolay91 window: Playwright connects over the debugging port and does
-not launch a browser.
+Google Chrome is started by experiments/onwin_vps/chrome.sh on that
+desktop, the same kind of window Kolay91 uses. This process attaches to
+that window over the debugging port and does not launch a browser.
 
 Odds are written straight into the live and prematch snapshot files the
-engine already reads. No ingest token and no VNC desktop.
+engine already reads. No ingest token. The desktop is display :98, not
+Kolay91's display :1.
 
 Response bodies are read on the collector loop, never inside a debugger
 event. Reading them there stopped the connection after a short burst and
