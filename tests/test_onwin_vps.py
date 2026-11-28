@@ -475,6 +475,13 @@ def test_reload_cycles_use_60s_live_and_120s_prematch():
     source = (ROOT / "experiments" / "onwin_vps" / "collector.py").read_text(encoding="utf-8")
     assert "page.reload" in source
     assert "Each odds endpoint is parsed as it arrives." in source
+    assert "frameattached" in source
+    from experiments.onwin_vps.collector import looks_like_onwin_feed
+
+    assert looks_like_onwin_feed(
+        "https://api-onwin-tr--prd--sb.538.lol/rpc/get_main_line.erisgaming"
+    )
+    assert looks_like_onwin_feed("https://example.com/") is False
 
 
 def test_quiet_live_page_is_asked_again_without_a_reload():

@@ -511,6 +511,15 @@ def _safe_path(url: str) -> str:
     return (url or "").split("?", 1)[0][-160:]
 
 
+def looks_like_onwin_feed(url: str) -> bool:
+    """True for hosts and paths the sportsbook uses for odds calls."""
+    lowered = (url or "").lower()
+    return any(
+        token in lowered
+        for token in ("erisgaming", "4297.lol", "538.lol", "api-onwin")
+    )
+
+
 def _reload_sportsbook(page, url: str, label: str) -> bool:
     """Reload one sportsbook tab, or open it when the address has left.
 
@@ -688,7 +697,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
 
     def _note_feed_url(url: str) -> None:
         lowered = (url or "").lower()
-        if "erisgaming" in lowered or "4297.lol" in lowered:
+        if looks_like_onwin_feed(url):
             book.note_api(_safe_path(url))
 
     def apply_captured(url: str, raw, lane: str, kind: str | None = None) -> None:
@@ -818,33 +827,21 @@ def run_forever(book: CollectionBook | None = None) -> int:
 
                 taps = {"live": LaneTap(), "prematch": LaneTap()}
                 sessions = {"live": None, "prematch": None}
+                body_sessions: dict[str, object] = {}
                 fallback: list = []
 
-                def _arm_cdp(page, lane_name: str):
-                    """Remember response ids. Do not read bodies here."""
+                def _bind_network(session, lane_name: str) -> None:
+                    """Remember response ids on this target. Do not read bodies here."""
                     tap = taps[lane_name]
-                    try:
-                        session = page.context.new_cdp_session(page)
-                        session.send(
-                            "Network.enable",
-                            {
-                                "maxTotalBufferSize": 100 * 1024 * 1024,
-                                "maxResourceBufferSize": 50 * 1024 * 1024,
-                            },
-                        )
-                        try:
-                            session.send("Page.enable")
-                        except Exception:
-                            pass
-                    except Exception as exc:
-                        _log(f"{lane_name} network listen was not attached ({type(exc).__name__}).")
-                        return None
 
                     def request_will_be_sent(params):
                         request = params.get("request") or {}
                         post = request.get("postData")
+                        request_id = str(params.get("requestId") or "")
+                        if request_id:
+                            body_sessions[request_id] = session
                         tap.note_request(
-                            str(params.get("requestId") or ""),
+                            request_id,
                             str(request.get("url") or ""),
                             str(request.get("method") or "GET"),
                             request.get("headers") or {},
@@ -853,8 +850,11 @@ def run_forever(book: CollectionBook | None = None) -> int:
 
                     def response_received(params):
                         response = params.get("response") or {}
+                        request_id = str(params.get("requestId") or "")
+                        if request_id:
+                            body_sessions[request_id] = session
                         tap.note_response(
-                            str(params.get("requestId") or ""),
+                            request_id,
                             str(response.get("url") or ""),
                             int(response.get("status") or 0),
                         )
@@ -872,9 +872,38 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     session.on("Network.responseReceived", response_received)
                     session.on("Network.loadingFinished", loading_finished)
                     session.on("Network.webSocketFrameReceived", socket_frame)
-                    # The casino shell is the top document. Odds are requested
-                    # from the sportsbook frame. This session only sees that
-                    # frame when child targets are attached here too.
+
+                def _enable_network(session) -> None:
+                    session.send(
+                        "Network.enable",
+                        {
+                            "maxTotalBufferSize": 100 * 1024 * 1024,
+                            "maxResourceBufferSize": 50 * 1024 * 1024,
+                        },
+                    )
+
+                def _arm_frame(frame, lane_name: str) -> None:
+                    """Odds are requested from the sportsbook frame, not the shell."""
+                    try:
+                        session = context.new_cdp_session(frame)
+                        _enable_network(session)
+                    except Exception:
+                        return
+                    _bind_network(session, lane_name)
+
+                def _arm_cdp(page, lane_name: str):
+                    """Remember response ids. Do not read bodies here."""
+                    try:
+                        session = page.context.new_cdp_session(page)
+                        _enable_network(session)
+                        try:
+                            session.send("Page.enable")
+                        except Exception:
+                            pass
+                    except Exception as exc:
+                        _log(f"{lane_name} network listen was not attached ({type(exc).__name__}).")
+                        return None
+                    _bind_network(session, lane_name)
                     try:
                         session.send(
                             "Target.setAutoAttach",
@@ -888,12 +917,24 @@ def run_forever(book: CollectionBook | None = None) -> int:
                         pass
                     if lane_name == "live":
                         _hold_focus(session)
+                    try:
+                        for frame in page.frames:
+                            _arm_frame(frame, lane_name)
+                    except Exception:
+                        pass
                     return session
 
                 for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
                     sessions[lane_name] = _arm_cdp(watched, lane_name)
+                    try:
+                        watched.on(
+                            "frameattached",
+                            lambda frame, lane_name=lane_name: _arm_frame(frame, lane_name),
+                        )
+                    except Exception:
+                        pass
                 attached = sum(1 for session in sessions.values() if session is not None)
-                _log(f"Capturing responses on {attached} open tabs. Those tabs are not reloaded.")
+                _log(f"Capturing responses on {attached} open tabs, including sportsbook frames.")
 
                 def _on_response(response):
                     # Bodies are read on the loop. The top-document debugger
@@ -904,6 +945,7 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     except Exception:
                         return
                     if feed_kind(url) is None:
+                        _note_feed_url(url)
                         return
                     if len(fallback) >= 30:
                         del fallback[:-29]
@@ -941,8 +983,9 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     tap = taps[lane_name]
                     if session is not None:
                         for request_id in tap.bodies_needed():
+                            owner = body_sessions.get(request_id) or session
                             try:
-                                result = session.send(
+                                result = owner.send(
                                     "Network.getRequestPostData",
                                     {"requestId": request_id},
                                 )
@@ -969,9 +1012,10 @@ def run_forever(book: CollectionBook | None = None) -> int:
                                     book.note_traffic(kind, lane_name)
                                     _write_status(book)
                                 continue
-                            if session is None:
+                            owner = body_sessions.get(item["id"]) or session
+                            if owner is None:
                                 continue
-                            raw = read_captured_body(session, item["id"])
+                            raw = read_captured_body(owner, item["id"])
                             if raw is None:
                                 continue
                             apply_captured(url, raw, lane_name)
