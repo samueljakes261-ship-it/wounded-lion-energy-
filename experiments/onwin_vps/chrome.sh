@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start, stop, or inspect the dedicated Onwin Chrome on the VPS.
-# Visible Google Chrome on its own TigerVNC desktop, the same kind of
-# window Kolay91 uses. Not headless, not Xvfb, and not Kolay91's display :1.
+# Same launch as the PC window on port 9222: real Google Chrome, remote
+# debugging, and the two sportsbook tabs. Not headless. Not Kolay91's display :1.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -239,84 +239,43 @@ wait_for_cdp() {
   return 1
 }
 
-vnc_port() {
+ensure_display() {
   local number="${DISPLAY_VALUE#:}"
-  echo $((5900 + number))
-}
-
-display_is_xvfb() {
   local pid cmd
   for pid in /proc/[0-9]*; do
     [ -r "$pid/cmdline" ] || continue
     cmd="$(tr '\0' ' ' < "$pid/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *Xvfb*"${DISPLAY_VALUE}"*) return 0 ;;
+      *Xtigervnc*"${DISPLAY_VALUE}"*)
+        echo "[onwin-vps-chrome] stopping the extra desktop on ${DISPLAY_VALUE}"
+        kill "${pid#/proc/}" 2>/dev/null || true
+        ;;
     esac
   done
-  return 1
-}
-
-xfce_on_display() {
-  local pid comm
-  for pid in /proc/[0-9]*; do
-    comm="$(cat "$pid/comm" 2>/dev/null || true)"
-    case "$comm" in
-      xfce4-session|xfwm4|xfce4-panel) ;;
-      *) continue ;;
-    esac
-    if tr '\0' '\n' < "$pid/environ" 2>/dev/null | grep -Eq "^DISPLAY=${DISPLAY_VALUE}(\.|$)"; then
+  if [ -S "/tmp/.X11-unix/X${number}" ]; then
+    return 0
+  fi
+  local xvfb
+  xvfb="$(command -v Xvfb || true)"
+  if [ -z "$xvfb" ]; then
+    echo "[onwin-vps-chrome] Xvfb is not installed." >&2
+    echo "[onwin-vps-chrome] Chrome opens a normal window on this screen. It is not headless." >&2
+    echo "[onwin-vps-chrome] Install it with: sudo apt-get install -y xvfb" >&2
+    exit 1
+  fi
+  echo "[onwin-vps-chrome] starting Xvfb on ${DISPLAY_VALUE}"
+  # Close the launch-lock fd. A background Xvfb must not keep the lock after this script exits.
+  nohup "$xvfb" "$DISPLAY_VALUE" -screen 0 1280x900x24 -ac +extension GLX +render -noreset >>"$OUTPUT/xvfb.log" 2>&1 9>&- &
+  echo $! >"$OUTPUT/xvfb.pid"
+  local _i
+  for _i in $(seq 1 25); do
+    if [ -S "/tmp/.X11-unix/X${number}" ]; then
       return 0
     fi
+    sleep 0.2
   done
-  return 1
-}
-
-ensure_display() {
-  local number="${DISPLAY_VALUE#:}"
-  local vnc _i
-  if display_is_xvfb; then
-    echo "[onwin-vps-chrome] retiring the old Xvfb screen on ${DISPLAY_VALUE}"
-    stop_xvfb
-  fi
-  if [ ! -S "/tmp/.X11-unix/X${number}" ]; then
-    vnc="$(command -v tigervncserver || true)"
-    if [ -z "$vnc" ]; then
-      echo "[onwin-vps-chrome] TigerVNC is not installed." >&2
-      echo "[onwin-vps-chrome] Onwin uses a visible desktop, the same kind Kolay91 uses, on display ${DISPLAY_VALUE}." >&2
-      exit 1
-    fi
-    if [ ! -f "${HOME}/.vnc/passwd" ]; then
-      echo "[onwin-vps-chrome] ${HOME}/.vnc/passwd is missing. TigerVNC keeps its password there, the same file Kolay91 uses." >&2
-      exit 1
-    fi
-    echo "[onwin-vps-chrome] starting TigerVNC on ${DISPLAY_VALUE} port 127.0.0.1:$(vnc_port)"
-    # The password stays in ~/.vnc/passwd. It is not passed on the command line.
-    # Close the launch-lock fd so this desktop does not keep the Chrome lock.
-    nohup "$vnc" "$DISPLAY_VALUE" -geometry 1600x900 -depth 24 -localhost yes >>"$OUTPUT/vnc.log" 2>&1 9>&- &
-    echo $! >"$OUTPUT/vnc.pid"
-    for _i in $(seq 1 25); do
-      if [ -S "/tmp/.X11-unix/X${number}" ]; then
-        break
-      fi
-      sleep 0.2
-    done
-    if [ ! -S "/tmp/.X11-unix/X${number}" ]; then
-      echo "[onwin-vps-chrome] TigerVNC did not create ${DISPLAY_VALUE}" >&2
-      exit 1
-    fi
-  else
-    echo "[onwin-vps-chrome] TigerVNC display ${DISPLAY_VALUE} is already up"
-  fi
-  for _i in $(seq 1 20); do
-    if xfce_on_display; then
-      return 0
-    fi
-    sleep 0.25
-  done
-  if command -v startxfce4 >/dev/null 2>&1; then
-    echo "[onwin-vps-chrome] starting XFCE on ${DISPLAY_VALUE}"
-    DISPLAY="$DISPLAY_VALUE" nohup startxfce4 >>"$OUTPUT/xfce.log" 2>&1 9>&- &
-  fi
+  echo "[onwin-vps-chrome] Xvfb did not create ${DISPLAY_VALUE}" >&2
+  exit 1
 }
 
 stop_xvfb() {
@@ -364,13 +323,8 @@ launch_chrome() {
   if [ "$#" -gt 0 ]; then
     args+=("$@")
   fi
-  # A profile that already passed Cloudflare must come back as it was.
-  # Opening the default host again reloads both sportsbook tabs.
-  if [ -d "$PROFILE/Default" ]; then
-    args+=("--restore-last-session")
-  else
-    args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
-  fi
+  # Same as the PC Chrome: open the live tab and the prematch tab.
+  args+=("$LIVE_PAGE" "$PREMATCH_PAGE")
   if [ "$ACTION" = "foreground" ]; then
     exec 9>&-
     exec "${args[@]}"
@@ -419,7 +373,7 @@ release_lock_holders() {
 case "$ACTION" in
   stop)
     stop_chrome
-    echo "[onwin-vps-chrome] the TigerVNC desktop on ${DISPLAY_VALUE} stays up"
+    stop_xvfb
     ;;
   restart)
     stop_chrome || true
@@ -450,7 +404,7 @@ case "$ACTION" in
     echo "[onwin-vps-chrome] installed $(find_chrome)"
     ;;
   status)
-    echo "[onwin-vps-chrome] display=${DISPLAY_VALUE} port=${PORT} vnc=127.0.0.1:$(vnc_port)"
+    echo "[onwin-vps-chrome] display=${DISPLAY_VALUE} port=${PORT}"
     echo "[onwin-vps-chrome] profile=${PROFILE}"
     if chrome_bin="$(find_chrome)"; then
       echo "[onwin-vps-chrome] chrome_bin=${chrome_bin}"

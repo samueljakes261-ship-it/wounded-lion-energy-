@@ -1,12 +1,13 @@
-"""Onwin collector for the visible Onwin Chrome on its TigerVNC desktop.
+"""Onwin collector for the real Chrome window on the VPS.
 
-Google Chrome is started by experiments/onwin_vps/chrome.sh on that
-desktop, the same kind of window Kolay91 uses. This process attaches to
-that window over the debugging port and does not launch a browser.
+experiments/onwin_vps/chrome.sh opens Google Chrome the same way the PC
+opens the Kolay91 window: a normal window with remote debugging, not a
+headless browser. It opens the live tab and the prematch tab. This
+process attaches to that window and does not launch a browser.
 
-Odds are written straight into the live and prematch snapshot files the
-engine already reads. No ingest token. The desktop is display :98, not
-Kolay91's display :1.
+Odds endpoints from those tabs are intercepted and written into the
+live and prematch snapshot files the engine already reads. No ingest
+token. The debugging port is 9223, not Kolay91's 9222.
 
 Response bodies are read on the collector loop, never inside a debugger
 event. Reading them there stopped the connection after a short burst and
@@ -975,6 +976,22 @@ def run_forever(book: CollectionBook | None = None) -> int:
                     except Exception:
                         pass
 
+                def _on_finished(request):
+                    """Same interception as the PC collector: the window's own calls."""
+                    try:
+                        if "kolay" in (request.url or "").lower():
+                            return
+                        response = request.response()
+                    except Exception:
+                        return
+                    if response is None:
+                        return
+                    _on_response(response)
+
+                try:
+                    context.on("requestfinished", _on_finished)
+                except Exception:
+                    pass
                 for watched, lane_name in ((live_page, "live"), (prematch_page, "prematch")):
                     try:
                         watched.on("response", _on_response)

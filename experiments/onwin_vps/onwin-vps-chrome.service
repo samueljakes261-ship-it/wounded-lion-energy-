@@ -1,5 +1,5 @@
 [Unit]
-Description=Onwin visible Chrome on its TigerVNC desktop
+Description=Onwin Chrome window with remote debugging
 After=network.target
 
 [Service]

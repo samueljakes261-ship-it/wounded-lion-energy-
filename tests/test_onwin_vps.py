@@ -108,14 +108,14 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     collector = (ROOT / "experiments" / "onwin_vps" / "collector.py").read_text(encoding="utf-8")
     assert "9223" in chrome
     assert "--remote-debugging-address=127.0.0.1" in chrome
-    assert "tigervncserver" in chrome
+    assert "tigervncserver" not in chrome
     assert "Xvfb" in chrome
     assert ":98" in chrome
     assert "--headless" not in chrome
     assert "display :1 belongs to Kolay90" in chrome
     assert "/snap/bin/chromium" in chrome
     assert "chrome.sh install" in chrome
-    assert "the same kind Kolay91 uses" in chrome
+    assert "TigerVNC" not in chrome
     assert "retrying without the Chrome sandbox" in chrome
     assert 'args+=("$LIVE_PAGE" "$PREMATCH_PAGE")' in chrome
     assert "9>&-" in chrome
@@ -131,6 +131,7 @@ def test_vps_runner_does_not_launch_a_browser_or_touch_kolay():
     assert "chromium.launch" not in collector
     assert "launch_persistent_context" not in collector
     assert "connect_over_cdp" in collector
+    assert 'context.on("requestfinished"' in collector
     assert "threading.Thread" not in collector
     assert collector.count("bring_to_front") == 1
     assert "read_captured_body" in collector
